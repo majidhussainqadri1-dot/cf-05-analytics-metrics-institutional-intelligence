@@ -1,21 +1,21 @@
-# Implementation Status — 1.0.0-rc.2
+# Implementation Status — 1.0.0-rc.3
 
 | Status | Result |
 |---|---|
-| Specified | Complete for approved `CF05-FR-001..CF05-FR-035` scope |
-| Coded | Complete reviewed source candidate; all 35 requirements traced |
-| Packaged | Deterministic installable ZIP, checksum, package manifest and CycloneDX SBOM generated locally |
-| Automated QA | Local source suite green: 14 executable tests, 37-table/schema parity, 35 requirement IDs, JSON and secret scans; exact-head GitHub CI pending push |
-| Staging accepted | Pending |
+| Specified | Complete for `CF05-FR-001..CF05-FR-035` and applicable three-plan harmonization controls |
+| Coded | Complete reviewed source candidate; reviews 5 and 6 recorded |
+| Packaged | Deterministic ZIP/checksum/manifest/CycloneDX generation implemented in CI |
+| Automated QA | Exact-head GitHub Actions on PHP 8.1/8.2/8.3 is the authoritative evidence |
+| Staging accepted | Pending external Hostinger-equivalent acceptance |
 | Live deployed | No |
 | Operational | No |
 
-## Current artifact evidence
+## Current source identity
 
-- Candidate: `1.0.0-rc.2`
+- Candidate: `1.0.0-rc.3`
 - Schema: `1.1.0`
-- Contract: `1.1.0`
-- Package SHA-256: `2269d06a13a43858c040456c76d2e6eef4bdd2b03b023cd83c64f712b86f4c5d`
+- Contract: `1.2.0`
 - Runtime default: `foundation_disabled`
+- Three-plan trace: `docs/THREE-PLAN-TRACEABILITY.md`
 
-The runtime remains disabled by default. Source completion does not bypass activation, companion-contract, privacy/security, provider, staging, restore, load, accessibility or Founder acceptance gates.
+Source completion does not bypass evidence-bound activation, actual companion contracts, privacy/security review, provider validation, browser/accessibility/RTL/load testing, backup/restore, rollback or Founder acceptance.
