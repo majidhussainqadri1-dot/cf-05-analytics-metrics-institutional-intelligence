@@ -26,15 +26,15 @@ final class MetricCatalog
     /** @param array<string,mixed> $definition */
     public function register(array $definition, int $actorUserId): array|WP_Error
     {
-        $errors = $this->validator->errors($definition);
+        $normalized = $this->validator->normalize($definition);
+        $errors = $this->validator->errors($normalized);
         if ($actorUserId < 1 || $errors !== []) {
             return new WP_Error('smai_invalid_metric', 'Metric definition validation failed.', ['status' => 400, 'errors' => $errors]);
         }
-        $source = (array) $definition['source'];
+        $source = (array) $normalized['source'];
         if ((new DatasetCatalog($this->db))->published((string) $source['dataset_id'], (string) $source['dataset_version']) === null) {
             return new WP_Error('smai_metric_source_unpublished', 'Metric source dataset must be published.', ['status' => 409]);
         }
-        $normalized = $this->validator->normalize($definition);
         $json = Json::canonical($normalized);
         $hash = hash('sha256', $json);
         $table = $this->db->table('metrics');
