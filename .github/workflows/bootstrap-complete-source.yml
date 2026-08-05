@@ -26,6 +26,10 @@ jobs:
           rm -rf assets contracts docs scripts src tests
           rm -f .gitignore CHANGELOG.md CONTRIBUTING.md MANIFEST.json README.md SECURITY.md composer.json readme.txt sabri-analytics-institutional-intelligence.php uninstall.php
           tar -xzf /tmp/cf05-source.tar.gz -C .
+          # Preserve the already-approved workflow during the bot push. The complete
+          # CI workflow is applied separately through the GitHub connector, which has
+          # the required workflows permission.
+          git checkout HEAD -- .github/workflows/ci.yml
           rm -rf .bootstrap
           rm -f .github/workflows/bootstrap-complete-source.yml
           git config user.name "github-actions[bot]"
