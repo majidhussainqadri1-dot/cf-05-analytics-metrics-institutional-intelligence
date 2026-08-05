@@ -128,7 +128,7 @@ final class PrivacyGateway
     }
 
     /** @param array<int,string> $errors */
-    private function reject(array &$errors, string $error): null
+    private function reject(array &$errors, string $error): mixed
     {
         $errors[] = $error;
         return null;
