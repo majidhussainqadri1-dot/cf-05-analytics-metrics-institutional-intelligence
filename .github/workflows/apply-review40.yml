@@ -1,0 +1,32 @@
+name: Apply CF-05 Forty-Round Payload
+
+on:
+  push:
+    branches:
+      - codex/cf-05-foundation-0.1.0
+    paths:
+      - .codex/review40.ready
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply reviewed source payload
+        run: |
+          set -euo pipefail
+          cat .codex/review40-part-* | base64 -d | tar -xzf -
+          rm -rf .codex
+          bash scripts/qa.sh
+          bash scripts/verify-deterministic-build.sh
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "review: apply forty-round CF-05 source corrections"
+          git push origin HEAD:${GITHUB_REF_NAME}
