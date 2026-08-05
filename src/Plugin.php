@@ -8,6 +8,7 @@ use Sabri\AnalyticsIntelligence\Admin\AdminPages;
 use Sabri\AnalyticsIntelligence\CLI\Commands;
 use Sabri\AnalyticsIntelligence\Domain\AccessProjectService;
 use Sabri\AnalyticsIntelligence\Domain\ReportService;
+use Sabri\AnalyticsIntelligence\Http\GovernanceRestController;
 use Sabri\AnalyticsIntelligence\Http\RestController;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\HealthService;
@@ -46,6 +47,7 @@ final class Plugin
         $health = new HealthService($database);
 
         (new RestController($database, $health))->register();
+        (new GovernanceRestController($database))->register();
         (new AdminPages($database, $health))->register();
         (new RetentionRunner($database))->register();
         (new JobRunner($database))->register();
