@@ -61,11 +61,18 @@ final class MetricQueryService
                 return new WP_Error('smai_dimension_not_allowed', 'A requested dimension is not approved for this metric.', ['status' => 403]);
             }
         }
+        $policyViolations = PrivacyQueryPolicy::violations($definition, $dimensions);
+        if ($policyViolations !== []) {
+            return new WP_Error('smai_query_privacy_policy', 'Requested dimensions violate the metric privacy policy.', ['status' => 403, 'violations' => $policyViolations]);
+        }
+
         $startTs = strtotime($windowStart);
         $endTs = strtotime($windowEnd);
         if ($startTs === false || $endTs === false || $startTs >= $endTs || ($endTs - $startTs) > 366 * DAY_IN_SECONDS) {
             return new WP_Error('smai_invalid_window', 'Metric window is invalid.', ['status' => 400]);
         }
+        $canonicalStart = gmdate('Y-m-d H:i:s', $startTs);
+        $canonicalEnd = gmdate('Y-m-d H:i:s', $endTs);
 
         ksort($dimensions);
         $dimensionsJson = Json::canonical($dimensions);
@@ -75,8 +82,8 @@ final class MetricQueryService
             "SELECT * FROM `{$table}` WHERE metric_id=%s AND metric_version=%s AND window_start=%s AND window_end=%s AND dimensions_hash=%s AND state='published' ORDER BY snapshot_revision DESC LIMIT 1",
             $metricId,
             $version,
-            gmdate('Y-m-d H:i:s', $startTs),
-            gmdate('Y-m-d H:i:s', $endTs),
+            $canonicalStart,
+            $canonicalEnd,
             $dimensionsHash
         ), ARRAY_A);
 
@@ -88,7 +95,11 @@ final class MetricQueryService
             return new WP_Error('smai_snapshot_not_found', 'No approved snapshot exists for this exact metric version and window.', ['status' => 404]);
         }
 
-        $minimum = max((int) $metric['minimum_cohort'], (int) get_option('smai_minimum_cohort', 20));
+        $minimum = PrivacyQueryPolicy::effectiveMinimum(
+            $definition,
+            $dimensions,
+            max((int) $metric['minimum_cohort'], (int) get_option('smai_minimum_cohort', 20))
+        );
         if ((int) $row['cohort_size'] < $minimum || (string) $row['quality_status'] === 'suppressed') {
             $this->audit->log('metric_query', 'metric_snapshot', $metricId . '@' . $version, 'suppressed', [
                 'project_uuid' => $projectUuid,
@@ -98,6 +109,27 @@ final class MetricQueryService
             return new WP_Error('smai_cohort_suppressed', 'Result is suppressed by the minimum cohort policy.', ['status' => 403]);
         }
 
+        $privacy = (new QueryPrivacyGuard($this->db))->evaluateAndRecord(
+            $metricId,
+            $version,
+            $projectUuid,
+            $actorUserId,
+            $purpose,
+            $canonicalStart,
+            $canonicalEnd,
+            $dimensions,
+            $definition,
+            (int) $row['cohort_size'],
+            $minimum
+        );
+        if (is_wp_error($privacy)) {
+            return $privacy;
+        }
+
+        $quality = (string) $row['quality_status'];
+        if (!in_array($quality, ['green','warning','degraded','unknown','suppressed','invalidated'], true)) {
+            $quality = 'unknown';
+        }
         $response = [
             'metric_id' => $metricId,
             'metric_version' => $version,
@@ -115,20 +147,21 @@ final class MetricQueryService
             'denominator' => $row['denominator_decimal'] !== null ? (float) $row['denominator_decimal'] : null,
             'cohort_size' => (int) $row['cohort_size'],
             'minimum_cohort' => $minimum,
-            'quality_status' => $row['quality_status'],
+            'quality_status' => $quality,
             'data_through' => $row['data_through'] ? gmdate('c', (int) strtotime((string) $row['data_through'])) : null,
             'freshness_seconds' => $row['data_through'] ? max(0, time() - (int) strtotime((string) $row['data_through'])) : null,
             'coverage' => $row['coverage_decimal'] !== null ? (float) $row['coverage_decimal'] : null,
             'uncertainty' => Json::object((string) ($row['uncertainty_json'] ?? '{}')),
             'caveats' => Json::list((string) ($row['caveats_json'] ?? '[]')),
             'source_owner' => $metric['owner_module'],
-            'status' => $row['quality_status'] === 'green' ? 'current_within_declared_quality' : 'unknown_or_degraded',
+            'status' => $quality === 'green' ? 'current_within_declared_quality' : 'unknown_or_degraded',
         ];
 
         $this->audit->log('metric_query', 'metric_snapshot', $metricId . '@' . $version, 'success', [
             'project_uuid' => $projectUuid,
             'dimension_names' => array_keys($dimensions),
-            'quality_status' => $row['quality_status'],
+            'dimensions_fingerprint' => $dimensionsHash,
+            'quality_status' => $quality,
             'result_size' => 1,
             'cohort_size_bucket' => $this->bucket((int) $row['cohort_size']),
         ], $purpose, null, $actorUserId);
