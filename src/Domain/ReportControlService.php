@@ -25,7 +25,7 @@ final class ReportControlService
     public function update(string $uuid, int $expectedVersion, array $changes, int $actorUserId): array|WP_Error
     {
         $report = $this->get($uuid);
-        if (!is_array($report) || !in_array((string) $report['state'], ['draft','paused'], true)) {
+        if (!is_array($report) || !in_array((string) $report['state'], ['draft', 'paused'], true)) {
             return new WP_Error('smai_report_not_editable', 'Only draft or paused reports can be updated.', ['status' => 409]);
         }
         if ((int) $report['owner_user_id'] !== $actorUserId || (int) $report['row_version'] !== $expectedVersion) {
@@ -35,17 +35,17 @@ final class ReportControlService
         $definition = Json::object((string) $report['definition_json']);
         if (array_key_exists('recipients', $changes)) {
             $recipients = is_array($changes['recipients']) ? array_values($changes['recipients']) : [];
-            $validated = $this->validateRecipients($recipients);
-            if (is_wp_error($validated)) {
-                return $validated;
+            $valid = $this->validateRecipients($recipients);
+            if (is_wp_error($valid)) {
+                return $valid;
             }
             $definition['recipients'] = $recipients;
         }
         if (array_key_exists('metrics', $changes)) {
             $metrics = is_array($changes['metrics']) ? array_values($changes['metrics']) : [];
-            $validated = $this->validateMetrics($metrics, (string) $report['project_uuid'], $actorUserId);
-            if (is_wp_error($validated)) {
-                return $validated;
+            $valid = $this->validateMetrics($metrics, (string) $report['project_uuid'], $actorUserId);
+            if (is_wp_error($valid)) {
+                return $valid;
             }
             $definition['metrics'] = $metrics;
         }
@@ -56,10 +56,12 @@ final class ReportControlService
         if (strlen($name) < 3) {
             return new WP_Error('smai_invalid_report_name', 'Report name is invalid.', ['status' => 400]);
         }
+
         $schedule = array_key_exists('schedule', $changes) ? $changes['schedule'] : $report['schedule_rrule'];
-        if ($schedule !== null && !in_array((string) $schedule, ['hourly','daily','weekly','monthly'], true)) {
+        if ($schedule !== null && !in_array((string) $schedule, ['hourly', 'daily', 'weekly', 'monthly'], true)) {
             return new WP_Error('smai_invalid_report_schedule', 'Report schedule is invalid.', ['status' => 400]);
         }
+
         $expiresAt = $report['expires_at'];
         if (array_key_exists('expires_at', $changes)) {
             if ($changes['expires_at'] === null || $changes['expires_at'] === '') {
@@ -109,14 +111,17 @@ final class ReportControlService
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_report_project_inactive', 'Report access project is inactive.', ['status' => 409]);
         }
-        $schedule = $report['schedule_rrule'] === null ? null : (string) $report['schedule_rrule'];
-        $next = $schedule === null ? null : gmdate('Y-m-d H:i:s', $this->nextTimestamp($schedule, time()));
         $reason = $this->reason($reason);
         if (is_wp_error($reason)) {
             return $reason;
         }
+        $schedule = $report['schedule_rrule'] === null ? null : (string) $report['schedule_rrule'];
+        $next = $schedule === null ? null : gmdate('Y-m-d H:i:s', $this->nextTimestamp($schedule, time()));
         $updated = $this->db->wpdb()->update($this->db->table('reports'), [
-            'state' => 'active', 'next_run_at' => $next, 'row_version' => $expectedVersion + 1, 'updated_at' => $this->db->now(),
+            'state' => 'active',
+            'next_run_at' => $next,
+            'row_version' => $expectedVersion + 1,
+            'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'state' => 'paused', 'row_version' => $expectedVersion]);
         if ($updated !== 1) {
             return new WP_Error('smai_report_resume_conflict', 'Report changed concurrently.', ['status' => 409]);
@@ -143,15 +148,15 @@ final class ReportControlService
         }
         $now = $this->db->now();
         $updated = $this->db->wpdb()->update($this->db->table('reports'), [
-            'state' => 'revoked', 'next_run_at' => null, 'row_version' => $expectedVersion + 1, 'updated_at' => $now,
+            'state' => 'revoked',
+            'next_run_at' => null,
+            'row_version' => $expectedVersion + 1,
+            'updated_at' => $now,
         ], ['id' => (int) $report['id'], 'row_version' => $expectedVersion, 'state' => (string) $report['state']]);
         if ($updated !== 1) {
             return new WP_Error('smai_report_revoke_conflict', 'Report changed concurrently.', ['status' => 409]);
         }
-        $this->db->wpdb()->query($this->db->wpdb()->prepare(
-            "UPDATE `{$this->db->table('report_deliveries')}` SET state='revoked',revoked_at=%s,expires_at=%s,token_hash=NULL,updated_at=%s WHERE report_uuid=%s AND revoked_at IS NULL",
-            $now, $now, $now, $uuid
-        ));
+        $this->revokeDeliveries($uuid, null, $now);
         $this->audit->log('report_revoked', 'report', $uuid, 'success', ['reason' => $reason], 'institutional_reporting', null, $actorUserId);
         return ['report_uuid' => $uuid, 'state' => 'revoked', 'row_version' => $expectedVersion + 1, 'unchanged' => false];
     }
@@ -188,12 +193,8 @@ final class ReportControlService
         if ($updated !== 1) {
             return new WP_Error('smai_report_unsubscribe_conflict', 'Report changed concurrently.', ['status' => 409]);
         }
-        $recipientHash = hash('sha256', 'user:' . $actorUserId);
         $now = $this->db->now();
-        $this->db->wpdb()->query($this->db->wpdb()->prepare(
-            "UPDATE `{$this->db->table('report_deliveries')}` SET state='revoked',revoked_at=%s,expires_at=%s,token_hash=NULL,updated_at=%s WHERE report_uuid=%s AND recipient_hash=%s AND revoked_at IS NULL",
-            $now, $now, $now, $uuid, $recipientHash
-        ));
+        $this->revokeDeliveries($uuid, hash('sha256', 'user:' . $actorUserId), $now);
         $this->audit->log('report_unsubscribed', 'report', $uuid, 'success', ['recipient_user_id' => $actorUserId], 'institutional_reporting', null, $actorUserId);
         return ['report_uuid' => $uuid, 'state' => $newState, 'row_version' => $expectedVersion + 1, 'subscribed' => false];
     }
@@ -215,7 +216,10 @@ final class ReportControlService
             return $reason;
         }
         $updated = $this->db->wpdb()->update($this->db->table('reports'), [
-            'state' => $to, 'next_run_at' => null, 'row_version' => $expectedVersion + 1, 'updated_at' => $this->db->now(),
+            'state' => $to,
+            'next_run_at' => null,
+            'row_version' => $expectedVersion + 1,
+            'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'state' => $from, 'row_version' => $expectedVersion]);
         if ($updated !== 1) {
             return new WP_Error('smai_report_transition_conflict', 'Report changed concurrently.', ['status' => 409]);
@@ -225,7 +229,7 @@ final class ReportControlService
     }
 
     /** @param array<int,mixed> $recipients */
-    private function validateRecipients(array $recipients): true|WP_Error
+    private function validateRecipients(array $recipients): bool|WP_Error
     {
         if ($recipients === [] || count($recipients) > 50) {
             return new WP_Error('smai_invalid_report_recipient', 'Report recipients are invalid.', ['status' => 400]);
@@ -242,7 +246,7 @@ final class ReportControlService
     }
 
     /** @param array<int,mixed> $metrics */
-    private function validateMetrics(array $metrics, string $projectUuid, int $actorUserId): true|WP_Error
+    private function validateMetrics(array $metrics, string $projectUuid, int $actorUserId): bool|WP_Error
     {
         if ($metrics === [] || count($metrics) > 50) {
             return new WP_Error('smai_invalid_report_metric', 'Report metrics are invalid.', ['status' => 400]);
@@ -269,6 +273,20 @@ final class ReportControlService
             $seen[$key] = true;
         }
         return true;
+    }
+
+    private function revokeDeliveries(string $uuid, ?string $recipientHash, string $now): void
+    {
+        $where = 'report_uuid=%s AND revoked_at IS NULL';
+        $args = [$now, $now, $now, $uuid];
+        if ($recipientHash !== null) {
+            $where .= ' AND recipient_hash=%s';
+            $args[] = $recipientHash;
+        }
+        $this->db->wpdb()->query($this->db->wpdb()->prepare(
+            "UPDATE `{$this->db->table('report_deliveries')}` SET state='revoked',revoked_at=%s,expires_at=%s,token_hash=NULL,updated_at=%s WHERE {$where}",
+            ...$args
+        ));
     }
 
     private function get(string $uuid): ?array
