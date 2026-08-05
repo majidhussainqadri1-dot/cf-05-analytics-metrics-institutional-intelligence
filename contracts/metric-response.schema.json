@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sabrihomeopathy.com/contracts/cf05/metric-response/1.0.0",
+  "title": "CF-05 Aggregate Metric Response",
+  "type": "object",
+  "required": ["metric_id","metric_version","window","dimensions","quality_status","status","source_owner"],
+  "properties": {
+    "metric_id": {"type":"string"},
+    "metric_version": {"type":"string"},
+    "name": {"type":"string"},
+    "window": {"type":"object"},
+    "dimensions": {"type":"object"},
+    "value": {"type":["number","null"]},
+    "numerator": {"type":["number","null"]},
+    "denominator": {"type":["number","null"]},
+    "cohort_size": {"type":"integer","minimum":0},
+    "quality_status": {"type":"string"},
+    "data_through": {"type":["string","null"]},
+    "freshness": {"type":["integer","null"]},
+    "caveats": {"type":["array","object","null"]},
+    "definition_hash": {"type":"string"},
+    "source_owner": {"type":"string"},
+    "status": {"type":"string"}
+  }
+}

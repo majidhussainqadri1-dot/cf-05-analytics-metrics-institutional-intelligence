@@ -1,0 +1,46 @@
+{
+  "module": "CF-05",
+  "title": "Analytics, Metrics and Institutional Intelligence",
+  "version": "0.1.0",
+  "schema_version": "0.2.0",
+  "contract_version": "1.0.0",
+  "runtime_default": "foundation_disabled",
+  "canonical_ownership": [
+    "event schema registry and privacy-safe ingestion governance",
+    "derivative analytics events and quarantines",
+    "semantic metric catalog and aggregate snapshots",
+    "analytics access projects, exports, lineage, quality and audit evidence"
+  ],
+  "non_goals": [
+    "user identity or role truth",
+    "domain entity source of truth",
+    "raw clinical, private-message, identity-evidence or payment-secret storage",
+    "search or recommendation ranking authority",
+    "automatic clinical, financial, moderation or editorial decisions"
+  ],
+  "required_constants_for_ingestion": [
+    "SMAI_INGESTION_SECRET",
+    "SMAI_PSEUDONYM_KEY",
+    "SMAI_ACTIVATION_EVIDENCE_SHA256"
+  ],
+  "release_truth": {
+    "specified": true,
+    "coded": true,
+    "packaged": false,
+    "automated_qa_green": false,
+    "staging_accepted": false,
+    "live_deployed": false,
+    "operational": false,
+    "local_qa_green": true,
+    "exact_github_head_ci": "pending"
+  },
+  "implemented_foundation": [
+    "immutable event schema and metric registries",
+    "governed lifecycle transitions with separation of duties and row versions",
+    "signed replay-resistant event ingestion and redacted quarantine",
+    "allowlist-first privacy gateway, pseudonymization and sensitive-value rejection",
+    "version-pinned aggregate metric query with cohort suppression",
+    "transactional hash-chained audit evidence",
+    "evidence-bound disabled-by-default runtime gate"
+  ]
+}

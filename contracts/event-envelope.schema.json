@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sabrihomeopathy.com/contracts/cf05/event-envelope/1.0.0",
+  "title": "CF-05 Minimum Event Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id","event_name","event_version","source_module","source_environment","occurred_at","recorded_at","purpose","properties"],
+  "properties": {
+    "event_id": {"type":"string","format":"uuid"},
+    "event_name": {"type":"string","pattern":"^[a-z][a-z0-9_.-]{2,189}$"},
+    "event_version": {"type":"string","pattern":"^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "source_module": {"type":"string","maxLength":100},
+    "source_environment": {"enum":["development","test","staging","production"]},
+    "source_sequence": {"type":"integer","minimum":0},
+    "occurred_at": {"type":"string","format":"date-time"},
+    "recorded_at": {"type":"string","format":"date-time"},
+    "actor_ref": {"type":["string","integer","null"],"maxLength":190},
+    "object_ref": {"type":["string","integer","null"],"maxLength":190},
+    "deletion_key": {"type":["string","integer","null"],"maxLength":190},
+    "purpose": {"type":"string","maxLength":190},
+    "consent_version": {"type":["string","null"],"maxLength":64},
+    "policy_version": {"type":["string","null"],"maxLength":64},
+    "trace_id": {"type":["string","null"],"maxLength":100},
+    "consent_granted": {"type":"boolean"},
+    "is_minor": {"type":"boolean"},
+    "properties": {"type":"object"}
+  }
+}

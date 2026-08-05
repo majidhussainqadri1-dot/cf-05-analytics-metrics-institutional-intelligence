@@ -1,0 +1,18 @@
+{
+  "name": "sabri-platform/cf-05-analytics-metrics-institutional-intelligence",
+  "description": "Conditional privacy-safe analytics and institutional intelligence foundation for WordPress.",
+  "type": "wordpress-plugin",
+  "license": "proprietary",
+  "require": {
+    "php": ">=8.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "Sabri\\AnalyticsIntelligence\\": "src/"
+    }
+  },
+  "scripts": {
+    "test": "php tests/run.php",
+    "qa": "bash scripts/qa.sh"
+  }
+}
