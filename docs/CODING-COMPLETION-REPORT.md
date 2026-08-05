@@ -1,61 +1,48 @@
-# CF-05 Source Coding Completion Report — 2026-08-05
+# CF-05 Three-Plan Source Coding Completion Report — 2026-08-06
 
 ## Governing basis
 
+- Sabri Social Homeopathy Platform Definitive Integrated Master Plan v3.0 (`SSH-PMP-2026-v3.0`).
+- Consolidated All-Chats Recovered Directive Register 2.1.
 - CF-05 — Analytics, Metrics and Institutional Intelligence — Conditional Complete Master Plan 2026 v1.0.
-- Sabri Social Homeopathy Platform governing architecture, canonical ownership and staging-first release law.
-- Founder instruction to complete the approved source coding in one consolidated completion pass.
+- Founder instruction to correct all identified defects and complete the approved source scope in one consolidated cycle.
 
-## Exact source identity
+## Source identity
 
-- Module: `CF-05 — Analytics, Metrics and Institutional Intelligence`
-- Candidate: `1.0.0-rc.2`
+- Candidate: `1.0.0-rc.3`
 - Database schema: `1.1.0`
-- Public contract family: `1.1.0`
+- Public contract family: `1.2.0`
 - Runtime default: `foundation_disabled`
-- Requirements trace: `CF05-FR-001` through `CF05-FR-035`
+- Functional trace: `CF05-FR-001` through `CF05-FR-035`
+- Cross-plan trace: `docs/THREE-PLAN-TRACEABILITY.md`
 
-## Source implementation result
+## Implemented source scope
 
-The reviewed source candidate implements the approved conditional runtime scope, including:
+The candidate includes governed event ingestion, minimization and quarantine; derivative datasets, transformations, checkpoints, lineage, quality and backfills; immutable metric versions and aggregate snapshots; dimension-level sensitivity/cardinality/minimum-cohort controls; prohibited dimension combinations; repeated-query privacy budgets and differencing resistance; access projects; dashboards; scheduled reports; encrypted exports; explicit export/report revocation; report pause/resume/update/unsubscribe; narratives; experiments; deletion propagation; provider exit; restore evidence; least-privilege roles; accessible green-accent presentation; REST, CLI, admin, cron, migration, repair and deterministic packaging.
 
-- immutable event-schema governance, signed replay-resistant ingestion, purpose/consent/minor/region checks, pseudonymization, ordering and redacted quarantine;
-- versioned derivative datasets, effective-dated rows, transformations, checkpoints, quality rules, lineage, bounded jobs and governed shadow backfills;
-- immutable semantic metric versions, reproducible revisioned snapshots, exact source builds, allowlisted filters/dimensions, freshness, quality, cohort suppression and uncertainty;
-- purpose-limited analytics access projects, accessible dashboards, scheduled report delivery, encrypted expiring exports, narratives and minimized query/audit evidence;
-- governed experiment definitions, independent lifecycle approval, assignment-fact separation, statistical analysis, guardrails, published analysis and human decision/outcome records;
-- retention tiers, deletion/anonymization propagation, provider deletion reconciliation, provider exit, credential-revocation evidence and restore reproducibility checks;
-- evidence-bound runtime activation, safe mode, additive schema migration, health/repair, REST, CLI, admin, integration manifests and non-destructive uninstall behavior.
+CF-05 remains a derivative analytical authority. It does not own identity, domain records, payments, clinical charts, messages, publications, search/recommendation ranking or native moderation decisions.
 
-CF-05 remains a derivative analytical authority only. It does not become the source of truth for identity, domain entities, payments, clinical records, messages, publications, feed ranking or recommendations, and it exposes no automatic domain-decision command.
+## Correction cycles
 
-## Final completion-cycle defects corrected
+Review rounds 5 and 6 corrected the previously confirmed defects:
 
-1. Nested `api_key`/`client_secret` key fragments were not classified by the sensitive-value scanner.
-2. Duplicate experiment variants were rejected under a generic invalid-key result rather than the explicit duplicate-variant contract.
-3. Backfill activation lacked a complete, auditable previous-build pointer and governed rollback path.
-4. Deletion propagation did not comprehensively invalidate affected snapshots, report deliveries, exports and provider copies.
-5. Restore verification did not prove deletion/access/provider invariants or detect resurrected deleted subjects.
-6. Quality processing did not cover the full approved quality-rule family or governed rule activation.
-7. Snapshot publication required immutable revisions, supersession evidence, correct ratio semantics and explicit current/as-occurred interpretation.
-8. Provider transitions required evidence hashes, independent approval and explicit exit/credential-revocation gates.
-9. Runtime activation required a separate evidence-bound proposal/approval service rather than configuration alone.
-10. Report and dashboard delivery required current project/metric/version reauthorization at delivery/query time.
+1. absent unified three-plan traceability;
+2. missing dimension-specific privacy/cardinality policies;
+3. missing repeated-query and differencing defenses;
+4. metric quality-state contract drift;
+5. absent explicit export revocation;
+6. incomplete report lifecycle controls;
+7. CSS/markup and duplicate-ID accessibility defects;
+8. insufficient least-privilege role separation;
+9. stale manifest/readme/changelog/PR evidence;
+10. PHP 8.1 incompatibility in newly added literal-type unions.
 
-## Automated local evidence
+## Automated verification
 
-- PHP syntax: all plugin, test and build PHP files passed.
-- Executable tests: `14 PASS`, `0 FAIL`.
-- JSON manifests/contracts: passed.
-- Architecture/traceability: `21` mandatory implementation files, `37` governed tables and all `35` requirement IDs verified.
-- Secret/prohibited-pattern scan: passed.
-- Release identity alignment: passed.
-- ZIP integrity: passed.
-- Deterministic byte-for-byte rebuild: passed.
-- Package SHA-256: `2269d06a13a43858c040456c76d2e6eef4bdd2b03b023cd83c64f712b86f4c5d`.
-- Package file count: `71`.
-- CycloneDX SBOM and package manifest: generated.
+The repository defines exact-head verification for PHP 8.1, 8.2 and 8.3. It runs syntax checks, executable domain tests, privacy-policy/differencing fixtures, JSON validation, architecture and 35-requirement traceability, three-plan consistency, secret scanning, release-identity checks, deterministic package rebuild, checksum verification, ZIP integrity and artifact generation.
+
+CI result is authoritative only for the exact commit displayed by GitHub Actions; this document deliberately does not hard-code a mutable workflow-run result.
 
 ## Truthful residual gates
 
-The source candidate is complete within the approved coding scope, but it is not thereby staging-accepted, live-deployed or operational. These remain separate gates requiring exact GitHub-head CI, isolated Hostinger-equivalent staging, real companion contracts, browser/accessibility/load/security checks, backup/restore/rollback rehearsal, operational owners and Founder acceptance.
+Source completion and automated QA do not establish `Staging-Accepted`, `Live-Deployed` or `Operational`. Hostinger-equivalent staging, actual Files 00/20/23/24/25/26 contracts, browser/accessibility/RTL/load/security testing, provider sandboxes, backup/restore, rollback rehearsal, named operational owners and Founder acceptance remain mandatory external evidence.
