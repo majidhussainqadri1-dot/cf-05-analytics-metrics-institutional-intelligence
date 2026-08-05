@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-find . -type f -name '*.php' -not -path './vendor/*' -print0 | sort -z | xargs -0 -n1 php -l
+echo '[1/6] PHP syntax'
+while IFS= read -r -d '' file; do php -l "$file" >/dev/null; done < <(find . -path './build' -prune -o -path './vendor' -prune -o -name '*.php' -print0)
+echo '[2/6] Executable tests'
 php tests/run.php
-php -r '$files=["MANIFEST.json","contracts/event-envelope.schema.json","contracts/metric-response.schema.json","composer.json"]; foreach($files as $f){json_decode(file_get_contents($f), true, 512, JSON_THROW_ON_ERROR); echo "JSON OK: $f\n";}'
-
-if grep -RInE '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|SMAI_(INGESTION_SECRET|PSEUDONYM_KEY)[[:space:]]*=)' --exclude-dir=.git .; then
-  echo 'Potential secret material detected.' >&2
-  exit 1
-fi
-
-echo 'CF-05 QA completed successfully.'
+echo '[3/6] JSON contracts and manifests'
+python3 scripts/validate-json.py
+echo '[4/6] Architecture and requirement traceability'
+python3 scripts/architecture-check.py
+echo '[5/6] Secret scan'
+python3 scripts/secret-scan.py
+echo '[6/6] Release identity'
+grep -q "Version:     1.0.0-rc.2" sabri-analytics-institutional-intelligence.php
+grep -q '"version": "1.0.0-rc.2"' MANIFEST.json
+printf 'CF-05 source QA passed.\n'

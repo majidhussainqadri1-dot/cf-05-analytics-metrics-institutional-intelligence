@@ -1,17 +1,15 @@
 # Data Dictionary
 
-| Table | Purpose | Privacy | Retention |
+| Domain | Principal tables | Classification | Lifecycle |
 |---|---|---|---|
-| `smai_event_schemas` | Immutable event-contract versions | C2 | Permanent contract history |
-| `smai_events` | Minimized derivative analytics events | C2/C3 | Short purpose-bound |
-| `smai_quarantine` | Redacted validation/privacy failures | C3 | Very short operational |
-| `smai_metrics` | Semantic metric definitions and lifecycle | C2 | Permanent semantic history |
-| `smai_metric_snapshots` | Approved aggregate results | C1-C3 | Policy/business schedule |
-| `smai_access_projects` | Purpose/duration/dataset access approvals | C3 | Project + audit schedule |
-| `smai_audit_log` | Minimized hash-chained evidence | C3 | Security/governance schedule |
-| `smai_audit_state` | Serialized audit-chain head; no business data | C2 | Permanent integrity state |
-| `smai_governance_transitions` | Event/metric lifecycle transition evidence | C2/C3 | Permanent governance history |
-| `smai_deletion_jobs` | Deletion/anonymization reconciliation | C3 | Completion + evidence schedule |
-| `smai_quality_issues` | Data-quality/drift incidents | C2/C3 | Operational/audit schedule |
-| `smai_exports` | Export job metadata; never raw file content | C3 | TTL + audit schedule |
-| `smai_ingestion_nonces` | Atomic service-request replay prevention | C2 | Ten-minute security window |
+| Event contracts and minimized events | `event_schemas`, `events`, `quarantine`, `ingestion_nonces` | C2/C3 derivative | contracts retained; events short and purpose-bound; quarantine very short |
+| Derivative warehouse | `datasets`, `dataset_builds`, `dataset_rows`, `checkpoints`, `lineage_edges` | C1–C3 | versioned builds; effective-dated rows; active build pointer; bounded retention |
+| Quality | `quality_rules`, `quality_results`, `quality_issues` | Internal/restricted evidence | retained to explain publication and correction decisions |
+| Semantic metrics | `metrics`, `metric_snapshots` | aggregate C1–C3 | metric history permanent; snapshots according to approved schedule |
+| Access and exports | `access_projects`, `exports`, `export_payloads` | C3 | automatic expiry/revocation; encrypted payload purge |
+| Reports and dashboards | `dashboard_definitions`, `dashboard_widgets`, `reports`, `report_deliveries`, `narratives` | aggregate/restricted | versioned; links expire; revoked access propagates |
+| Experiments and decisions | `experiments`, `experiment_facts`, `experiment_analyses`, `decision_records` | C2/C3 aggregate evidence | assignment authority external; analysis/decision history retained |
+| Deletion, provider and restore | `deletion_jobs`, `deletion_reconciliations`, `providers`, `restore_points` | restricted governance | retained as accountable evidence without raw deleted content |
+| Operations | `jobs`, `rate_limits`, `idempotency_keys`, `audit_log`, `audit_state`, `governance_transitions` | restricted operational | bounded operational retention; audit governed separately |
+
+Pseudonymous references are not public identity. The analytics surrogate identifiers never replace native owner identifiers.

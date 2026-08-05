@@ -1,28 +1,31 @@
 === Sabri Analytics, Metrics and Institutional Intelligence ===
-Contributors: sabri-platform
+Contributors: majidhussainqadri1-dot
+Tags: analytics, metrics, privacy, governance, institutional intelligence
 Requires at least: 6.0
-Tested up to: 7.0
 Requires PHP: 8.1
-Stable tag: 0.1.0
+Stable tag: 1.0.0-rc.2
 License: Proprietary
 
-Conditional, privacy-safe analytics governance and institutional intelligence foundation for the Sabri Social Homeopathy Platform.
+Conditional, privacy-safe analytics governance, derivative warehouse, semantic metrics, institutional dashboards, reports, experiments and reproducible decision-support.
 
 == Description ==
 
-CF-05 provides a disabled-by-default foundation for versioned event contracts, privacy-safe ingestion, metric definitions, aggregate snapshots, data quality, access governance, audit evidence and institutional insight surfaces.
+CF-05 implements approved analytics event contracts, privacy-safe ingestion, derivative datasets, lineage, quality, backfills, metric snapshots, dashboards, secure reports/exports, governed experiment analysis, deletion propagation, provider exit and restore evidence.
 
-It does not own user identity, domain entities, clinical records, private messages, payment ledgers, search ranking, recommendations or human decisions.
+The runtime is disabled by default. Installation never authorizes ingestion, query access or production use.
 
 == Installation ==
 
-1. Install on staging only.
-2. Activate the plugin.
-3. Keep runtime state at `foundation_disabled` or `catalog_only` until all activation gates are approved.
-4. Configure service and pseudonymization secrets in `wp-config.php`; never store them in the repository.
-5. Complete contract, privacy, security, migration, rollback and Founder acceptance evidence before enabling ingestion.
+1. Install only on an isolated staging environment.
+2. Activate the plugin to create additive schema and capabilities.
+3. Keep runtime state disabled while owner contracts, private keys and approval evidence are absent.
+4. Run System & Audit checks, QA, migration, restore and rollback acceptance.
+5. Enable staging runtime only through approved evidence-bound change control.
 
 == Changelog ==
 
-= 0.1.0 =
-* Initial governed foundation: schema registry, privacy gateway, event quarantine, metric catalog, aggregate query policy, health reporting, admin surfaces and retention runner.
+= 1.0.0-rc.2 =
+* Completed source implementation and traceability for CF05-FR-001 through CF05-FR-035.
+* Added derivative models, pipeline, checkpoints, backfills, quality, lineage and snapshots.
+* Added dashboards, reports, secure exports, experiments, decision records, deletion, provider exit and restore.
+* Added complete REST, CLI, admin, integration, QA and deterministic package surfaces.

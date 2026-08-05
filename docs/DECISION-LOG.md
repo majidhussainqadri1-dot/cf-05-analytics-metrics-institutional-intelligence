@@ -1,21 +1,12 @@
 # Decision Log
 
-## D-001 — Conditional runtime
-
-The repository may contain complete source, but ingestion and production dashboards remain disabled until activation evidence exists.
-
-## D-002 — Canonical ownership
-
-CF-05 stores derivative analytics truth only. Native domain owners remain authoritative.
-
-## D-003 — No raw sensitive domains
-
-Raw clinical, private-message, identity-evidence and payment-secret fields are rejected by design.
-
-## D-004 — Version-pinned metrics
-
-Dashboards and reports must pin metric versions; silent denominator or definition switches are forbidden.
-
-## D-005 — Analytics informs, never commands
-
-Reports can support decisions but cannot directly execute clinical, financial, moderation, publication or ranking actions.
+- CF-05 remains a conditional identifier and disabled-by-default runtime.
+- Source coding is authorized; runtime activation is not inferred.
+- Native domain ownership, authorization and human decisions are preserved.
+- Metric/report versions are pinned; silent denominator/version switching is prohibited.
+- Clinical, financial, identity and message raw data are excluded; only approved aggregates cross boundaries.
+- Minimum cohort defaults to 20 and can only be strengthened by metric policy.
+- Exports are aggregate-only, encrypted, requester/project-bound, time-limited, hashed and audited.
+- Assignment is owned by File 26/native domain; CF-05 stores signed assignment facts and analyzes outcomes only.
+- Uninstall is non-destructive; purge is a separate retention/legal-hold/provider-reconciled operation.
+- Source, package, automated QA, staging, live and operational statuses are never collapsed.

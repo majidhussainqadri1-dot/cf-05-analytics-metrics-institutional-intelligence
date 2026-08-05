@@ -1,26 +1,21 @@
 # CF-05 Architecture
 
-## Governing law
+## Governing invariant
 
-CF-05 is a conditional analytical owner. It owns approved event-contract governance, privacy-safe derivative ingestion, semantic metric definitions, aggregate snapshots, analytics access projects, quality, lineage, reports and audit evidence. It is never the source of truth for identity, roles, posts, lessons, appointments, messages, clinical records, payments, rankings or human decisions.
+CF-05 is an analytical projection and decision-support owner. Native modules remain authoritative for identity, domain objects, publication, moderation, clinic, clinical, financial, messaging, search and recommendation decisions.
 
-## Layers
+## Runtime planes
 
-1. **Contract layer:** immutable event and metric versions.
-2. **Privacy gateway:** allowlist-first fields, consent/purpose/minor checks, tokenization and quarantine.
-3. **Derivative store:** short-retention minimized events and governed aggregate snapshots.
-4. **Semantic layer:** version-pinned metrics with numerator, denominator, windows, dimensions and minimum cohort.
-5. **Experience layer:** File 20 mounts routes; File 25 owns visual tokens; File 23 may present authorized summaries.
-6. **Assurance layer:** native controls remain effective if File 24 is unavailable; File 24 receives evidence, not ownership.
+1. **Contract plane:** immutable event, dataset and metric versions with governed state transitions.
+2. **Ingestion plane:** service HMAC, replay/rate controls, schema/purpose/consent/minor/region gates, pseudonymization and quarantine.
+3. **Warehouse plane:** effective-dated derivative rows, active shadow builds, checkpoints, lineage, quality and backfills.
+4. **Semantic plane:** exact metric definitions and reproducible snapshots with cohort, dimension, freshness, quality, uncertainty and caveat controls.
+5. **Consumption plane:** project-scoped dashboards, reports, encrypted exports, narratives and File 23/26 contracts.
+6. **Experiment plane:** externally owned assignment facts, aggregate analyses, guardrails and human decisions.
+7. **Lifecycle plane:** retention, deletion reconciliation, provider exit, restore evidence, audit, repair and safe mode.
 
-## Runtime states
+## Data flow
 
-`foundation_disabled` → `catalog_only` → `staging_active` → `production_active`.
+`native owner fact → signed event gateway → minimized event → derivative model/build → quality/lineage → versioned snapshot → authorized dashboard/report/export → human/native-owner decision`
 
-`safe_mode` is a fail-closed state. Ingestion requires explicit activation evidence plus secrets outside the repository.
-
-## Data-flow invariant
-
-Owner event → signed gateway → active contract → privacy transformation → dedupe/quarantine → minimized derivative event → model/aggregate job → version-pinned metric snapshot → authorized query/report.
-
-No analytics result grants access or mutates a native domain object.
+No event, snapshot, report, cache or UI projection is authorization or source of truth.

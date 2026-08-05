@@ -1,55 +1,41 @@
 # CF-05 — Analytics, Metrics and Institutional Intelligence
 
-Conditional WordPress foundation for privacy-safe analytics, governed event ingestion, semantic metric definitions and institutional decision-support within the Sabri Social Homeopathy Platform.
+CF-05 is the conditional analytical owner for the Sabri Social Homeopathy Platform. The `1.0.0-rc.2` source candidate implements the approved CF05-FR-001 through CF05-FR-035 scope while remaining **disabled by default and fail-closed**.
 
-## Governing boundary
+## Implemented source domains
 
-CF-05 owns derivative analytics governance after approved activation. It does **not** own identity, domain records, clinical charts, private messages, payment ledgers, search/recommendation ranking or human decisions.
+- immutable event schemas, signed replay-resistant ingestion, consent/purpose/minor gates, allowlist-first minimization, pseudonymization and redacted quarantine;
+- derivative dataset registry, effective-dated models, event pipeline, checkpoints, quality rules, lineage, shadow backfills and atomic activation;
+- version-pinned metric catalog, reproducible aggregate snapshots, dimension allowlists, minimum cohorts, freshness, uncertainty and caveats;
+- purpose-limited access projects, dashboards, scheduled reports, encrypted time-limited exports, narrative insights and full audit evidence;
+- governed experiments, assignment-fact separation, statistical integrity, guardrail evidence and human decision records;
+- retention tiers, deletion/anonymization propagation, provider registry/exit evidence, restore points, repair, health and CLI operations.
 
-## Current release truth
+## Safety boundary
 
-| Gate | Status |
-|---|---|
-| Specified | Complete plan supplied |
-| Foundation source | `0.1.0` candidate |
-| Schema | `0.2.0` |
-| Local QA | Green within declared source scope |
-| Deterministic package | Pending |
-| Exact GitHub-head CI | Pending |
-| Staging accepted | No |
-| Live deployed | No |
-| Operational | No |
+CF-05 never becomes the source of truth for users, roles, posts, clinics, payments, messages, clinical records, recommendations or moderation. Raw clinical notes, prescriptions, private messages, identity evidence, credentials, unrestricted search queries and payment secrets are prohibited.
 
-Runtime event ingestion and metric queries are disabled by default. Activation requires an approved evidence hash configured both in the database and `wp-config.php`, an environment-compatible runtime state, secrets outside the repository and the external governance/staging gates defined by the plan.
+## Runtime activation
 
-## Implemented foundation
+Installation does not activate ingestion or queries. Activation requires:
 
-- Immutable versioned event-schema registry.
-- Governed event and metric lifecycle transitions with optimistic concurrency and separation of duties.
-- HMAC-authenticated, replay-resistant service ingestion.
-- Purpose/consent/minor policy checks, strict field allowlists, pseudonymization and sensitive-value rejection.
-- Idempotent event storage and redacted quarantine.
-- Version-pinned metric catalog/query contracts, allowlisted dimensions and minimum-cohort suppression.
-- Concurrency-safe hash-chained audit evidence.
-- Health, retention and accessible WordPress administration surfaces.
-- Public-safe architecture, security, privacy, migration, rollback and staging documentation.
+1. approved evidence whose SHA-256 is stored and exactly matches `SMAI_ACTIVATION_EVIDENCE_SHA256`;
+2. private pseudonymization, ingestion and export keys outside the repository;
+3. an environment-compatible runtime state;
+4. approved owner contracts and staging acceptance.
 
-## Required private configuration
-
-Never commit these values:
-
-```php
-define('SMAI_INGESTION_SECRET', 'at-least-32-random-bytes');
-define('SMAI_PSEUDONYM_KEY', 'at-least-32-random-bytes');
-define('SMAI_ACTIVATION_EVIDENCE_SHA256', '64-character-approved-evidence-hash');
-```
-
-The matching `smai_activation_evidence_hash` and explicit approval state must be recorded through a controlled operational process. Repository code alone cannot authorize live analytics.
-
-## Development QA
+## Local QA
 
 ```bash
-bash scripts/qa.sh
+composer qa
 ```
 
-See `docs/IMPLEMENTATION-STATUS.md`, `docs/REVIEW-ROUND-1.md` and `docs/REVIEW-ROUND-2.md` for scope and findings.
+The deterministic package builder is:
+
+```bash
+bash scripts/build-package.sh
+```
+
+## Truth status
+
+Source coding can be complete while staging, live deployment and operational acceptance remain pending. This repository does not claim those later statuses.

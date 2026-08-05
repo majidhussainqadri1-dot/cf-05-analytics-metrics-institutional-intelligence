@@ -1,32 +1,29 @@
-# Contracts
+# Integration Contracts
 
-## Event ingestion
+## Native owners
 
-`POST /wp-json/sabri-analytics/v1/events`
+Domain owners emit versioned minimized fact events and deletion/status facts. CF-05 does not scrape their tables or issue native commands.
 
-Headers:
+## File 00 / File 02
 
-- `X-Sabri-Service`
-- `X-Sabri-Timestamp`
-- `X-Sabri-Signature`
+Only pseudonymous role/status/consent/guardian assertions and deletion keys are accepted. Identity evidence, passwords, OTP and provider tokens are prohibited.
 
-Signature material:
+## File 23
 
-`METHOD + "\n" + ROUTE + "\n" + TIMESTAMP + "\n" + SHA256(BODY)`
+CF-05 supplies versioned authorized metric/dashboard/report bundles. File 23 may present them but cannot fabricate, silently change or mutate a metric.
 
-The event must match an **active** immutable event schema. Unknown versions are quarantined.
+## File 26
 
-## Metric query
+CF-05 supplies approved aggregate evaluation and experiment analysis. File 26 retains ranking, treatment assignment and user-control authority.
 
-`GET /wp-json/sabri-analytics/v1/metrics/{metric_id}`
+## File 24
 
-Required parameters: `version`, `window_start`, `window_end`, `purpose`. Optional `dimensions` is a JSON object. Only approved dimensions and exact version-pinned snapshots are eligible. Small cohorts are suppressed.
+CF-05 exposes assurance evidence, access/deletion/provider status and minimized audit facts. Native privacy/security controls remain local to CF-05 and each owner.
 
-## Integration ownership
+## File 20 / File 25
 
-- File 00: identity, role, membership and consent assertions.
-- File 20: global shell and route placement.
-- File 24: assurance evidence and governance.
-- File 25: visual components and responsive/RTL presentation.
-- File 23: authorized publishing-dashboard summaries.
-- File 26: ranking/recommendation assignment and policy; CF-05 analyzes facts only.
+File 20 owns global shell/routes and File 25 owns visual/component presentation. CF-05 supplies semantic states, accessible tables/charts and a shortcode provider only.
+
+## Conditional domains
+
+CF-01 may supply only qualified de-identified aggregate clinical measures. CF-03 may supply only ledger-derived aggregates. Raw charts, prescriptions, PAN/CVV and provider secrets are excluded.

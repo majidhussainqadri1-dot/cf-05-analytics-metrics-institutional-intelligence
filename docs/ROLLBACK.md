@@ -1,12 +1,9 @@
 # Rollback
 
-- Set `smai_runtime_state` to `safe_mode` or `catalog_only`.
-- Revoke ingestion service allowlist and rotate external secrets where compromise is suspected.
-- Stop consumers from reading affected metric versions.
-- Mark defective metrics invalidated and freeze dependent reports.
-- Restore approved code/schema/snapshot checkpoint in an isolated environment.
-- Reapply deletion/anonymization and access-revocation ledgers before reopening queries.
-- Reconcile source owners, event checkpoints, quarantine and report hashes.
-- Record the rollback decision, owner, evidence and exit criteria.
-
-Automatic table deletion is intentionally absent.
+- Runtime can be placed in `safe_mode` without deleting contracts, data or evidence.
+- New ingestion, workers, reports and exports fail closed when activation evidence or environment compatibility is absent.
+- Dataset activation is pointer-based: restore the prior active build and invalidate affected snapshots rather than reversing source facts.
+- Metric corrections create a new version/difference report; old versions remain visible as deprecated/invalidated evidence.
+- Provider cutover retains parity/shadow evidence and does not purge the old provider until verified exit.
+- Database rollback favors forward-compatible compensation; destructive down-migrations are prohibited.
+- Code rollback requires package checksum, compatibility verification, queue reconciliation and fresh smoke tests.

@@ -1,18 +1,11 @@
-# Privacy and Retention
+# Privacy Architecture
 
-CF-05 uses purpose limitation, minimization, pseudonymization, bounded retention and aggregate thresholds.
-
-## Prohibited raw data
-
-Passwords, OTPs, keys, identity documents, full IP/location trails, raw unrestricted search queries, private message bodies, clinical notes, prescriptions, PAN/CVV/card data and unrestricted free text.
-
-## Default foundation retention
-
-- minimized analytics events: 30 days;
-- resolved/discarded quarantine records: 14 days;
-- metric definitions: permanent semantic history;
-- aggregate snapshots: policy-specific, only where re-identification risk is low;
-- exports: time-limited and revocable;
-- deletion jobs and audit evidence: policy-specific and reviewed.
-
-These defaults are not a legal conclusion. Final schedules require approved jurisdiction, provider, purpose and data-class review.
+- allowlist-first event fields; unknown fields are dropped;
+- stable pseudonyms are HMAC-derived with a private rotatable key and context separation;
+- consent, purpose, age/minor policy and region/provider restrictions are evaluated before storage and use;
+- C4/C5 clinical, identity, message, credential and payment content is excluded rather than merely hidden;
+- raw events have the shortest retention; pseudonymous modeled data is bounded; aggregates persist only when re-identification risk is controlled;
+- every query/export/report requires an active purpose-limited access project and exact approved fields/dimensions;
+- minimum cohort suppression and allowlisted drilldown prevent small-cell and differencing disclosure;
+- deletion keys propagate through events, derivative rows, experiment facts, snapshots, exports, deliveries and providers with reconciliation evidence;
+- the words anonymous or differentially private are used only when technically implemented and evidenced; the current default is pseudonymous/aggregate.

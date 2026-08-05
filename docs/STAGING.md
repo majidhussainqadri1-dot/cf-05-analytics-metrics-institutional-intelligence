@@ -1,17 +1,14 @@
-# Staging Acceptance Checklist
+# Staging Acceptance
 
-- fresh activation and upgrade without fatal errors;
-- all declared tables physically present;
-- runtime remains disabled by default;
-- no secrets in code, options export or logs;
-- contract immutability and unknown-version quarantine;
-- HMAC, timestamp, replay and service-allowlist tests;
-- seeded password/OTP/key/clinical/message/payment corpus absent downstream;
-- duplicate, delayed, reordered and late events do not double count;
-- minimum-cohort and differencing defenses;
-- role/capability/BOLA/IDOR tests for all admin and REST surfaces;
-- accessibility, keyboard, RTL/LTR, 200%/400% zoom and mobile tests;
-- retention, export expiry, deletion propagation, restore and rollback evidence;
-- File 00/20/23/24/25/26 contract compatibility;
-- two fresh review-and-fix rounds with zero known unresolved critical/high defects;
-- Founder acceptance before production activation.
+The source candidate is not staging-accepted until all of the following pass on Hostinger-equivalent staging:
+
+- fresh install, supported upgrade, concurrent activation, deactivate/reactivate, safe uninstall and repair;
+- real owner event contracts, signature/replay/late/correction fixtures and deletion propagation;
+- shadow builds, quality failures, backfill dry-run/compare/activate/rollback and report reproduction;
+- role/project/field/dimension/BOLA/IDOR tests and cohort/differencing attacks;
+- export encryption/expiry/revocation/integrity and report-recipient revocation;
+- experiment assignment separation, guardrail breach and inconclusive statistical output;
+- browser/device/RTL/Urdu/English, keyboard, screen reader, zoom/reflow and reduced-motion acceptance;
+- load/soak/queue saturation/provider outage/dead-letter/recovery;
+- backup/restore with deletion and access revocation reapplied;
+- penetration, privacy/security review, Founder acceptance and monitored rollback rehearsal.

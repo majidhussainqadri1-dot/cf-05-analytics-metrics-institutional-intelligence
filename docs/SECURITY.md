@@ -1,28 +1,18 @@
-# Security and Threat Model
+# Security Architecture
 
-## Principal threats
+## Trust boundaries
 
-- unregistered or stale event contracts;
-- forged, replayed or cross-service ingestion;
-- secret, identity, payment, message or clinical data leakage;
-- BOLA/IDOR through dashboard and metric dimensions;
-- tiny-cohort and differencing re-identification;
-- duplicate, late or reordered events causing false metrics;
-- metric-version switching and denominator manipulation;
-- CSV formula injection and long-lived exports;
-- audit tampering, provider exit gaps and deleted identity resurrection.
+Service ingestion uses HMAC over method, route, timestamp and body hash; service allowlisting, a five-minute window, atomic nonce storage, body limits and rate limiting apply. Browser mutations use WordPress capability checks, REST nonce/CSRF protection, exact object state/version and idempotency keys.
 
-## Foundation controls
+## Data protection
 
-- HMAC service authentication with five-minute window and replay cache;
-- allowlisted service names through a site-level filter;
-- immutable contract versions and payload hashes;
-- allowlist-first field processing and separated pseudonymization key;
-- quarantine with redacted samples only;
-- unique event IDs and deterministic snapshot identity;
-- allowlisted dimensions and minimum cohort enforcement;
-- hash-chained minimized audit records;
-- disabled-by-default runtime and fail-closed missing-key behavior;
-- no secrets or real datasets in the repository.
+Export payloads use authenticated encryption, contextual binding, integrity hashes, requester binding, token hashing, TTL and revocation. Secrets remain private constants/secret-manager values, not repository content or ordinary options.
 
-Production acceptance additionally requires independent security/privacy review, provider/region approval, backup/restore, deletion propagation, penetration tests and incident exercises.
+## Abuse resistance
+
+- BOLA/IDOR: object/project/field/dimension authorization on every access;
+- replay/duplication: event IDs, nonces, idempotency keys and state/version checks;
+- injection: prepared SQL, fixed table/column registries, safe JSON, CSV formula neutralization and escaped UI;
+- resource abuse: body, row, query, cohort, rate, queue and execution-time bounds;
+- data leakage: no raw sensitive previews, no unrestricted query text, no public export URL, private/no-store responses;
+- operational integrity: leased jobs, retries/dead-letter, audit hash chain, safe repair, safe mode and restore evidence.

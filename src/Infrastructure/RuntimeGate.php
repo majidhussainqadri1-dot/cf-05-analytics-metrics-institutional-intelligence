@@ -15,9 +15,13 @@ final class RuntimeGate
     public static function state(): string
     {
         $state = (string) get_option('smai_runtime_state', self::FOUNDATION_DISABLED);
-        return in_array($state, [self::FOUNDATION_DISABLED, self::CATALOG_ONLY, self::STAGING_ACTIVE, self::PRODUCTION_ACTIVE, self::SAFE_MODE], true)
-            ? $state
-            : self::SAFE_MODE;
+        return in_array($state, [
+            self::FOUNDATION_DISABLED,
+            self::CATALOG_ONLY,
+            self::STAGING_ACTIVE,
+            self::PRODUCTION_ACTIVE,
+            self::SAFE_MODE,
+        ], true) ? $state : self::SAFE_MODE;
     }
 
     public static function activationApproved(): bool
@@ -43,6 +47,16 @@ final class RuntimeGate
         return self::activeRuntimeIsEnvironmentCompatible() && self::activationApproved();
     }
 
+    public static function workerEnabled(): bool
+    {
+        return self::queryEnabled() && get_option('smai_worker_enabled', '0') === '1';
+    }
+
+    public static function catalogEnabled(): bool
+    {
+        return in_array(self::state(), [self::CATALOG_ONLY, self::STAGING_ACTIVE, self::PRODUCTION_ACTIVE], true);
+    }
+
     public static function isProduction(): bool
     {
         return self::state() === self::PRODUCTION_ACTIVE;
@@ -55,10 +69,8 @@ final class RuntimeGate
             return function_exists('wp_get_environment_type') && wp_get_environment_type() === 'production';
         }
         if ($state === self::STAGING_ACTIVE) {
-            if (!function_exists('wp_get_environment_type')) {
-                return false;
-            }
-            return in_array(wp_get_environment_type(), ['staging', 'development', 'local'], true);
+            return function_exists('wp_get_environment_type')
+                && in_array(wp_get_environment_type(), ['staging', 'development', 'local'], true);
         }
         return false;
     }

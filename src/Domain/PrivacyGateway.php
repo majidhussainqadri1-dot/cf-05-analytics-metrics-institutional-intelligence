@@ -10,7 +10,7 @@ use Sabri\AnalyticsIntelligence\Infrastructure\Text;
 final class PrivacyGateway
 {
     private string $pseudonymKey;
-    private SensitiveValueDetector $sensitiveDetector;
+    private SensitiveValueDetector $detector;
 
     public function __construct(string $pseudonymKey)
     {
@@ -18,61 +18,52 @@ final class PrivacyGateway
             throw new \InvalidArgumentException('Pseudonym key must be at least 32 bytes.');
         }
         $this->pseudonymKey = $pseudonymKey;
-        $this->sensitiveDetector = new SensitiveValueDetector();
+        $this->detector = new SensitiveValueDetector();
     }
 
-    /**
-     * @param array<string,mixed> $payload
-     * @param array<string,mixed> $schema
-     * @return array{accepted:bool,properties:array<string,mixed>,errors:array<int,string>,actor_ref:?string,object_ref:?string,deletion_key:?string}
-     */
+    /** @param array<string,mixed> $payload @param array<string,mixed> $schema @return array<string,mixed> */
     public function process(array $payload, array $schema): array
     {
         $errors = [];
         $properties = [];
         $fields = is_array($schema['fields'] ?? null) ? $schema['fields'] : [];
         $incoming = is_array($payload['properties'] ?? null) ? $payload['properties'] : [];
-
         foreach ($incoming as $name => $value) {
             if (!is_string($name) || !isset($fields[$name]) || !is_array($fields[$name])) {
                 continue;
             }
-            $definition = $fields[$name];
-            $type = (string) ($definition['type'] ?? '');
-            $normalized = $this->normalizeValue($type, $value, $definition, $name, $errors);
+            $normalized = $this->normalize((string) ($fields[$name]['type'] ?? ''), $value, $fields[$name], $name, $errors);
             if ($normalized !== null) {
                 $properties[$name] = $normalized;
             }
         }
-
-        $actor = $this->pseudonymizeNullable($payload['actor_ref'] ?? null, 'actor');
-        $object = $this->pseudonymizeNullable($payload['object_ref'] ?? null, 'object');
-        $deletion = $this->pseudonymizeNullable($payload['deletion_key'] ?? null, 'deletion');
-
-        if (($payload['consent_granted'] ?? true) !== true && ($schema['requires_consent'] ?? false) === true) {
+        if (($schema['requires_consent'] ?? false) === true && ($payload['consent_granted'] ?? false) !== true) {
             $errors[] = 'consent_required';
         }
-        if (($payload['is_minor'] ?? false) === true && ($schema['minor_policy'] ?? 'aggregate_only') === 'deny') {
+        $minorPolicy = (string) ($schema['minor_policy'] ?? 'aggregate_only');
+        if (($payload['is_minor'] ?? false) === true && $minorPolicy === 'deny') {
             $errors[] = 'minor_event_denied';
         }
-
+        if (($payload['is_minor'] ?? false) === true && $minorPolicy === 'allow_with_verified_consent' && ($payload['guardian_consent_verified'] ?? false) !== true) {
+            $errors[] = 'verified_guardian_consent_required';
+        }
         return [
             'accepted' => $errors === [],
             'properties' => $properties,
             'errors' => array_values(array_unique($errors)),
-            'actor_ref' => $actor,
-            'object_ref' => $object,
-            'deletion_key' => $deletion,
+            'actor_ref' => $this->pseudonymizeNullable($payload['actor_ref'] ?? null, 'actor'),
+            'object_ref' => $this->pseudonymizeNullable($payload['object_ref'] ?? null, 'object'),
+            'deletion_key' => $this->pseudonymizeNullable($payload['deletion_key'] ?? null, 'deletion'),
         ];
     }
 
     /** @param array<string,mixed> $definition @param array<int,string> $errors */
-    private function normalizeValue(string $type, mixed $value, array $definition, string $name, array &$errors): mixed
+    private function normalize(string $type, mixed $value, array $definition, string $name, array &$errors): mixed
     {
         return match ($type) {
             'boolean' => is_bool($value) ? $value : $this->reject($errors, 'invalid_boolean_' . $name),
             'integer' => is_int($value) ? $this->boundedInteger($value, $definition, $errors, $name) : $this->reject($errors, 'invalid_integer_' . $name),
-            'number' => (is_int($value) || is_float($value)) ? $this->boundedNumber((float) $value, $definition, $errors, $name) : $this->reject($errors, 'invalid_number_' . $name),
+            'number' => is_int($value) || is_float($value) ? $this->boundedNumber((float) $value, $definition, $errors, $name) : $this->reject($errors, 'invalid_number_' . $name),
             'enum' => is_scalar($value) && in_array((string) $value, array_map('strval', (array) ($definition['values'] ?? [])), true) ? (string) $value : $this->reject($errors, 'invalid_enum_' . $name),
             'safe_string' => is_string($value) ? $this->safeString($value, $definition, $errors, $name) : $this->reject($errors, 'invalid_string_' . $name),
             'timestamp' => is_string($value) && strtotime($value) !== false ? gmdate('c', (int) strtotime($value)) : $this->reject($errors, 'invalid_timestamp_' . $name),
@@ -112,15 +103,12 @@ final class PrivacyGateway
     /** @param array<string,mixed> $definition @param array<int,string> $errors */
     private function safeString(string $value, array $definition, array &$errors, string $name): ?string
     {
-        $max = max(1, min(500, (int) ($definition['max_length'] ?? 100)));
-        $value = trim(wp_strip_all_tags($value));
+        $value = Text::truncate(trim(wp_strip_all_tags($value)), max(1, min(500, (int) ($definition['max_length'] ?? 100))));
         if ($value === '' && ($definition['required'] ?? false) === true) {
             $errors[] = 'empty_' . $name;
             return null;
         }
-        $value = Text::truncate($value, $max);
-        $violations = $this->sensitiveDetector->violations($value);
-        if ($violations !== []) {
+        if ($this->detector->violations($value) !== []) {
             $errors[] = 'sensitive_value_' . $name;
             return null;
         }
@@ -136,13 +124,7 @@ final class PrivacyGateway
 
     private function pseudonymizeNullable(mixed $value, string $context): ?string
     {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        if (!is_scalar($value)) {
-            return null;
-        }
-        return $this->pseudonymize((string) $value, $context);
+        return $value === null || $value === '' || !is_scalar($value) ? null : $this->pseudonymize((string) $value, $context);
     }
 
     private function pseudonymize(string $value, string $context): string

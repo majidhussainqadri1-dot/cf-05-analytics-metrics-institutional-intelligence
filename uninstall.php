@@ -6,12 +6,18 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
     exit;
 }
 
-// Governance and audit data are retained by default. Destructive removal requires
-// an explicit, separately reviewed operational process and is never automatic.
-delete_option('smai_runtime_state');
-delete_option('smai_activation_approved');
-delete_option('smai_activation_evidence_hash');
-delete_option('smai_minimum_cohort');
-delete_option('smai_raw_retention_days');
-delete_option('smai_quarantine_retention_days');
-wp_clear_scheduled_hook('smai_daily_retention');
+// Governance, audit, metric and derivative data are retained by default.
+// Destructive purge requires a separate owner-approved, retention-aware,
+// legal-hold-aware and provider-reconciled operational procedure.
+foreach ([
+    'smai_runtime_state', 'smai_activation_approved', 'smai_activation_evidence_hash',
+    'smai_minimum_cohort', 'smai_raw_retention_days', 'smai_modeled_retention_days',
+    'smai_quarantine_retention_days', 'smai_export_ttl_hours', 'smai_report_link_ttl_hours',
+    'smai_max_export_rows', 'smai_worker_enabled', 'smai_allowed_regions',
+    'smai_provider_exit_state',
+] as $option) {
+    delete_option($option);
+}
+foreach (['smai_daily_retention','smai_run_jobs','smai_schedule_reports','smai_access_expiry'] as $hook) {
+    wp_clear_scheduled_hook($hook);
+}

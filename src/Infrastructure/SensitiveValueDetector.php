@@ -18,33 +18,27 @@ final class SensitiveValueDetector
     /** @param array<int,string> $violations */
     private function scan(mixed $value, array &$violations, int &$nodes, int $depth): void
     {
-        if ($nodes++ >= 250 || $depth > 5) {
+        if ($nodes++ >= 500 || $depth > 6) {
             $violations[] = 'unbounded_sensitive_scan_input';
             return;
         }
-
         if (is_array($value)) {
-            foreach (array_slice($value, 0, 100, true) as $key => $item) {
-                $keyText = strtolower((string) $key);
-                if ($this->containsForbiddenKeyFragment($keyText)) {
+            foreach (array_slice($value, 0, 150, true) as $key => $item) {
+                if ($this->forbiddenKey(strtolower((string) $key))) {
                     $violations[] = 'forbidden_key_fragment';
                 }
                 $this->scan($item, $violations, $nodes, $depth + 1);
             }
             return;
         }
-
-        if (!is_string($value) || $value === '') {
+        if (!is_string($value) || trim($value) === '') {
             return;
         }
-
-        $sample = Text::truncate(trim($value), 2048);
-        $lower = strtolower($sample);
-
+        $sample = Text::truncate(trim($value), 4096);
         if (preg_match('/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i', $sample) === 1) {
             $violations[] = 'private_key_material';
         }
-        if (preg_match('/\bBearer\s+[A-Za-z0-9._~+\/-]+=*\b/i', $sample) === 1) {
+        if (preg_match('/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/i', $sample) === 1) {
             $violations[] = 'bearer_token';
         }
         if (preg_match('/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/', $sample) === 1) {
@@ -65,14 +59,14 @@ final class SensitiveValueDetector
         if (preg_match('/\b(?:password|passwd|pwd|otp|cvv|cvc|api[_-]?key|client[_-]?secret|private[_-]?key|access[_-]?token|refresh[_-]?token)\s*[:=]/i', $sample) === 1) {
             $violations[] = 'credential_assignment';
         }
-        if (str_contains($lower, 'message body') || str_contains($lower, 'clinical note') || str_contains($lower, 'identity document')) {
+        if (preg_match('/\b(?:clinical note|prescription body|private message body|identity document)\b/i', $sample) === 1) {
             $violations[] = 'restricted_content_marker';
         }
     }
 
-    private function containsForbiddenKeyFragment(string $key): bool
+    private function forbiddenKey(string $key): bool
     {
-        foreach (['password','passwd','otp','cvv','cvc','pan','card_number','secret','private_key','access_token','refresh_token','clinical_note','prescription','message_body','identity_document','raw_query'] as $fragment) {
+        foreach (['password','passwd','pwd','otp','cvv','cvc','pan','card_number','secret','api_key','client_secret','private_key','access_token','refresh_token','clinical_note','prescription','message_body','identity_document','raw_query'] as $fragment) {
             if (str_contains($key, $fragment)) {
                 return true;
             }
@@ -82,31 +76,29 @@ final class SensitiveValueDetector
 
     private function containsValidCardNumber(string $value): bool
     {
-        if (preg_match_all('/(?<!\d)(?:\d[ -]?){13,19}(?!\d)/', $value, $matches) !== 1 && empty($matches[0])) {
-            return false;
-        }
-        foreach ($matches[0] as $candidate) {
+        preg_match_all('/(?<!\d)(?:\d[ -]?){13,19}(?!\d)/', $value, $matches);
+        foreach ($matches[0] ?? [] as $candidate) {
             $digits = preg_replace('/\D+/', '', (string) $candidate);
-            if (is_string($digits) && strlen($digits) >= 13 && strlen($digits) <= 19 && $this->luhnValid($digits)) {
+            if (is_string($digits) && strlen($digits) >= 13 && strlen($digits) <= 19 && $this->luhn($digits)) {
                 return true;
             }
         }
         return false;
     }
 
-    private function luhnValid(string $digits): bool
+    private function luhn(string $digits): bool
     {
         $sum = 0;
         $double = false;
-        for ($index = strlen($digits) - 1; $index >= 0; $index--) {
-            $number = (int) $digits[$index];
+        for ($i = strlen($digits) - 1; $i >= 0; $i--) {
+            $n = (int) $digits[$i];
             if ($double) {
-                $number *= 2;
-                if ($number > 9) {
-                    $number -= 9;
+                $n *= 2;
+                if ($n > 9) {
+                    $n -= 9;
                 }
             }
-            $sum += $number;
+            $sum += $n;
             $double = !$double;
         }
         return $sum > 0 && $sum % 10 === 0;

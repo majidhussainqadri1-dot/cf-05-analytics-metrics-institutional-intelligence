@@ -1,11 +1,11 @@
-# Migration Strategy
+# Migration and Cutover
 
-1. Inventory current event emitters, schemas, analytics tables and reports.
-2. Freeze canonical owner contracts and prohibited-field exclusions.
-3. Register versioned event and metric contracts without enabling ingestion.
-4. Dry-run historical transformation into shadow tables.
-5. Compare counts, dedupe, late-event behavior, deletion application and sample metrics.
-6. Obtain privacy/security/domain approval.
-7. Enable staging ingestion, then shadow reports.
-8. Cut over consumers only after exact-version parity and rollback rehearsal.
-9. Preserve invalidated historical metric versions as evidence; never silently rewrite them.
+1. Inventory current event/metric definitions, tables, options, cron hooks, provider mappings and companion contracts.
+2. Run additive/idempotent schema migration under a lock; verify backup before any source-data operation.
+3. Register immutable event, dataset and metric versions without changing native owner writes.
+4. Dry-run bounded backfills; record source counts, transformed counts, rejected counts, cost and expected build hash.
+5. Build shadow datasets and snapshots, apply deletion floors, compare with current approved reports and investigate every unexplained divergence.
+6. Obtain privacy/domain approval, activate the shadow build atomically and retain the former build for rollback/reproduction.
+7. Reconcile consumers, invalidate caches and explicitly migrate pinned metric versions.
+
+No destructive source migration or direct companion-table write is allowed.

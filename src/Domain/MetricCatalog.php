@@ -7,6 +7,7 @@ namespace Sabri\AnalyticsIntelligence\Domain;
 use Sabri\AnalyticsIntelligence\Contracts\MetricDefinitionValidator;
 use Sabri\AnalyticsIntelligence\Infrastructure\AuditLogger;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
+use Sabri\AnalyticsIntelligence\Infrastructure\Json;
 use WP_Error;
 
 final class MetricCatalog
@@ -26,30 +27,30 @@ final class MetricCatalog
     public function register(array $definition, int $actorUserId): array|WP_Error
     {
         $errors = $this->validator->errors($definition);
-        if ($errors !== []) {
+        if ($actorUserId < 1 || $errors !== []) {
             return new WP_Error('smai_invalid_metric', 'Metric definition validation failed.', ['status' => 400, 'errors' => $errors]);
         }
-
+        $source = (array) $definition['source'];
+        if ((new DatasetCatalog($this->db))->published((string) $source['dataset_id'], (string) $source['dataset_version']) === null) {
+            return new WP_Error('smai_metric_source_unpublished', 'Metric source dataset must be published.', ['status' => 409]);
+        }
         $normalized = $this->validator->normalize($definition);
-        $json = wp_json_encode($normalized, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        $hash = hash('sha256', (string) $json);
-        $wpdb = $this->db->wpdb();
+        $json = Json::canonical($normalized);
+        $hash = hash('sha256', $json);
         $table = $this->db->table('metrics');
-        $existing = $wpdb->get_row($wpdb->prepare(
-            "SELECT id, definition_hash, state FROM `{$table}` WHERE metric_id=%s AND metric_version=%s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $existing = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
+            "SELECT id,definition_hash,state FROM `{$table}` WHERE metric_id=%s AND metric_version=%s",
             $normalized['metric_id'],
             $normalized['metric_version']
         ), ARRAY_A);
-
         if (is_array($existing)) {
             if (hash_equals((string) $existing['definition_hash'], $hash)) {
-                return ['id' => (int) $existing['id'], 'status' => 'unchanged', 'definition_hash' => $hash];
+                return ['id' => (int) $existing['id'], 'status' => 'unchanged', 'state' => $existing['state'], 'definition_hash' => $hash];
             }
-            return new WP_Error('smai_metric_immutable', 'An existing metric version cannot be silently changed. Register a new version.', ['status' => 409]);
+            return new WP_Error('smai_metric_immutable', 'An existing metric version cannot be silently changed.', ['status' => 409]);
         }
-
-        $now = gmdate('Y-m-d H:i:s');
-        $inserted = $wpdb->insert($table, [
+        $now = $this->db->now();
+        $ok = $this->db->wpdb()->insert($table, [
             'metric_id' => $normalized['metric_id'],
             'metric_version' => $normalized['metric_version'],
             'name' => $normalized['name'],
@@ -68,33 +69,26 @@ final class MetricCatalog
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-
-        if ($inserted !== 1) {
+        if ($ok !== 1) {
             return new WP_Error('smai_metric_store_failed', 'Metric definition could not be stored.', ['status' => 500]);
         }
-        $id = (int) $wpdb->insert_id;
-        $this->audit->log('metric_registered', 'metric_definition', (string) $id, 'success', [
-            'metric_id' => $normalized['metric_id'],
-            'metric_version' => $normalized['metric_version'],
-            'definition_hash' => $hash,
-        ], 'institutional_measurement', null, $actorUserId);
-
-        return ['id' => $id, 'status' => 'draft', 'definition_hash' => $hash];
+        $id = (int) $this->db->wpdb()->insert_id;
+        $this->audit->log('metric_registered', 'metric_definition', (string) $id, 'success', ['metric_id' => $normalized['metric_id'], 'metric_version' => $normalized['metric_version'], 'definition_hash' => $hash], 'institutional_measurement', null, $actorUserId);
+        return ['id' => $id, 'status' => 'draft', 'row_version' => 1, 'definition_hash' => $hash];
     }
 
     /** @return array<string,mixed>|null */
     public function active(string $metricId, string $version): ?array
     {
-        $table = $this->db->table('metrics');
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
-            "SELECT * FROM `{$table}` WHERE metric_id=%s AND metric_version=%s AND state='active'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            "SELECT * FROM `{$this->db->table('metrics')}` WHERE metric_id=%s AND metric_version=%s AND state='active'",
             $metricId,
             $version
         ), ARRAY_A);
         if (!is_array($row)) {
             return null;
         }
-        $definition = json_decode((string) $row['definition_json'], true);
-        return is_array($definition) ? array_merge($row, ['definition' => $definition]) : null;
+        $definition = Json::object((string) $row['definition_json']);
+        return $definition === [] ? null : array_merge($row, ['definition' => $definition]);
     }
 }
