@@ -1,23 +1,28 @@
 {
   "module": "CF-05",
   "title": "Analytics, Metrics and Institutional Intelligence",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "schema_version": "1.1.0",
-  "contract_version": "1.1.0",
+  "contract_version": "1.2.0",
   "runtime_default": "foundation_disabled",
   "source_completion": {
-    "requirements": "CF05-FR-001..CF05-FR-035",
+    "requirements": "CF05-FR-001..CF05-FR-035 plus three-plan harmonization controls",
     "implemented": true,
-    "known_unresolved_source_defects": 0,
-    "automated_qa": "local green: 14 executable tests; exact-head CI pending",
+    "known_unresolved_source_defects_at_review": 0,
+    "automated_qa_evidence": "exact source SHA must be verified by GitHub Actions; evidence is external to the immutable package manifest",
     "staging_accepted": false,
     "live_deployed": false,
     "operational": false
   },
+  "governing_sources": [
+    "SSH-PMP-2026-v3.0",
+    "Consolidated All-Chats Recovered Directive Register 2.1",
+    "CF-05 Conditional Complete Master Plan 2026 v1.0"
+  ],
   "canonical_ownership": [
     "approved analytics event schema registry and privacy-safe ingestion governance",
     "derivative datasets, models, builds, checkpoints, backfills and lineage",
-    "semantic metric catalog, exact-version aggregate snapshots and cohort controls",
+    "semantic metric catalog, exact-version aggregate snapshots, dimension and cohort controls",
     "analytics access projects, dashboards, reports, secure exports and query audit",
     "experiment analysis, guardrail evidence, narratives and decision records",
     "analytics retention, deletion propagation, provider exit and restore evidence"
