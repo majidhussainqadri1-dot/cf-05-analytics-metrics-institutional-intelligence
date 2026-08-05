@@ -26,18 +26,20 @@ jobs:
       - name: Executable quality suite
         run: bash scripts/qa.sh
       - name: Deterministic release build
-        run: bash scripts/build-release.sh
+        run: bash scripts/verify-deterministic-build.sh
       - name: Artifact integrity
         run: |
           set -euo pipefail
-          sha256sum -c build/CHECKSUMS.sha256
-          unzip -t build/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.2.zip
+          archive="build/dist/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.2.zip"
+          checksum="${archive}.sha256"
+          test -f "$archive"
+          test -f "$checksum"
+          (cd build/dist && sha256sum -c "$(basename "$checksum")")
+          unzip -t "$archive"
+          test -f build/dist/CF-05-1.0.0-rc.2-sbom.cdx.json
+          test -f build/dist/CF-05-1.0.0-rc.2-package-manifest.json
       - uses: actions/upload-artifact@v4
         if: matrix.php == '8.3'
         with:
           name: cf-05-release-candidate
-          path: |
-            build/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.2.zip
-            build/CHECKSUMS.sha256
-            build/cyclonedx-sbom.json
-            build/RELEASE-MANIFEST.json
+          path: build/dist/*
