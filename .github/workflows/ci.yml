@@ -30,16 +30,16 @@ jobs:
       - name: Artifact integrity
         run: |
           set -euo pipefail
-          archive="build/dist/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.2.zip"
+          archive="build/dist/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.3.zip"
           checksum="${archive}.sha256"
           test -f "$archive"
           test -f "$checksum"
           (cd build/dist && sha256sum -c "$(basename "$checksum")")
           unzip -t "$archive"
-          test -f build/dist/CF-05-1.0.0-rc.2-sbom.cdx.json
-          test -f build/dist/CF-05-1.0.0-rc.2-package-manifest.json
+          test -f build/dist/CF-05-1.0.0-rc.3-sbom.cdx.json
+          test -f build/dist/CF-05-1.0.0-rc.3-package-manifest.json
       - uses: actions/upload-artifact@v4
         if: matrix.php == '8.3'
         with:
-          name: cf-05-release-candidate
+          name: cf-05-release-candidate-rc3
           path: build/dist/*
