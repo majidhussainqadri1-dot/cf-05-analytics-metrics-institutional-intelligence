@@ -7,10 +7,11 @@ required = [
     'src/Infrastructure/SchemaMigrator.php','src/Infrastructure/RuntimeGate.php','src/Infrastructure/RuntimeActivationService.php','src/Infrastructure/JobQueue.php',
     'src/Domain/EventIngestionService.php','src/Domain/DatasetCatalog.php','src/Domain/PipelineService.php',
     'src/Domain/BackfillService.php','src/Domain/QualityService.php','src/Domain/SnapshotService.php',
-    'src/Domain/AccessProjectService.php','src/Domain/ExportService.php','src/Domain/ReportService.php',
+    'src/Domain/AccessProjectService.php','src/Domain/ExportService.php','src/Domain/ExportControlService.php','src/Domain/ReportService.php','src/Domain/ReportControlService.php',
     'src/Domain/ExperimentService.php','src/Domain/DeletionService.php','src/Domain/ProviderService.php',
-    'src/Domain/RestoreService.php','src/Http/RestController.php','src/Admin/AdminPages.php',
-    'docs/REQUIREMENTS-TRACEABILITY.md','MANIFEST.json'
+    'src/Domain/RestoreService.php','src/Domain/PrivacyQueryPolicy.php','src/Domain/QueryPrivacyGuard.php',
+    'src/Http/RestController.php','src/Http/GovernanceRestController.php','src/Admin/AdminPages.php',
+    'docs/REQUIREMENTS-TRACEABILITY.md','docs/THREE-PLAN-TRACEABILITY.md','MANIFEST.json'
 ]
 for item in required:
     if not (root/item).is_file(): errors.append(f'missing required file: {item}')
@@ -24,7 +25,8 @@ for constant, key in [('SMAI_VERSION','version'),('SMAI_SCHEMA_VERSION','schema_
 schema = (root/'src/Infrastructure/SchemaMigrator.php').read_text()
 tables = set(re.findall(r'CREATE TABLE \{\$p\}([a-z_]+)', schema))
 db = (root/'src/Infrastructure/Database.php').read_text()
-allowed = set(re.findall(r"'([a-z_]+)'", re.search(r'private const TABLES = \[(.*?)\];', db, re.S).group(1)))
+match = re.search(r'private const TABLES = \[(.*?)\];', db, re.S)
+allowed = set(re.findall(r"'([a-z_]+)'", match.group(1) if match else ''))
 if tables != allowed:
     errors.append('schema/database table registry mismatch: ' + repr(sorted(tables ^ allowed)))
 
@@ -43,14 +45,17 @@ for required_token in [
     'snapshot_revision int unsigned', 'supersedes_snapshot_id bigint unsigned',
     'previous_build_uuid char(36)', 'recorded_by bigint unsigned',
     "'/backfills/(?P<uuid>[0-9a-fA-F-]{36})/rollback'",
-    "'/runtime/activation/propose'", "'/quality/rules/(?P<rule>"
+    "'/runtime/activation/propose'", "'/quality/rules/(?P<rule>",
+    'QueryPrivacyGuard', 'smai_differencing_risk', 'dimension_policies',
+    "'/exports/(?P<uuid>[0-9a-fA-F-]{36})/revoke'",
+    "'/reports/(?P<uuid>[0-9a-fA-F-]{36})/unsubscribe'",
+    'smai_analytics_approver', 'wp_unique_id'
 ]:
     if required_token not in (schema + all_php): errors.append(f'missing completion control: {required_token}')
 if re.search(r'\b(?:TODO|FIXME|not implemented)\b', all_php, re.I):
     errors.append('unfinished source marker found')
 
-
 if errors:
     for error in errors: print('ERROR:', error, file=sys.stderr)
     sys.exit(1)
-print(f'Architecture check passed: {len(required)} required files, {len(tables)} governed tables, 35 requirement IDs.')
+print(f'Architecture check passed: {len(required)} required files, {len(tables)} governed tables, 35 requirement IDs and three-plan controls.')
