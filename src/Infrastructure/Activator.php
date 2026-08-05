@@ -61,16 +61,63 @@ final class Activator
 
     private static function capabilities(): void
     {
-        $caps = [
+        $all = [
             'smai_view_insights','smai_manage_catalog','smai_approve_catalog','smai_manage_quality',
             'smai_manage_access','smai_ingest_events','smai_query_metrics','smai_export_metrics',
             'smai_manage_experiments','smai_manage_reports','smai_manage_backfills','smai_manage_providers',
             'smai_manage_deletions','smai_restore','smai_audit','smai_activate_runtime',
         ];
-        $role = get_role('administrator');
-        if ($role) {
-            foreach ($caps as $capability) {
-                $role->add_cap($capability);
+        $roles = [
+            'smai_analyst' => [
+                'label' => __('Institutional Analyst', 'sabri-analytics-institutional-intelligence'),
+                'caps' => ['read','smai_view_insights','smai_query_metrics'],
+            ],
+            'smai_data_steward' => [
+                'label' => __('Analytics Data Steward', 'sabri-analytics-institutional-intelligence'),
+                'caps' => ['read','smai_view_insights','smai_manage_catalog','smai_manage_quality','smai_manage_backfills','smai_manage_providers','smai_ingest_events'],
+            ],
+            'smai_analytics_approver' => [
+                'label' => __('Analytics Independent Approver', 'sabri-analytics-institutional-intelligence'),
+                'caps' => ['read','smai_view_insights','smai_approve_catalog','smai_activate_runtime'],
+            ],
+            'smai_access_officer' => [
+                'label' => __('Analytics Access and Reporting Officer', 'sabri-analytics-institutional-intelligence'),
+                'caps' => ['read','smai_view_insights','smai_manage_access','smai_export_metrics','smai_manage_reports'],
+            ],
+            'smai_experiment_steward' => [
+                'label' => __('Analytics Experiment Steward', 'sabri-analytics-institutional-intelligence'),
+                'caps' => ['read','smai_view_insights','smai_manage_experiments'],
+            ],
+            'smai_auditor' => [
+                'label' => __('Analytics Read-Only Auditor', 'sabri-analytics-institutional-intelligence'),
+                'caps' => ['read','smai_view_insights','smai_audit'],
+            ],
+            'smai_recovery_operator' => [
+                'label' => __('Analytics Recovery Operator', 'sabri-analytics-institutional-intelligence'),
+                'caps' => ['read','smai_view_insights','smai_manage_deletions','smai_restore','smai_audit'],
+            ],
+        ];
+
+        foreach ($roles as $slug => $definition) {
+            $caps = array_fill_keys($definition['caps'], true);
+            $role = get_role($slug);
+            if (!$role) {
+                $role = add_role($slug, (string) $definition['label'], $caps);
+            }
+            if ($role) {
+                foreach ($definition['caps'] as $capability) {
+                    $role->add_cap($capability);
+                }
+                foreach (array_diff($all, $definition['caps']) as $capability) {
+                    $role->remove_cap($capability);
+                }
+            }
+        }
+
+        $administrator = get_role('administrator');
+        if ($administrator) {
+            foreach ($all as $capability) {
+                $administrator->add_cap($capability);
             }
         }
     }
