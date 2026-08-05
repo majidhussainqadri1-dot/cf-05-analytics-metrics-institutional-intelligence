@@ -9,11 +9,8 @@ use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 
 final class InsightsShortcode
 {
-    private Database $db;
-
-    public function __construct(Database $db)
+    public function __construct(private Database $db)
     {
-        $this->db = $db;
     }
 
     public function register(): void
@@ -41,10 +38,7 @@ final class InsightsShortcode
                 . esc_html__('You are not authorized to view institutional insights.', 'sabri-analytics-institutional-intelligence')
                 . '</div>';
         }
-        $attributes = shortcode_atts([
-            'dashboard' => '',
-            'version' => '',
-        ], is_array($attributes) ? $attributes : [], 'sabri_institutional_insights');
+        $attributes = shortcode_atts(['dashboard' => '', 'version' => ''], is_array($attributes) ? $attributes : [], 'sabri_institutional_insights');
         if ($attributes['dashboard'] === '' || $attributes['version'] === '') {
             return '<div class="smai-state" role="status"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span> '
                 . esc_html__('No approved dashboard was selected.', 'sabri-analytics-institutional-intelligence')
@@ -62,32 +56,37 @@ final class InsightsShortcode
         }
 
         nocache_headers();
+        $titleId = wp_unique_id('smai-dashboard-title-');
         ob_start();
         ?>
-        <section class="smai-insights" dir="auto" aria-labelledby="smai-dashboard-title">
+        <section class="smai-insights" dir="auto" aria-labelledby="<?php echo esc_attr($titleId); ?>">
             <header class="smai-insights__header">
-                <p class="smai-eyebrow"><?php echo esc_html__('Institutional Intelligence', 'sabri-analytics-institutional-intelligence'); ?></p>
-                <h1 id="smai-dashboard-title"><?php echo esc_html((string) $bundle['name']); ?></h1>
-                <p><?php echo esc_html(sprintf(__('Generated %s. Every value is version-pinned and subject to its displayed quality and caveats.', 'sabri-analytics-institutional-intelligence'), (string) $bundle['generated_at'])); ?></p>
+                <div>
+                    <p class="smai-insights__eyebrow"><span class="dashicons dashicons-chart-area" aria-hidden="true"></span> <?php echo esc_html__('Institutional Intelligence', 'sabri-analytics-institutional-intelligence'); ?></p>
+                    <h1 id="<?php echo esc_attr($titleId); ?>"><?php echo esc_html((string) $bundle['name']); ?></h1>
+                    <p class="smai-insights__meta"><?php echo esc_html(sprintf(__('Generated %s. Every value is version-pinned and subject to its displayed quality and caveats.', 'sabri-analytics-institutional-intelligence'), (string) $bundle['generated_at'])); ?></p>
+                </div>
+                <span class="smai-insights__status" role="status"><span class="dashicons dashicons-shield-alt" aria-hidden="true"></span><?php echo esc_html__('Privacy-governed aggregates', 'sabri-analytics-institutional-intelligence'); ?></span>
             </header>
-            <div class="smai-insights__grid">
-                <?php foreach ((array) $bundle['widgets'] as $widget) : ?>
-                    <article class="smai-metric-card" aria-labelledby="<?php echo esc_attr('smai-widget-' . $widget['key']); ?>">
-                        <div class="smai-metric-card__heading">
+            <div class="smai-insights__grid" aria-live="polite">
+                <?php foreach ((array) $bundle['widgets'] as $widget) :
+                    $widgetId = wp_unique_id('smai-widget-'); ?>
+                    <article class="smai-insights__card" aria-labelledby="<?php echo esc_attr($widgetId); ?>">
+                        <div class="smai-insights__card-heading">
                             <span class="dashicons dashicons-chart-area" aria-hidden="true"></span>
-                            <h2 id="<?php echo esc_attr('smai-widget-' . $widget['key']); ?>"><?php echo esc_html((string) $widget['label']); ?></h2>
+                            <h2 id="<?php echo esc_attr($widgetId); ?>"><?php echo esc_html((string) $widget['label']); ?></h2>
                         </div>
-                        <p class="smai-metric-card__value">
+                        <p class="smai-insights__value">
                             <?php echo $widget['value'] === null ? esc_html__('Unavailable', 'sabri-analytics-institutional-intelligence') : esc_html((string) $widget['value']); ?>
                         </p>
-                        <dl>
+                        <dl class="smai-insights__definition-list">
                             <div><dt><?php echo esc_html__('Metric', 'sabri-analytics-institutional-intelligence'); ?></dt><dd><?php echo esc_html((string) $widget['metric_id'] . '@' . (string) $widget['metric_version']); ?></dd></div>
                             <div><dt><?php echo esc_html__('Status', 'sabri-analytics-institutional-intelligence'); ?></dt><dd><?php echo esc_html((string) $widget['status']); ?></dd></div>
                             <div><dt><?php echo esc_html__('Window', 'sabri-analytics-institutional-intelligence'); ?></dt><dd><?php echo esc_html((string) ($widget['window_start'] ?? '—') . ' — ' . (string) ($widget['window_end'] ?? '—')); ?></dd></div>
                             <div><dt><?php echo esc_html__('Data through', 'sabri-analytics-institutional-intelligence'); ?></dt><dd><?php echo esc_html((string) ($widget['data_through'] ?? '—')); ?></dd></div>
                         </dl>
                         <?php if (!empty($widget['caveats'])) : ?>
-                            <details>
+                            <details class="smai-insights__caveats">
                                 <summary><?php echo esc_html__('Caveats', 'sabri-analytics-institutional-intelligence'); ?></summary>
                                 <ul>
                                     <?php foreach ((array) $widget['caveats'] as $caveat) : ?>
