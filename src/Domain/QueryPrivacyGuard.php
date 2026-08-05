@@ -33,7 +33,7 @@ final class QueryPrivacyGuard
         array $definition,
         int $cohortSize,
         int $globalMinimum
-    ): true|WP_Error {
+    ): bool|WP_Error {
         $violations = PrivacyQueryPolicy::violations($definition, $dimensions);
         if ($violations !== []) {
             return $this->deny('smai_query_privacy_policy', 'Requested dimensions violate the metric privacy policy.', $metricId, $metricVersion, $projectUuid, $actorUserId, $purpose, ['violations' => $violations]);
