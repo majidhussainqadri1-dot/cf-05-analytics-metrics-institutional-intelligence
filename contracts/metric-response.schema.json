@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sabrihomeopathy.com/contracts/cf05/metric-response-1.2.0.json",
+  "title": "CF-05 Version-Pinned Aggregate Metric Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["metric_id", "metric_version", "definition_hash", "window", "dimensions", "cohort_size", "minimum_cohort", "quality_status", "source_owner", "status"],
+  "properties": {
+    "metric_id": {"type": "string"},
+    "metric_version": {"type": "string"},
+    "snapshot_revision": {"type": "integer", "minimum": 1},
+    "name": {"type": "string"},
+    "definition_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "business_question": {"type": "string"},
+    "window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "string", "format": "date-time"},
+        "end": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    },
+    "dimensions": {"type": "object", "maxProperties": 10},
+    "value": {"type": ["number", "null"]},
+    "numerator": {"type": ["number", "null"]},
+    "denominator": {"type": ["number", "null"]},
+    "cohort_size": {"type": "integer", "minimum": 0},
+    "minimum_cohort": {"type": "integer", "minimum": 5},
+    "quality_status": {"enum": ["green", "warning", "degraded", "unknown", "suppressed", "invalidated"]},
+    "data_through": {"type": ["string", "null"], "format": "date-time"},
+    "freshness_seconds": {"type": ["integer", "null"], "minimum": 0},
+    "coverage": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "uncertainty": {"type": "object"},
+    "caveats": {"type": "array", "items": {"type": "string"}, "maxItems": 30},
+    "source_owner": {"type": "string"},
+    "status": {"enum": ["current_within_declared_quality", "unknown_or_degraded"]}
+  }
+}

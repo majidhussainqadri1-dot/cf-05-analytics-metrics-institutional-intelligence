@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sabrihomeopathy.com/contracts/cf05/module-manifest-1.0.0.json",
+  "title": "CF-05 Module Manifest",
+  "type": "object",
+  "required": ["module_id", "name", "version", "schema_version", "contract_version", "runtime_state", "routes", "capabilities", "canonical_ownership", "non_ownership"],
+  "properties": {
+    "module_id": {"const": "CF-05"},
+    "name": {"type": "string"},
+    "version": {"type": "string"},
+    "schema_version": {"type": "string"},
+    "contract_version": {"type": "string"},
+    "runtime_state": {"enum": ["foundation_disabled", "catalog_only", "staging_active", "production_active", "safe_mode"]},
+    "routes": {"type": "array", "items": {"type": "string"}},
+    "capabilities": {"type": "array", "items": {"type": "string"}},
+    "canonical_ownership": {"type": "array", "items": {"type": "string"}},
+    "non_ownership": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}
