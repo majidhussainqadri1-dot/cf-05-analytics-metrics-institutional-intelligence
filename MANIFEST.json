@@ -1,24 +1,26 @@
 {
   "module": "CF-05",
   "title": "Analytics, Metrics and Institutional Intelligence",
-  "version": "0.1.0",
-  "schema_version": "0.2.0",
-  "contract_version": "1.0.0",
+  "version": "1.0.0-rc.1",
+  "schema_version": "1.0.0",
+  "contract_version": "1.1.0",
   "runtime_default": "foundation_disabled",
   "canonical_ownership": [
     "event schema registry and privacy-safe ingestion governance",
-    "derivative analytics events and quarantines",
-    "semantic metric catalog and aggregate snapshots",
-    "analytics access projects, exports, lineage, quality and audit evidence"
+    "derivative analytics datasets, models, lineage and pipeline jobs",
+    "semantic metric catalog, version-pinned snapshots, funnels and cohorts",
+    "role/project-scoped institutional dashboards and scheduled reports",
+    "secure aggregate exports, experiments and decision-support evidence",
+    "analytics retention, deletion propagation, provider exit and reproducibility evidence"
   ],
   "non_goals": [
     "user identity or role truth",
     "domain entity source of truth",
     "raw clinical, private-message, identity-evidence or payment-secret storage",
-    "search or recommendation ranking authority",
-    "automatic clinical, financial, moderation or editorial decisions"
+    "search or recommendation assignment/ranking authority",
+    "automatic clinical, financial, moderation, editorial or deployment decisions"
   ],
-  "required_constants_for_ingestion": [
+  "required_constants_for_active_ingestion": [
     "SMAI_INGESTION_SECRET",
     "SMAI_PSEUDONYM_KEY",
     "SMAI_ACTIVATION_EVIDENCE_SHA256"
@@ -27,20 +29,17 @@
     "specified": true,
     "coded": true,
     "packaged": false,
-    "automated_qa_green": false,
+    "automated_qa_green": "pending exact-head run",
     "staging_accepted": false,
     "live_deployed": false,
-    "operational": false,
-    "local_qa_green": true,
-    "exact_github_head_ci": "pending"
+    "operational": false
   },
-  "implemented_foundation": [
-    "immutable event schema and metric registries",
-    "governed lifecycle transitions with separation of duties and row versions",
-    "signed replay-resistant event ingestion and redacted quarantine",
-    "allowlist-first privacy gateway, pseudonymization and sensitive-value rejection",
-    "version-pinned aggregate metric query with cohort suppression",
-    "transactional hash-chained audit evidence",
-    "evidence-bound disabled-by-default runtime gate"
+  "implemented_requirements": [
+    "CF05-FR-001..006 event governance, privacy gateway, dedupe and quarantine",
+    "CF05-FR-007..012 datasets, lineage, backfill/rebuild jobs, quality and region/provider metadata",
+    "CF05-FR-013..018 semantic metrics, lifecycle, dimensions, freshness, funnels and sensitive-domain limits",
+    "CF05-FR-019..024 scoped dashboards, safe drilldown, reports, exports and narrative evidence boundaries",
+    "CF05-FR-025..029 experiment registry, assignment separation, guardrails, statistical-plan storage and decision records",
+    "CF05-FR-030..035 retention, deletion propagation, access expiry, audit, provider exit jobs and restore/reproducibility jobs"
   ]
 }
