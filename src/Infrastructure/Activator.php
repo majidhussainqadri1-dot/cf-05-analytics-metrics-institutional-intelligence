@@ -35,7 +35,7 @@ final class Activator
 
     public static function deactivate(): void
     {
-        foreach (['smai_daily_retention','smai_run_jobs','smai_schedule_reports','smai_access_expiry'] as $hook) {
+        foreach (['smai_daily_retention','smai_run_jobs','smai_schedule_reports','smai_access_expiry','smai_future_intelligence_tick'] as $hook) {
             wp_clear_scheduled_hook($hook);
         }
         delete_option('smai_activation_lock');
@@ -57,6 +57,9 @@ final class Activator
         add_option('smai_worker_enabled', '0', '', false);
         add_option('smai_allowed_regions', ['PK'], '', false);
         add_option('smai_provider_exit_state', 'ready', '', false);
+        add_option('smai_future40_state', 'disabled', '', false);
+        add_option('smai_future40_approved', '0', '', false);
+        add_option('smai_future40_evidence_hash', '', '', false);
     }
 
     private static function capabilities(): void
@@ -66,19 +69,20 @@ final class Activator
             'smai_manage_access','smai_ingest_events','smai_query_metrics','smai_export_metrics',
             'smai_manage_experiments','smai_manage_reports','smai_manage_backfills','smai_manage_providers',
             'smai_manage_deletions','smai_restore','smai_audit','smai_activate_runtime',
+            'smai_manage_future_intelligence','smai_run_future_intelligence','smai_approve_future_intelligence','smai_view_transparency',
         ];
         $roles = [
             'smai_analyst' => [
                 'label' => __('Institutional Analyst', 'sabri-analytics-institutional-intelligence'),
-                'caps' => ['read','smai_view_insights','smai_query_metrics'],
+                'caps' => ['read','smai_view_insights','smai_query_metrics','smai_run_future_intelligence'],
             ],
             'smai_data_steward' => [
                 'label' => __('Analytics Data Steward', 'sabri-analytics-institutional-intelligence'),
-                'caps' => ['read','smai_view_insights','smai_manage_catalog','smai_manage_quality','smai_manage_backfills','smai_manage_providers','smai_ingest_events'],
+                'caps' => ['read','smai_view_insights','smai_manage_catalog','smai_manage_quality','smai_manage_backfills','smai_manage_providers','smai_ingest_events','smai_manage_future_intelligence'],
             ],
             'smai_analytics_approver' => [
                 'label' => __('Analytics Independent Approver', 'sabri-analytics-institutional-intelligence'),
-                'caps' => ['read','smai_view_insights','smai_approve_catalog','smai_activate_runtime'],
+                'caps' => ['read','smai_view_insights','smai_approve_catalog','smai_activate_runtime','smai_approve_future_intelligence'],
             ],
             'smai_access_officer' => [
                 'label' => __('Analytics Access and Reporting Officer', 'sabri-analytics-institutional-intelligence'),
@@ -90,7 +94,7 @@ final class Activator
             ],
             'smai_auditor' => [
                 'label' => __('Analytics Read-Only Auditor', 'sabri-analytics-institutional-intelligence'),
-                'caps' => ['read','smai_view_insights','smai_audit'],
+                'caps' => ['read','smai_view_insights','smai_audit','smai_view_transparency'],
             ],
             'smai_recovery_operator' => [
                 'label' => __('Analytics Recovery Operator', 'sabri-analytics-institutional-intelligence'),
@@ -140,6 +144,7 @@ final class Activator
             ['smai_run_jobs', time() + 5 * MINUTE_IN_SECONDS, 'smai_five_minutes'],
             ['smai_schedule_reports', time() + 10 * MINUTE_IN_SECONDS, 'hourly'],
             ['smai_access_expiry', time() + 15 * MINUTE_IN_SECONDS, 'hourly'],
+            ['smai_future_intelligence_tick', time() + 20 * MINUTE_IN_SECONDS, 'hourly'],
         ];
         foreach ($events as [$hook, $timestamp, $recurrence]) {
             if (!wp_next_scheduled($hook)) {

@@ -7,7 +7,9 @@ namespace Sabri\AnalyticsIntelligence;
 use Sabri\AnalyticsIntelligence\Admin\AdminPages;
 use Sabri\AnalyticsIntelligence\CLI\Commands;
 use Sabri\AnalyticsIntelligence\Domain\AccessProjectService;
+use Sabri\AnalyticsIntelligence\Domain\FutureFeatureService;
 use Sabri\AnalyticsIntelligence\Domain\ReportService;
+use Sabri\AnalyticsIntelligence\Http\FutureRestController;
 use Sabri\AnalyticsIntelligence\Http\GovernanceRestController;
 use Sabri\AnalyticsIntelligence\Http\RestController;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
@@ -48,6 +50,7 @@ final class Plugin
 
         (new RestController($database, $health))->register();
         (new GovernanceRestController($database))->register();
+        (new FutureRestController($database))->register();
         (new AdminPages($database, $health))->register();
         (new RetentionRunner($database))->register();
         (new JobRunner($database))->register();
@@ -60,6 +63,9 @@ final class Plugin
         });
         add_action('smai_access_expiry', static function () use ($database): void {
             (new AccessProjectService($database))->expireDue();
+        });
+        add_action('smai_future_intelligence_tick', static function () use ($database): void {
+            (new FutureFeatureService($database))->scheduledTick();
         });
 
         add_filter('plugin_action_links_' . plugin_basename(SMAI_FILE), static function (array $links): array {

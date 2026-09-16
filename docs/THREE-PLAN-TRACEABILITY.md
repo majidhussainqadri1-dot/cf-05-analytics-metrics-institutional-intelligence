@@ -35,3 +35,7 @@
 - Source completion is not a claim of live deployment or operation.
 
 No source document authorizes a claim of staging acceptance, live deployment or operational completion merely from code or CI; those gates remain external.
+
+## Future-40 expansion
+
+`CF05-FUT-001..CF05-FUT-040` extend only the approved CF-05 derivative/aggregate analytics boundary. They do not acquire native domain truth, individual surveillance, unrestricted raw-data authority or autonomous clinical/financial/moderation decisions. Activation remains evidence-bound and separate from source coding.

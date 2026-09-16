@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0-rc.6 — 2026-09-16
+
+- Added governed CF-05 Future-40 expansion (`CF05-FUT-001..CF05-FUT-040`) with executable aggregate/advisory handlers.
+- Added Future-40 lifecycle, independent approval, activation evidence, dry-run execution, incident evidence and scheduled internal evidence controls.
+- Added Future-40 persistence, public feature contract, REST governance routes, privacy/re-identification safeguards and executable coverage for all 40 features.
+- Raised database schema and contract family to `1.4.0`; Future-40 remains disabled by default and does not imply staging/live/operational acceptance.
+
 ## 1.0.0-rc.5 — 2026-09-16
 
 - Closed remaining schema/write drift for event sequence identity, region/provider metadata and experiment deletion identity.

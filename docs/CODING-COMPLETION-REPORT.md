@@ -9,9 +9,9 @@
 
 ## Source identity
 
-- Candidate: `1.0.0-rc.5`
-- Database schema: `1.3.0`
-- Public contract family: `1.3.0`
+- Candidate: `1.0.0-rc.6`
+- Database schema: `1.4.0`
+- Public contract family: `1.4.0`
 - Runtime default: `foundation_disabled`
 - Functional trace: `CF05-FR-001` through `CF05-FR-035`
 - Cross-plan trace: `docs/THREE-PLAN-TRACEABILITY.md`

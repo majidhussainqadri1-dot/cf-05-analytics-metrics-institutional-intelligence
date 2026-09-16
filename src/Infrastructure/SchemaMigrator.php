@@ -766,6 +766,145 @@ final class SchemaMigrator
             KEY metric (metric_id,metric_version)
         ) {$charset};";
 
+        $sql[] = "CREATE TABLE {$p}future_features (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            feature_id varchar(32) NOT NULL,
+            title varchar(190) NOT NULL,
+            category varchar(64) NOT NULL,
+            phase varchar(32) NOT NULL,
+            risk_class varchar(32) NOT NULL,
+            state varchar(32) NOT NULL DEFAULT 'disabled',
+            config_json longtext NOT NULL,
+            config_hash char(64) NOT NULL,
+            requested_by bigint unsigned NOT NULL,
+            approved_by bigint unsigned NULL,
+            row_version bigint unsigned NOT NULL DEFAULT 1,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY feature_id (feature_id),
+            KEY state_phase (state,phase),
+            KEY category (category)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}future_runs (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            run_uuid char(36) NOT NULL,
+            feature_id varchar(32) NOT NULL,
+            mode varchar(16) NOT NULL,
+            request_hash char(64) NOT NULL,
+            result_json longtext NOT NULL,
+            result_hash char(64) NOT NULL,
+            actor_user_id bigint unsigned NOT NULL,
+            created_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY run_uuid (run_uuid),
+            KEY feature_time (feature_id,created_at),
+            KEY actor_time (actor_user_id,created_at)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}analytics_incidents (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            incident_uuid char(36) NOT NULL,
+            severity varchar(16) NOT NULL,
+            state varchar(32) NOT NULL DEFAULT 'open',
+            summary varchar(255) NOT NULL,
+            evidence_json longtext NOT NULL,
+            owner_user_id bigint unsigned NOT NULL,
+            resolved_by bigint unsigned NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            resolved_at datetime NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY incident_uuid (incident_uuid),
+            KEY severity_state (severity,state),
+            KEY owner_state (owner_user_id,state)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}scenario_models (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            scenario_uuid char(36) NOT NULL,
+            feature_id varchar(32) NOT NULL,
+            name varchar(190) NOT NULL,
+            definition_json longtext NOT NULL,
+            result_json longtext NULL,
+            owner_user_id bigint unsigned NOT NULL,
+            row_version bigint unsigned NOT NULL DEFAULT 1,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY scenario_uuid (scenario_uuid),
+            KEY feature_owner (feature_id,owner_user_id)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}research_workspaces (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            workspace_uuid char(36) NOT NULL,
+            title varchar(190) NOT NULL,
+            purpose varchar(500) NOT NULL,
+            datasets_json longtext NOT NULL,
+            state varchar(32) NOT NULL DEFAULT 'draft',
+            owner_user_id bigint unsigned NOT NULL,
+            approved_by bigint unsigned NULL,
+            expires_at datetime NULL,
+            row_version bigint unsigned NOT NULL DEFAULT 1,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY workspace_uuid (workspace_uuid),
+            KEY owner_state (owner_user_id,state),
+            KEY expires_at (expires_at)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}intelligence_alerts (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            alert_uuid char(36) NOT NULL,
+            feature_id varchar(32) NOT NULL,
+            severity varchar(16) NOT NULL,
+            state varchar(32) NOT NULL DEFAULT 'evidence_ready',
+            title varchar(190) NOT NULL,
+            evidence_json longtext NOT NULL,
+            audience_json longtext NULL,
+            created_at datetime NOT NULL,
+            acknowledged_at datetime NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY alert_uuid (alert_uuid),
+            KEY feature_state (feature_id,state),
+            KEY severity_time (severity,created_at)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}transparency_records (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            record_uuid char(36) NOT NULL,
+            state varchar(32) NOT NULL DEFAULT 'draft',
+            purpose varchar(500) NOT NULL,
+            metric_ids_json longtext NOT NULL,
+            data_classes_json longtext NOT NULL,
+            retention_summary varchar(500) NOT NULL,
+            approved_by bigint unsigned NULL,
+            published_at datetime NULL,
+            created_at datetime NOT NULL,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY record_uuid (record_uuid),
+            KEY state_published (state,published_at)
+        ) {$charset};";
+
+        $sql[] = "CREATE TABLE {$p}privacy_budgets (
+            id bigint unsigned NOT NULL AUTO_INCREMENT,
+            budget_key char(64) NOT NULL,
+            project_uuid char(36) NOT NULL,
+            metric_id varchar(190) NOT NULL,
+            epsilon_allocated decimal(20,10) NOT NULL DEFAULT 0,
+            epsilon_spent decimal(20,10) NOT NULL DEFAULT 0,
+            row_version bigint unsigned NOT NULL DEFAULT 1,
+            updated_at datetime NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY budget_key (budget_key),
+            KEY project_metric (project_uuid,metric_id)
+        ) {$charset};";
+
         update_option('smai_schema_migration_error', [
             'code' => 'migration_in_progress',
             'target_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',

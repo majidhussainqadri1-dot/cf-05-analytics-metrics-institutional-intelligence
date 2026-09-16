@@ -13,6 +13,8 @@ required = [
     'src/Domain/ExportControlService.php',
     'src/Domain/ReportControlService.php',
     'src/Http/GovernanceRestController.php',
+    'src/Http/FutureRestController.php',
+    'docs/FUTURE-40.md',
     'docs/THREE-PLAN-TRACEABILITY.md',
 ]
 for path in required:
@@ -56,15 +58,15 @@ for role in ['smai_analyst', 'smai_data_steward', 'smai_analytics_approver', 'sm
         errors.append(f'missing least-privilege role: {role}')
 
 trace = (root / 'docs/THREE-PLAN-TRACEABILITY.md').read_text() if (root / 'docs/THREE-PLAN-TRACEABILITY.md').exists() else ''
-for marker in ['SSH-PMP-2026-v3.0', 'Consolidated All-Chats Recovered Directive Register 2.1', 'CF05-FR-001', 'CF05-FR-035', 'Islamic privacy', 'Hostinger staging']:
+for marker in ['SSH-PMP-2026-v3.0', 'Consolidated All-Chats Recovered Directive Register 2.1', 'CF05-FR-001', 'CF05-FR-035', 'Islamic privacy', 'Hostinger staging', 'CF05-FUT-040']:
     if marker not in trace:
         errors.append(f'missing three-plan traceability marker: {marker}')
 
 manifest = json.loads((root / 'MANIFEST.json').read_text())
-if manifest.get('contract_version') != '1.3.0':
-    errors.append('manifest contract version is not 1.3.0')
-if manifest.get('version') != '1.0.0-rc.5':
-    errors.append('manifest version is not 1.0.0-rc.5')
+if manifest.get('contract_version') != '1.4.0':
+    errors.append('manifest contract version is not 1.4.0')
+if manifest.get('version') != '1.0.0-rc.6':
+    errors.append('manifest version is not 1.0.0-rc.6')
 
 all_php = '\n'.join(path.read_text(errors='replace') for path in root.rglob('*.php'))
 if re.search(r'\b(?:TODO|FIXME|not implemented)\b', all_php, re.I):

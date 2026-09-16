@@ -21,6 +21,8 @@ final class Database
         'experiment_facts', 'experiment_analyses', 'decision_records',
         'export_payloads', 'restore_points', 'deletion_reconciliations',
         'rate_limits', 'idempotency_keys', 'dashboard_definitions', 'dashboard_widgets',
+        'future_features', 'future_runs', 'analytics_incidents', 'scenario_models',
+        'research_workspaces', 'intelligence_alerts', 'transparency_records', 'privacy_budgets',
     ];
 
     public function __construct(wpdb $wpdb)

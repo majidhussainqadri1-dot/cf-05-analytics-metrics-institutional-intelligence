@@ -1,4 +1,4 @@
-# Implementation Status — 1.0.0-rc.5
+# Implementation Status — 1.0.0-rc.6
 
 | Status | Result |
 |---|---|
@@ -10,6 +10,8 @@
 | Live deployed | No repository evidence; live reality must be verified independently |
 | Operational | No repository evidence; operational reality must be verified independently |
 
-Candidate `1.0.0-rc.5`; schema `1.3.0`; contract `1.3.0`; runtime default `foundation_disabled`.
+Candidate `1.0.0-rc.6`; schema `1.4.0`; contract `1.4.0`; runtime default `foundation_disabled`.
 
 The source-closure implementation immediately preceding this evidence-only status commit is `ce099cda125d118ea35aed713b0cb94cfa0cf447` (`fix: close remaining CF-05 coding defects`). This status file does not authorize treating GitHub source, a package, CI, staging or live deployment as interchangeable realities.
+
+Future-40: `CF05-FUT-001..CF05-FUT-040` source-coded and automated-QA covered; all Future-40 runtime features remain disabled until separate activation evidence/approval and environment gates pass.

@@ -1,6 +1,6 @@
 # CF-05 — Analytics, Metrics and Institutional Intelligence
 
-CF-05 is the conditional derivative-analytics owner for the Sabri Social Homeopathy Platform. Candidate `1.0.0-rc.5` implements `CF05-FR-001` through `CF05-FR-035`, applicable Definitive Master Plan v3.0 controls and Consolidated All-Chats Directive Register 2.1 controls, while remaining disabled by default.
+CF-05 is the conditional derivative-analytics owner for the Sabri Social Homeopathy Platform. Candidate `1.0.0-rc.6` implements `CF05-FR-001` through `CF05-FR-035`, applicable Definitive Master Plan v3.0 controls and Consolidated All-Chats Directive Register 2.1 controls, while remaining disabled by default.
 
 ## Implemented domains
 
@@ -16,3 +16,7 @@ bash scripts/verify-deterministic-build.sh
 ```
 
 Forty fresh review/fix rounds are recorded in `docs/REVIEW-ROUNDS-07-46.md`. Source/CI completion does not equal staging, live deployment or operation.
+
+## Future-40 expansion
+
+`CF05-FUT-001..CF05-FUT-040` are source-coded behind independent approval and exact activation-evidence gates. They remain aggregate-only, advisory, human-governed and disabled by default. See `docs/FUTURE-40.md`.

@@ -444,11 +444,6 @@ final class Future40Engine
     private static function assertAggregateSafe(array $input): void
     {
         $forbidden=['password','passwd','pwd','otp','cvv','cvc','pan','card_number','secret','api_key','client_secret','private_key','access_token','refresh_token','clinical_note','prescription_body','message_body','identity_document','raw_query','email','phone','ip_address'];
-        $scan=function(mixed $value,int $depth=0) use (&$scan,$forbidden):void {
-            if($depth>6)throw new \InvalidArgumentException('Future feature input is too deeply nested.');
-            if(!is_array($value))return;
-            foreach($value as $k=>$v){$key=strtolower((string)$k;);}
-        };
         $scan = function(mixed $value, int $depth = 0) use (&$scan, $forbidden): void {
             if ($depth > 6) throw new \InvalidArgumentException('Future feature input is too deeply nested.');
             if (!is_array($value)) return;

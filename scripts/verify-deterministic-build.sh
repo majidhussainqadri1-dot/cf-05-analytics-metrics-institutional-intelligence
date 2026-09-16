@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 rm -rf build/dist
 bash scripts/build-package.sh >/dev/null
-archive="build/dist/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.5.zip"
+archive="build/dist/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.6.zip"
 first=$(sha256sum "$archive" | awk '{print $1}')
 cp "$archive" /tmp/cf05-first-rc5.zip
 rm -rf build/dist
