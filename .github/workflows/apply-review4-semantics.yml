@@ -17,9 +17,11 @@ jobs:
           php-version: '8.3'
           coverage: none
       - name: Apply review 4 semantic fixes
-        run: python3 scripts/apply-review4-semantics.py
+        run: |
+          python3 scripts/apply-review4-semantics.py
+          python3 scripts/review4-testfix.py
       - name: Remove one-shot files
-        run: rm -f .codex/review4-semantics.ready scripts/apply-review4-semantics.py .github/workflows/apply-review4-semantics.yml
+        run: rm -f .codex/review4-semantics.ready scripts/apply-review4-semantics.py scripts/review4-testfix.py .github/workflows/apply-review4-semantics.yml
       - name: Full governed QA
         run: bash scripts/qa.sh
       - name: Deterministic package verification
