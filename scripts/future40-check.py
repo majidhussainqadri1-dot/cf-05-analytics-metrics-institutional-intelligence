@@ -51,7 +51,7 @@ if service.count('logInOpenTransaction') < 5:
 # Review-3 global activation invariants.
 for token in ['smai_future40_activation_request','smai_future40_state','future40_activation_proposed','future40_activation_approved','future40_activation_disabled','independent approver','failClosed','isApproved']:
     if token not in activation: errors.append(f'review3_activation_guard_missing:{token}')
-if "get_option('smai_future40_state', 'disabled') !== 'approved'" not in activation:
+if "get_option('smai_future40_state', 'disabled') !== 'approved'" not in activation and "get_option(self::OPTION_STATE, 'disabled') !== 'approved'" not in activation:
     errors.append('future40_state_not_enforced')
 if 'FutureActivationService::isApproved()' not in service:
     errors.append('feature_service_not_bound_to_global_activation_gate')

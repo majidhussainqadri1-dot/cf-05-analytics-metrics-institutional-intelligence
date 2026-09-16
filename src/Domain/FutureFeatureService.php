@@ -37,6 +37,7 @@ final class FutureFeatureService
     /** @param array<string,mixed> $config @return array<string,mixed>|WP_Error */
     public function configure(string $featureId, array $config, int $actorUserId, int $expectedRowVersion = 0): array|WP_Error
     {
+        if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
         $definition = FutureFeatureRegistry::get($featureId);
         if ($definition === null) return new WP_Error('smai_future_unknown', 'Unknown future feature.', ['status' => 404]);
         $violations = (new SensitiveValueDetector())->violations($config);
@@ -73,6 +74,7 @@ final class FutureFeatureService
     /** @return array<string,mixed>|WP_Error */
     public function transition(string $featureId, string $action, string $reason, int $actorUserId, int $expectedRowVersion): array|WP_Error
     {
+        if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
         $definition = FutureFeatureRegistry::get($featureId);
         if ($definition === null) return new WP_Error('smai_future_unknown', 'Unknown future feature.', ['status' => 404]);
         $reason=Text::truncate(trim($reason),500);if($reason==='')return new WP_Error('smai_future_reason_required','A governance reason is required.',['status'=>400]);
@@ -106,6 +108,7 @@ final class FutureFeatureService
     /** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
     public function run(string $featureId, array $input, int $actorUserId, bool $dryRun = false): array|WP_Error
     {
+        if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
         $definition=FutureFeatureRegistry::get($featureId);if($definition===null)return new WP_Error('smai_future_unknown','Unknown future feature.',['status'=>404]);
         $violations=(new SensitiveValueDetector())->violations($input);if($violations!==[])return new WP_Error('smai_future_sensitive_input','Sensitive or restricted input is not allowed.',['status'=>400,'violations'=>$violations]);
         if(!RuntimeGate::schemaReady())return new WP_Error('smai_future_schema_gate','CF-05 schema is not ready for governed Future-40 execution.',['status'=>409]);
@@ -137,6 +140,7 @@ final class FutureFeatureService
     /** @param array<string,mixed> $payload @return array<string,mixed>|WP_Error */
     public function createIncident(array $payload,int $actorUserId):array|WP_Error
     {
+        if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
         $summary=Text::truncate(trim((string)($payload['summary']??'')),255);$severity=strtoupper((string)($payload['severity']??'SEV-4'));
         if($summary===''||!in_array($severity,['SEV-0','SEV-1','SEV-2','SEV-3','SEV-4'],true))return new WP_Error('smai_future_invalid_incident','Valid incident summary and severity are required.',['status'=>400]);
         if((new SensitiveValueDetector())->violations($payload)!==[])return new WP_Error('smai_future_sensitive_input','Sensitive incident payload is not allowed.',['status'=>400]);
