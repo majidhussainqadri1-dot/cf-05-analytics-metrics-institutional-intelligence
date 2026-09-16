@@ -91,8 +91,13 @@ def main() -> int:
         for required in ('experiment_subject', 'deletion_key'):
             if required not in experiment_schema:
                 failures.append(f'experiment_facts schema missing governed column: {required}')
+            if required not in experiment_insert:
+                failures.append(f'experiment_facts insert missing governed column: {required}')
         if 'KEY deletion_key (deletion_key)' not in SCHEMA:
             failures.append('experiment_facts schema lacks deletion-key index')
+        for marker in ('legacy_experiment_facts_missing_deletion_key', 'source_sequence_key=SHA2'):
+            if marker not in SCHEMA:
+                failures.append(f'migration integrity guard missing: {marker}')
     except AssertionError as error:
         failures.append(str(error))
 

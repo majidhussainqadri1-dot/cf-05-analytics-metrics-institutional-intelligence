@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0-rc.5 — 2026-09-16
+
+- Closed remaining schema/write drift for event sequence identity, region/provider metadata and experiment deletion identity.
+- Added fail-closed upgrade checks for duplicate historical sequence identities and legacy experiment facts that cannot satisfy privacy deletion.
+- Made privacy-policy fixtures, three-plan consistency, and schema/write/release consistency mandatory QA gates.
+- Made CI artifact integrity derive the candidate version from source rather than a stale hard-coded release.
+- Raised database schema to `1.3.0`; public contract family remains `1.3.0`.
+
 ## 1.0.0-rc.4 — 2026-08-06
 
 - Completed forty sequential fresh review-and-fix rounds (`REV-07..REV-46`).

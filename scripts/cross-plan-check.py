@@ -61,10 +61,10 @@ for marker in ['SSH-PMP-2026-v3.0', 'Consolidated All-Chats Recovered Directive 
         errors.append(f'missing three-plan traceability marker: {marker}')
 
 manifest = json.loads((root / 'MANIFEST.json').read_text())
-if manifest.get('contract_version') != '1.2.0':
-    errors.append('manifest contract version is not 1.2.0')
-if manifest.get('version') != '1.0.0-rc.3':
-    errors.append('manifest version is not 1.0.0-rc.3')
+if manifest.get('contract_version') != '1.3.0':
+    errors.append('manifest contract version is not 1.3.0')
+if manifest.get('version') != '1.0.0-rc.5':
+    errors.append('manifest version is not 1.0.0-rc.5')
 
 all_php = '\n'.join(path.read_text(errors='replace') for path in root.rglob('*.php'))
 if re.search(r'\b(?:TODO|FIXME|not implemented)\b', all_php, re.I):

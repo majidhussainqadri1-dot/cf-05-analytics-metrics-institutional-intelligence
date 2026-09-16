@@ -196,6 +196,7 @@ final class ExperimentService
                 'experiment_uuid' => $canonical['experiment_uuid'],
                 'assignment_event_id' => $canonical['assignment_event_id'],
                 'subject_ref' => $canonical['subject_ref'],
+                'experiment_subject' => $canonical['subject_ref'],
                 'deletion_key' => $canonical['deletion_key'],
                 'variant_key' => Text::truncate($canonical['variant_key'], 100),
                 'assignment_owner' => $canonical['assignment_owner'],

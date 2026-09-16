@@ -9,9 +9,9 @@
 
 ## Source identity
 
-- Candidate: `1.0.0-rc.3`
-- Database schema: `1.1.0`
-- Public contract family: `1.2.0`
+- Candidate: `1.0.0-rc.5`
+- Database schema: `1.3.0`
+- Public contract family: `1.3.0`
 - Runtime default: `foundation_disabled`
 - Functional trace: `CF05-FR-001` through `CF05-FR-035`
 - Cross-plan trace: `docs/THREE-PLAN-TRACEABILITY.md`
@@ -46,3 +46,7 @@ CI result is authoritative only for the exact commit displayed by GitHub Actions
 ## Truthful residual gates
 
 Source completion and automated QA do not establish `Staging-Accepted`, `Live-Deployed` or `Operational`. Hostinger-equivalent staging, actual Files 00/20/23/24/25/26 contracts, browser/accessibility/RTL/load/security testing, provider sandboxes, backup/restore, rollback rehearsal, named operational owners and Founder acceptance remain mandatory external evidence.
+
+## Final coding closure — 2026-09-16
+
+The final source-closure pass corrected schema/write drift for event replay identity, region/provider metadata and experiment deletion identity; added privacy-safe upgrade guards and legacy rebuild blocking; made the dedicated privacy-policy suite, three-plan consistency checks and schema/write/release consistency checks mandatory in QA; and removed release-candidate hard-coding from CI artifact verification. Source completion remains distinct from staging, live deployment and operation.

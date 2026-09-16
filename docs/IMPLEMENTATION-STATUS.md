@@ -1,4 +1,4 @@
-# Implementation Status — 1.0.0-rc.4
+# Implementation Status — 1.0.0-rc.5
 
 | Status | Result |
 |---|---|
@@ -10,4 +10,4 @@
 | Live deployed | No |
 | Operational | No |
 
-Candidate `1.0.0-rc.4`; schema `1.2.0`; contract `1.3.0`; runtime default `foundation_disabled`.
+Candidate `1.0.0-rc.5`; schema `1.3.0`; contract `1.3.0`; runtime default `foundation_disabled`.

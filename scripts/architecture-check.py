@@ -29,7 +29,7 @@ reviews=(root/'docs/REVIEW-ROUNDS-07-46.md').read_text(encoding='utf-8') if (roo
 for i in range(7,47):
  if f'REV-{i:02d}' not in reviews: errors.append(f'missing_review:REV-{i:02d}')
 manifest=json.loads((root/'MANIFEST.json').read_text(encoding='utf-8'))
-if (manifest.get('version'),manifest.get('schema_version'),manifest.get('contract_version')) != ('1.0.0-rc.4','1.2.0','1.3.0'):
+if (manifest.get('version'),manifest.get('schema_version'),manifest.get('contract_version')) != ('1.0.0-rc.5','1.3.0','1.3.0'):
  errors.append('release_identity_mismatch')
 db=(root/'src/Infrastructure/Database.php').read_text(encoding='utf-8')
 schema=(root/'src/Infrastructure/SchemaMigrator.php').read_text(encoding='utf-8')

@@ -46,6 +46,7 @@ final class SchemaMigrator
             source_version varchar(32) NOT NULL,
             source_environment varchar(32) NOT NULL,
             source_sequence bigint unsigned NULL,
+            source_sequence_key char(64) NULL,
             occurred_at datetime NOT NULL,
             recorded_at datetime NOT NULL,
             actor_ref char(64) NULL,
@@ -54,6 +55,8 @@ final class SchemaMigrator
             purpose varchar(190) NOT NULL,
             consent_version varchar(64) NULL,
             guardian_consent_version varchar(64) NULL,
+            region_code varchar(32) NULL,
+            provider_id varchar(100) NULL,
             policy_version varchar(64) NULL,
             trace_id varchar(100) NULL,
             properties_json longtext NOT NULL,
@@ -65,6 +68,7 @@ final class SchemaMigrator
             created_at datetime NOT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY event_id (event_id),
+            UNIQUE KEY source_sequence_key (source_sequence_key),
             KEY contract (event_name,event_version),
             KEY occurred_at (occurred_at),
             KEY deletion_key (deletion_key),
@@ -626,6 +630,7 @@ final class SchemaMigrator
             assignment_event_id char(36) NOT NULL,
             subject_ref char(64) NULL,
             experiment_subject char(64) NULL,
+            deletion_key char(64) NULL,
             variant_key varchar(100) NOT NULL,
             assignment_owner varchar(100) NOT NULL,
             occurred_at datetime NOT NULL,
@@ -635,7 +640,8 @@ final class SchemaMigrator
             UNIQUE KEY assignment_event_id (assignment_event_id),
             KEY experiment_variant (experiment_uuid,variant_key),
             KEY subject_ref (subject_ref),
-            KEY experiment_subject (experiment_subject)
+            KEY experiment_subject (experiment_subject),
+            KEY deletion_key (deletion_key)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}experiment_analyses (
@@ -784,6 +790,42 @@ final class SchemaMigrator
             if ($inserted === false) {
                 throw new \RuntimeException('CF-05 audit-state initialization failed: ' . (string) $wpdb->last_error);
             }
+
+            // Upgrade integrity: historical sequence identities can be reconstructed,
+            // but legacy experiment facts without a deletion key cannot satisfy a
+            // privacy-erasure request and therefore fail closed until rebuilt.
+            $duplicateSequence = $wpdb->get_var(
+                "SELECT 1 FROM {$p}events WHERE source_sequence IS NOT NULL GROUP BY source_module,source_environment,source_sequence HAVING COUNT(*) > 1 LIMIT 1"
+            );
+            if ($duplicateSequence !== null) {
+                throw new \RuntimeException('CF-05 migration blocked: duplicate historical source sequence identities require governed repair.');
+            }
+            $sequenceBackfill = $wpdb->query(
+                "UPDATE {$p}events SET source_sequence_key=SHA2(CONCAT(source_module,'|',source_environment,'|',source_sequence),256) WHERE source_sequence IS NOT NULL AND source_sequence_key IS NULL"
+            );
+            if ($sequenceBackfill === false) {
+                throw new \RuntimeException('CF-05 source-sequence identity backfill failed: ' . (string) $wpdb->last_error);
+            }
+
+            $subjectBackfill = $wpdb->query(
+                "UPDATE {$p}experiment_facts SET experiment_subject=subject_ref WHERE experiment_subject IS NULL AND subject_ref IS NOT NULL"
+            );
+            if ($subjectBackfill === false) {
+                throw new \RuntimeException('CF-05 experiment subject backfill failed: ' . (string) $wpdb->last_error);
+            }
+            $legacyExperimentFactsMissingDeletionKey = (int) $wpdb->get_var(
+                "SELECT COUNT(*) FROM {$p}experiment_facts WHERE deletion_key IS NULL OR deletion_key=''"
+            );
+            if ($legacyExperimentFactsMissingDeletionKey > 0) {
+                update_option('smai_experiment_rebuild_required', [
+                    'code' => 'legacy_experiment_facts_missing_deletion_key',
+                    'row_count' => $legacyExperimentFactsMissingDeletionKey,
+                    'target_schema_version' => SMAI_SCHEMA_VERSION,
+                    'detected_at' => gmdate('c'),
+                ], false);
+                throw new \RuntimeException('CF-05 migration blocked: legacy experiment facts require privacy-safe rebuild before schema activation.');
+            }
+            delete_option('smai_experiment_rebuild_required');
 
             update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
             delete_option('smai_schema_migration_error');

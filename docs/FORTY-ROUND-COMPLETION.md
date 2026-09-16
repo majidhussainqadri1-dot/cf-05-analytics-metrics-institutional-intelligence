@@ -1,4 +1,4 @@
-# CF-05 Forty-Round Completion Evidence — 1.0.0-rc.4
+# CF-05 Forty-Round Completion Evidence — 1.0.0-rc.5
 
 ## Scope
 
@@ -12,7 +12,7 @@ The requested forty new review/fix rounds are `REV-07` through `REV-46`. Each pa
 - Architecture: 35 requirement IDs, 40 review IDs and 37 governed tables: pass.
 - Security primitive and secret-pattern scans: pass.
 - Deterministic rebuild and byte-for-byte source/package parity: pass.
-- Candidate: `1.0.0-rc.4`; schema: `1.2.0`; contract: `1.3.0`.
+- Candidate: `1.0.0-rc.5`; schema: `1.3.0`; contract: `1.3.0`.
 
 ## Truth boundary
 

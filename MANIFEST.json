@@ -1,8 +1,8 @@
 {
   "module": "CF-05",
   "title": "Analytics, Metrics and Institutional Intelligence",
-  "version": "1.0.0-rc.4",
-  "schema_version": "1.2.0",
+  "version": "1.0.0-rc.5",
+  "schema_version": "1.3.0",
   "contract_version": "1.3.0",
   "runtime_default": "foundation_disabled",
   "source_completion": {
