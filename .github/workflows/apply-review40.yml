@@ -18,10 +18,67 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Apply reviewed source payload
+      - name: Recover and apply reviewed source payload
         run: |
           set -euo pipefail
-          cat .codex/review40-part-* | base64 -d | tar -xzf -
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import io
+          import re
+          import tarfile
+
+          parts = sorted(Path('.codex').glob('review40-part-*'))
+          if not parts:
+              raise SystemExit('No review40 payload parts found')
+
+          chunks = []
+          for part in parts:
+              text = ''.join(part.read_text(encoding='utf-8').split())
+              if not re.fullmatch(r'[A-Za-z0-9+/=]*', text):
+                  bad = sorted(set(re.sub(r'[A-Za-z0-9+/=]', '', text)))
+                  raise SystemExit(f'Invalid base64 characters in {part}: {bad!r}')
+              chunks.append((part.name, text))
+
+          merged = chunks[0][1]
+          print(f'{chunks[0][0]}: {len(chunks[0][1])} chars')
+          for name, chunk in chunks[1:]:
+              max_overlap = min(len(merged), len(chunk))
+              overlap = 0
+              for candidate in range(max_overlap, 63, -1):
+                  if merged.endswith(chunk[:candidate]):
+                      overlap = candidate
+                      break
+              if overlap:
+                  print(f'{name}: {len(chunk)} chars; removed {overlap}-char duplicate/overlap')
+              else:
+                  print(f'{name}: {len(chunk)} chars; no overlap')
+              merged += chunk[overlap:]
+
+          if '=' in merged[:-4]:
+              raise SystemExit('Unexpected base64 padding found before payload tail')
+          missing_padding = (-len(merged)) % 4
+          if missing_padding:
+              print(f'Adding {missing_padding} base64 padding character(s)')
+              merged += '=' * missing_padding
+
+          try:
+              archive = base64.b64decode(merged, validate=True)
+          except Exception as exc:
+              raise SystemExit(f'Base64 decode failed: {exc}')
+
+          with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tf:
+              root = Path('.').resolve()
+              members = tf.getmembers()
+              for member in members:
+                  target = (root / member.name).resolve()
+                  if root not in target.parents and target != root:
+                      raise SystemExit(f'Unsafe archive path: {member.name}')
+                  if member.issym() or member.islnk():
+                      raise SystemExit(f'Archive links are not allowed: {member.name}')
+              print(f'Extracting {len(members)} reviewed payload members')
+              tf.extractall('.')
+          PY
           rm -rf .codex
           bash scripts/qa.sh
           bash scripts/verify-deterministic-build.sh
