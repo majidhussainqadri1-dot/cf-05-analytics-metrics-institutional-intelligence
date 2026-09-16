@@ -55,6 +55,9 @@ if "get_option('smai_future40_state', 'disabled') !== 'approved'" not in activat
     errors.append('future40_state_not_enforced')
 if 'FutureActivationService::isApproved()' not in service:
     errors.append('feature_service_not_bound_to_global_activation_gate')
+# Review-4 semantic invariants.
+for token in ['breaking_added_required_fields','zero_variance_baseline','over_budget','requires_review','metric_not_allowlisted','human_review_confirmed','is_finite','validDate']:
+    if token not in engine: errors.append(f'review4_semantic_guard_missing:{token}')
 if manifest.get('version')!='1.0.0-rc.6': errors.append('manifest_version_not_rc6')
 if manifest.get('schema_version')!='1.4.0': errors.append('manifest_schema_not_1_4_0')
 if manifest.get('contract_version')!='1.4.0': errors.append('manifest_contract_not_1_4_0')

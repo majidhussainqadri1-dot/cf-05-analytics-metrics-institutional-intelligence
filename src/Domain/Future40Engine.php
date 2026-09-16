@@ -65,7 +65,7 @@ final class Future40Engine
     {
         $state = strtolower((string) ($input['state'] ?? 'draft'));
         $checks = [
-            'definition_hash' => self::nonEmpty($input['definition_hash'] ?? null),
+            'definition_hash' => is_string($input['definition_hash'] ?? null) && preg_match('/^[a-f0-9]{64}$/i', (string) $input['definition_hash']) === 1,
             'owner' => self::nonEmpty($input['owner_module'] ?? null),
             'privacy' => self::nonEmpty($input['privacy_class'] ?? null),
             'quality' => in_array((string) ($input['quality_status'] ?? ''), ['green','warning'], true),
@@ -86,7 +86,8 @@ final class Future40Engine
     /** @param array<string,mixed> $input */
     private static function impactAnalysis(array $input): array
     {
-        $target = (string) ($input['target'] ?? '');
+        $target = trim((string) ($input['target'] ?? ''));
+        if ($target === '') return ['valid' => false, 'reason' => 'missing_target', 'target' => '', 'downstream' => [], 'impact_count' => 0, 'dry_run' => true];
         $edges = self::edges($input['edges'] ?? []);
         $seen = [];
         $queue = [$target];
@@ -151,7 +152,7 @@ final class Future40Engine
         $new = self::stringList($input['new_required_fields'] ?? []);
         $removed = array_values(array_diff($old, $new));
         $added = array_values(array_diff($new, $old));
-        return ['compatible' => $removed === [], 'breaking_removed_fields' => $removed, 'added_required_fields' => $added];
+        return ['compatible' => $removed === [] && $added === [], 'breaking_removed_fields' => $removed, 'breaking_added_required_fields' => $added, 'added_required_fields' => $added];
     }
 
     /** @param array<string,mixed> $input */
@@ -170,7 +171,9 @@ final class Future40Engine
     /** @param array<string,mixed> $input */
     private static function historicalReplayPlan(array $input): array
     {
-        return ['stream_ref' => (string) ($input['stream_ref'] ?? ''), 'from_checkpoint' => (string) ($input['from_checkpoint'] ?? ''), 'to_checkpoint' => (string) ($input['to_checkpoint'] ?? ''), 'max_events' => min(1000000, max(0, (int) ($input['max_events'] ?? 0))), 'mode' => 'dry_run', 'requires_reconciliation' => true];
+        $stream=trim((string)($input['stream_ref']??''));$from=trim((string)($input['from_checkpoint']??''));$to=trim((string)($input['to_checkpoint']??''));$max=min(1000000,max(0,(int)($input['max_events']??0)));
+        $valid=$stream!==''&&$from!==''&&$to!==''&&$max>0;
+        return ['valid'=>$valid,'reason'=>$valid?null:'missing_replay_identity_or_bound','stream_ref'=>$stream,'from_checkpoint'=>$from,'to_checkpoint'=>$to,'max_events'=>$max,'mode'=>'dry_run','requires_reconciliation'=>true];
     }
 
     /** @param array<string,mixed> $input */
@@ -180,7 +183,8 @@ final class Future40Engine
         $weights = ['green'=>0,'warning'=>1,'degraded'=>2,'invalid'=>3,'unknown'=>1];
         $score = 0; $count = 0;
         foreach ($signals as $signal) { if (!is_array($signal)) continue; $status = strtolower((string) ($signal['status'] ?? 'unknown')); $score += $weights[$status] ?? 2; $count++; }
-        $avg = $count ? $score / $count : 0.0;
+        if ($count === 0) return ['signal_count'=>0,'risk_score'=>null,'overall'=>'unknown'];
+        $avg = $score / $count;
         return ['signal_count' => $count, 'risk_score' => round($avg, 3), 'overall' => $avg >= 2 ? 'degraded' : ($avg >= 1 ? 'warning' : 'green')];
     }
 
@@ -191,8 +195,10 @@ final class Future40Engine
         if (count($values) < 4) return ['anomaly' => false, 'reason' => 'insufficient_series', 'z_score' => null];
         $current = array_pop($values); $mean = array_sum($values) / count($values); $variance = 0.0;
         foreach ($values as $v) $variance += ($v - $mean) ** 2;
-        $std = sqrt($variance / max(1, count($values) - 1)); $z = $std > 0 ? ($current - $mean) / $std : 0.0;
+        $std = sqrt($variance / max(1, count($values) - 1));
         $threshold = max(2.0, min(6.0, (float) ($input['z_threshold'] ?? 3.0)));
+        if ($std <= 0.0) { $changed=abs($current-$mean)>1e-12; return ['anomaly'=>$changed,'reason'=>'zero_variance_baseline','z_score'=>null,'baseline_mean'=>$mean,'threshold'=>$threshold]; }
+        $z = ($current - $mean) / $std;
         return ['anomaly' => abs($z) >= $threshold, 'z_score' => round($z, 4), 'baseline_mean' => $mean, 'threshold' => $threshold];
     }
 
@@ -213,7 +219,9 @@ final class Future40Engine
     private static function pipelineHealth(array $input): array
     {
         $lag = max(0, (int) ($input['lag_seconds'] ?? 0)); $failed = max(0, (int) ($input['failed_jobs'] ?? 0)); $quality = strtolower((string) ($input['quality_status'] ?? 'unknown'));
-        $state = ($failed > 0 || $quality === 'degraded') ? 'degraded' : (($lag > (int) ($input['lag_slo_seconds'] ?? 900) || $quality === 'warning') ? 'warning' : 'green');
+        $allowedQuality=['green','warning','degraded','invalid','unknown'];
+        $state = ($failed > 0 || in_array($quality,['degraded','invalid'],true)) ? 'degraded' : (($lag > max(1,(int)($input['lag_slo_seconds']??900)) || $quality === 'warning') ? 'warning' : ($quality === 'green' ? 'green' : 'unknown'));
+        if(!in_array($quality,$allowedQuality,true))$state='degraded';
         return ['state' => $state, 'lag_seconds' => $lag, 'failed_jobs' => $failed, 'quality_status' => $quality];
     }
 
@@ -244,7 +252,7 @@ final class Future40Engine
     private static function domainPacks(array $input): array
     {
         $items = is_array($input['metrics'] ?? null) ? $input['metrics'] : []; $packs = [];
-        foreach ($items as $item) { if (!is_array($item) || !($item['aggregate'] ?? false)) continue; $domain = preg_replace('/[^a-z0-9_-]/i','',(string)($item['domain']??'other')) ?: 'other'; $packs[$domain][] = ['metric_id'=>(string)($item['metric_id']??''),'value'=>self::number($item['value']??null)]; }
+        foreach ($items as $item) { if (!is_array($item) || !($item['aggregate'] ?? false) || !($item['approved'] ?? false)) continue; $domain = preg_replace('/[^a-z0-9_-]/i','',(string)($item['domain']??'other')) ?: 'other'; $packs[$domain][] = ['metric_id'=>(string)($item['metric_id']??''),'value'=>self::number($item['value']??null)]; }
         ksort($packs); return ['packs'=>$packs,'domain_count'=>count($packs)];
     }
 
@@ -255,7 +263,8 @@ final class Future40Engine
         if ($n < 3) return ['correlation'=>null,'reason'=>'insufficient_series','causation_proven'=>false];
         $x=array_slice($x,0,$n);$y=array_slice($y,0,$n);$mx=array_sum($x)/$n;$my=array_sum($y)/$n;$num=0.0;$dx=0.0;$dy=0.0;
         for($i=0;$i<$n;$i++){ $a=$x[$i]-$mx;$b=$y[$i]-$my;$num+=$a*$b;$dx+=$a*$a;$dy+=$b*$b; }
-        $corr=($dx>0&&$dy>0)?$num/sqrt($dx*$dy):0.0;
+        if($dx<=0||$dy<=0)return ['correlation'=>null,'reason'=>'zero_variance','observations'=>$n,'causation_proven'=>false];
+        $corr=$num/sqrt($dx*$dy);
         return ['correlation'=>round($corr,4),'observations'=>$n,'causation_proven'=>false];
     }
 
@@ -286,8 +295,10 @@ final class Future40Engine
     /** @param array<string,mixed> $input */
     private static function capacity(array $input): array
     {
-        $demand=max(0.0,(float)($input['projected_demand']??0));$capacity=max(0.000001,(float)($input['available_capacity']??0));$u=$demand/$capacity;
-        return ['utilization'=>round($u,4),'headroom'=>round(max(0.0,$capacity-$demand),4),'status'=>$u>1?'insufficient':($u>=0.8?'tight':'adequate')];
+        $demand=self::number($input['projected_demand']??null);$capacity=self::number($input['available_capacity']??null);
+        if($demand===null||$capacity===null||$demand<0||$capacity<=0)return ['valid'=>false,'utilization'=>null,'headroom'=>null,'status'=>'unavailable'];
+        $u=$demand/$capacity;
+        return ['valid'=>true,'utilization'=>round($u,4),'headroom'=>round(max(0.0,$capacity-$demand),4),'status'=>$u>1?'insufficient':($u>=0.8?'tight':'adequate')];
     }
 
     /** @param array<string,mixed> $input */
@@ -307,8 +318,8 @@ final class Future40Engine
     /** @param array<string,mixed> $input */
     private static function privacyBudget(array $input): array
     {
-        $allocated=max(0.0,(float)($input['allocated']??0));$spent=max(0.0,(float)($input['spent']??0));$request=max(0.0,(float)($input['request']??0));$remaining=max(0.0,$allocated-$spent);
-        return ['allocated'=>$allocated,'spent'=>$spent,'remaining'=>$remaining,'request'=>$request,'allowed'=>$request<=$remaining,'remaining_after'=>$request<=$remaining?round($remaining-$request,8):$remaining];
+        $allocated=max(0.0,(float)($input['allocated']??0));$spent=max(0.0,(float)($input['spent']??0));$request=max(0.0,(float)($input['request']??0));$over=$spent>$allocated;$remaining=max(0.0,$allocated-$spent);$allowed=!$over&&$request<=$remaining;
+        return ['allocated'=>$allocated,'spent'=>$spent,'over_budget'=>$over,'remaining'=>$remaining,'request'=>$request,'allowed'=>$allowed,'remaining_after'=>$allowed?round($remaining-$request,8):$remaining];
     }
 
     /** @param array<string,mixed> $input */
@@ -323,7 +334,7 @@ final class Future40Engine
     {
         $cohort=max(0,(int)($input['cohort_size']??0));$dims=count(self::stringList($input['dimensions']??[]));$sensitive=max(0,(int)($input['sensitive_dimensions']??0));
         $score=min(100, ($cohort<20?60:($cohort<50?30:10)) + min(30,$dims*5) + min(30,$sensitive*10));
-        return ['risk_score'=>$score,'risk'=>$score>=70?'high':($score>=40?'medium':'low'),'approval_recommended'=>$score>=40];
+        return ['risk_score'=>$score,'risk'=>$score>=70?'high':($score>=40?'medium':'low'),'approval_recommended'=>$score<40,'requires_review'=>$score>=40];
     }
 
     /** @param array<string,mixed> $input */
@@ -345,6 +356,7 @@ final class Future40Engine
     {
         $controlN=max(0,(int)($input['control_n']??0));$variantN=max(0,(int)($input['variant_n']??0));$control=self::number($input['control_rate']??null);$variant=self::number($input['variant_rate']??null);
         if($control===null||$variant===null||$controlN<1||$variantN<1)return ['valid'=>false,'reason'=>'missing_aggregate_rates'];
+        if($control<0||$control>1||$variant<0||$variant>1)return ['valid'=>false,'reason'=>'rate_out_of_range'];
         $delta=$variant-$control;
         return ['valid'=>true,'absolute_effect'=>round($delta,8),'relative_effect'=>$control!=0?round($delta/$control,8):null,'sample_size'=>$controlN+$variantN,'human_decision_required'=>true];
     }
@@ -367,28 +379,33 @@ final class Future40Engine
     /** @param array<string,mixed> $input */
     private static function naturalLanguageMetricQuery(array $input): array
     {
-        $q=trim((string)($input['query']??'')); if($q===''||strlen($q)>500)return ['parsed'=>false,'reason'=>'invalid_query'];
+        $q=trim((string)($input['query']??'')); if($q===''||strlen($q)>500)return ['parsed'=>false,'reason'=>'invalid_query','execution_authorized'=>false];
         $metric=null;$from=null;$to=null;$by=null;
         if(preg_match('/\bmetric\s+([a-z0-9._-]+)/i',$q,$m))$metric=$m[1];
         if(preg_match('/\bfrom\s+(\d{4}-\d{2}-\d{2})\b/i',$q,$m))$from=$m[1];
         if(preg_match('/\bto\s+(\d{4}-\d{2}-\d{2})\b/i',$q,$m))$to=$m[1];
         if(preg_match('/\bby\s+([a-z0-9._-]+)\b/i',$q,$m))$by=$m[1];
-        return ['parsed'=>$metric!==null,'metric_id'=>$metric,'from'=>$from,'to'=>$to,'dimension'=>$by,'execution_authorized'=>false];
+        $allowedMetrics=self::stringList($input['allowed_metric_ids']??[]);$allowedDimensions=self::stringList($input['allowed_dimensions']??[]);
+        if($metric===null||!in_array($metric,$allowedMetrics,true))return ['parsed'=>false,'reason'=>'metric_not_allowlisted','metric_id'=>$metric,'execution_authorized'=>false];
+        if($by!==null&&!in_array($by,$allowedDimensions,true))return ['parsed'=>false,'reason'=>'dimension_not_allowlisted','metric_id'=>$metric,'dimension'=>$by,'execution_authorized'=>false];
+        if(($from===null)!==($to===null))return ['parsed'=>false,'reason'=>'incomplete_date_range','metric_id'=>$metric,'execution_authorized'=>false];
+        if($from!==null&&(!self::validDate($from)||!self::validDate($to)||$from>$to))return ['parsed'=>false,'reason'=>'invalid_date_range','metric_id'=>$metric,'execution_authorized'=>false];
+        return ['parsed'=>true,'metric_id'=>$metric,'from'=>$from,'to'=>$to,'dimension'=>$by,'execution_authorized'=>false];
     }
 
     /** @param array<string,mixed> $input */
     private static function copilotEvidence(array $input): array
     {
         $metrics=is_array($input['metrics']??null)?$input['metrics']:[];$citations=self::stringList($input['citations']??[]);$lines=[];
-        foreach(array_slice($metrics,0,20) as $m){if(!is_array($m)||!($m['aggregate']??false))continue;$id=(string)($m['metric_id']??'metric');$value=self::number($m['value']??null);$quality=(string)($m['quality']??'unknown');$lines[]=$id.' = '.($value===null?'n/a':(string)$value).' (quality '.$quality.')';}
-        return ['evidence_summary'=>$lines,'citations'=>$citations,'inference_separated'=>true,'recommendation_requires_human'=>true];
+        foreach(array_slice($metrics,0,20) as $m){if(!is_array($m)||!($m['aggregate']??false)||!($m['approved']??false))continue;$id=(string)($m['metric_id']??'metric');$value=self::number($m['value']??null);$quality=(string)($m['quality']??'unknown');$lines[]=$id.' = '.($value===null?'n/a':(string)$value).' (quality '.$quality.')';}
+        return ['valid'=>$citations!==[]&&$lines!==[],'evidence_summary'=>$citations===[]?[]:$lines,'citations'=>$citations,'inference_separated'=>true,'recommendation_requires_human'=>true];
     }
 
     /** @param array<string,mixed> $input */
     private static function narrativeReview(array $input): array
     {
-        $obs=trim((string)($input['observation']??''));$inf=trim((string)($input['inference']??''));$rec=trim((string)($input['recommendation']??''));$cit=self::stringList($input['citations']??[]);$reviewer=max(0,(int)($input['reviewer_user_id']??0));
-        return ['publishable'=>$obs!==''&&$cit!==[]&&$reviewer>0,'observation_present'=>$obs!=='','inference_present'=>$inf!=='','recommendation_present'=>$rec!=='','citation_count'=>count($cit),'human_review_required'=>true];
+        $obs=trim((string)($input['observation']??''));$inf=trim((string)($input['inference']??''));$rec=trim((string)($input['recommendation']??''));$cit=self::stringList($input['citations']??[]);$reviewer=max(0,(int)($input['reviewer_user_id']??0));$confirmed=($input['human_review_confirmed']??false)===true;
+        return ['publishable'=>$obs!==''&&$cit!==[]&&$reviewer>0&&$confirmed,'observation_present'=>$obs!=='','inference_present'=>$inf!=='','recommendation_present'=>$rec!=='','citation_count'=>count($cit),'human_review_confirmed'=>$confirmed,'human_review_required'=>true];
     }
 
     /** @param array<string,mixed> $input */
@@ -409,7 +426,8 @@ final class Future40Engine
     /** @param array<string,mixed> $input */
     private static function transparencyRecord(array $input): array
     {
-        return ['purpose'=>trim((string)($input['purpose']??'')),'metric_ids'=>self::stringList($input['metric_ids']??[]),'data_classes'=>self::stringList($input['data_classes']??[]),'retention_summary'=>trim((string)($input['retention_summary']??'')),'individual_tracking'=>false];
+        $purpose=trim((string)($input['purpose']??''));$metrics=self::stringList($input['metric_ids']??[]);$classes=self::stringList($input['data_classes']??[]);$retention=trim((string)($input['retention_summary']??''));
+        return ['valid'=>$purpose!==''&&$metrics!==[]&&$classes!==[]&&$retention!=='','purpose'=>$purpose,'metric_ids'=>$metrics,'data_classes'=>$classes,'retention_summary'=>$retention,'individual_tracking'=>false];
     }
 
     /** @param array<string,mixed> $input */
@@ -428,7 +446,8 @@ final class Future40Engine
     }
 
     private static function nonEmpty(mixed $value): bool { return is_string($value) ? trim($value) !== '' : $value !== null; }
-    private static function number(mixed $value): ?float { return is_int($value)||is_float($value)||(is_string($value)&&is_numeric($value)) ? (float)$value : null; }
+    private static function number(mixed $value): ?float { if(!(is_int($value)||is_float($value)||(is_string($value)&&is_numeric($value))))return null;$number=(float)$value;return is_finite($number)?$number:null; }
+    private static function validDate(?string $value): bool { if($value===null)return false;$date=\DateTimeImmutable::createFromFormat('!Y-m-d',$value, new \DateTimeZone('UTC'));return $date!==false&&$date->format('Y-m-d')===$value; }
     /** @return array<int,float> */
     private static function numberList(mixed $value): array { if(!is_array($value))return[];$out=[];foreach($value as $v){$n=self::number($v);if($n!==null)$out[]=$n;}return$out; }
     /** @return array<int,string> */
