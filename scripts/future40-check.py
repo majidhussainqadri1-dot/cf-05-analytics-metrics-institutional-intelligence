@@ -65,6 +65,12 @@ for token in ['logInOpenTransaction','START TRANSACTION','smai_future_activation
     if token not in activation: errors.append(f'review5_activation_atomicity_missing:{token}')
 if service.count('smai_future_actor_required') < 4:
     errors.append('review5_service_actor_validation_incomplete')
+# Review-6 reproducibility/stateful artifact invariants.
+artifact=text('src/Domain/FutureArtifactStore.php')
+for token in ['FutureArtifactStore','feature_row_version','config_hash','schema_version','contract_version']:
+    if token not in service: errors.append(f'review6_run_binding_missing:{token}')
+for token in ['CF05-FUT-021','scenario_models','CF05-FUT-025','privacy_budgets','CF05-FUT-029','research_workspaces','CF05-FUT-038','transparency_records','FOR UPDATE','budget_row_version']:
+    if token not in artifact: errors.append(f'review6_artifact_persistence_missing:{token}')
 if manifest.get('version')!='1.0.0-rc.6': errors.append('manifest_version_not_rc6')
 if manifest.get('schema_version')!='1.4.0': errors.append('manifest_schema_not_1_4_0')
 if manifest.get('contract_version')!='1.4.0': errors.append('manifest_contract_not_1_4_0')
