@@ -15,6 +15,7 @@ service=text('src/Domain/FutureFeatureService.php')
 controller=text('src/Http/FutureRestController.php')
 schema=text('src/Infrastructure/SchemaMigrator.php')
 db=text('src/Infrastructure/Database.php')
+audit=text('src/Infrastructure/AuditLogger.php')
 qa=text('scripts/qa.sh')
 plan=text('docs/FUTURE-40.md')
 manifest=json.loads(text('MANIFEST.json') or '{}')
@@ -39,14 +40,15 @@ if "current_user_can($required)||current_user_can('smai_run_future_intelligence'
     errors.append('feature_specific_capability_bypass_present')
 if "return $required!=='' && current_user_can($required);" not in controller:
     errors.append('feature_specific_capability_enforcement_missing')
-for token in [
-    "'state'=>'configured'",
-    "smai_future_retired",
-    "smai_future_approval_integrity",
-    "smai_future_schema_gate",
-    "including dry-run",
-]:
+for token in ["'state'=>'configured'","smai_future_retired","smai_future_approval_integrity","smai_future_schema_gate","including dry-run"]:
     if token not in service: errors.append(f'review1_guard_missing:{token}')
+# Review-2 persistence/audit invariants.
+for token in ['logInOpenTransaction','private function append','FOR UPDATE']:
+    if token not in audit: errors.append(f'audit_atomicity_missing:{token}')
+for token in ['smai_future_run_store_failed','smai_future_incident_store_failed','analytics_incident_created','future_scheduled_evidence_created','rollbackError','START TRANSACTION']:
+    if token not in service: errors.append(f'review2_persistence_guard_missing:{token}')
+if service.count('logInOpenTransaction') < 5:
+    errors.append('future40_mutations_not_fully_audit_bound')
 if manifest.get('version')!='1.0.0-rc.6': errors.append('manifest_version_not_rc6')
 if manifest.get('schema_version')!='1.4.0': errors.append('manifest_schema_not_1_4_0')
 if manifest.get('contract_version')!='1.4.0': errors.append('manifest_contract_not_1_4_0')
