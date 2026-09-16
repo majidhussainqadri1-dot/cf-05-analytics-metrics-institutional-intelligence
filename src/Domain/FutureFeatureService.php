@@ -51,8 +51,9 @@ final class FutureFeatureService
         } else {
             $current = (int) $existing['row_version'];
             if ($expectedRowVersion !== $current) return new WP_Error('smai_future_version_conflict', 'Future feature version conflict.', ['status' => 409, 'current_row_version' => $current]);
+            if ((string) $existing['state'] === 'retired') return new WP_Error('smai_future_retired', 'A retired future feature cannot be reconfigured without a versioned change-control replacement.', ['status' => 409]);
             $version = $current + 1;
-            $ok = $wpdb->update($table, ['config_json'=>$json,'config_hash'=>$hash,'state'=>(string)$existing['state']==='disabled'?'configured':(string)$existing['state'],'requested_by'=>$actorUserId,'approved_by'=>null,'row_version'=>$version,'updated_at'=>$now], ['feature_id'=>$id,'row_version'=>$current]);
+            $ok = $wpdb->update($table, ['config_json'=>$json,'config_hash'=>$hash,'state'=>'configured','requested_by'=>$actorUserId,'approved_by'=>null,'row_version'=>$version,'updated_at'=>$now], ['feature_id'=>$id,'row_version'=>$current]);
             if ($ok !== 1) return new WP_Error('smai_future_store_failed', 'Future feature configuration update failed.', ['status' => 409]);
         }
         (new AuditLogger($this->db))->log('future_feature_configured','future_feature',$id,'success',['row_version'=>$version,'config_hash'=>$hash],'future40_governance',null,$actorUserId);
@@ -73,6 +74,7 @@ final class FutureFeatureService
         if($next===null)return new WP_Error('smai_future_invalid_transition','Future feature lifecycle transition is not allowed.',['status'=>409,'state'=>$current]);
         if((int)$row['row_version']!==$expectedRowVersion)return new WP_Error('smai_future_version_conflict','Future feature version conflict.',['status'=>409,'current_row_version'=>(int)$row['row_version']]);
         if($action==='approve'&&(int)$row['requested_by']===$actorUserId)return new WP_Error('smai_future_independence_required','Independent approval is required.',['status'=>409]);
+        if($action==='activate'&&($row['approved_by']===null||(int)$row['approved_by']<1||(int)$row['approved_by']===(int)$row['requested_by']))return new WP_Error('smai_future_approval_integrity','A valid independent persisted approver is required before activation.',['status'=>409]);
         if($action==='activate'&&!$this->future40ActivationApproved())return new WP_Error('smai_future_activation_gate','Future-40 activation evidence is not approved.',['status'=>409]);
         if($action==='activate'&&!RuntimeGate::queryEnabled())return new WP_Error('smai_future_runtime_gate','Base CF-05 runtime is not enabled for this environment.',['status'=>409]);
         $reason=Text::truncate(trim($reason),500);if($reason==='')return new WP_Error('smai_future_reason_required','A governance reason is required.',['status'=>400]);
@@ -87,8 +89,13 @@ final class FutureFeatureService
     {
         $definition=FutureFeatureRegistry::get($featureId);if($definition===null)return new WP_Error('smai_future_unknown','Unknown future feature.',['status'=>404]);
         $violations=(new SensitiveValueDetector())->violations($input);if($violations!==[])return new WP_Error('smai_future_sensitive_input','Sensitive or restricted input is not allowed.',['status'=>400,'violations'=>$violations]);
-        $id=(string)$definition['feature_id'];$row=$this->db->wpdb()->get_row($this->db->wpdb()->prepare('SELECT state FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s',$id),ARRAY_A);
-        if(!$dryRun&&(!is_array($row)||(string)$row['state']!=='active'))return new WP_Error('smai_future_not_active','Future feature is not active. Use governed dry-run or complete activation gates.',['status'=>409]);
+        if(!RuntimeGate::schemaReady())return new WP_Error('smai_future_schema_gate','CF-05 schema is not ready for governed Future-40 execution.',['status'=>409]);
+        $id=(string)$definition['feature_id'];$row=$this->db->wpdb()->get_row($this->db->wpdb()->prepare('SELECT state,approved_by,requested_by FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s',$id),ARRAY_A);
+        if(!is_array($row))return new WP_Error('smai_future_not_configured','Configure the future feature before any governed run, including dry-run.',['status'=>409]);
+        $state=(string)$row['state'];
+        if($state==='retired')return new WP_Error('smai_future_retired','Retired future features cannot be executed.',['status'=>409]);
+        if(!$dryRun&&$state!=='active')return new WP_Error('smai_future_not_active','Future feature is not active. Use governed dry-run or complete activation gates.',['status'=>409]);
+        if(!$dryRun&&($row['approved_by']===null||(int)$row['approved_by']<1||(int)$row['approved_by']===(int)$row['requested_by']))return new WP_Error('smai_future_approval_integrity','Active execution requires valid independent approval evidence.',['status'=>409]);
         if(!$dryRun&&!RuntimeGate::queryEnabled())return new WP_Error('smai_future_runtime_gate','Base CF-05 runtime is not enabled.',['status'=>409]);
         try{$result=Future40Engine::evaluate($id,$input);}catch(\InvalidArgumentException $error){return new WP_Error('smai_future_invalid_input',$error->getMessage(),['status'=>400]);}
         $runUuid=Uuid::v4();$requestHash=hash('sha256',Json::canonical($this->minimize($input)));$resultJson=Json::canonical($this->minimize($result));
