@@ -2,8 +2,8 @@
 
 | Status | Result |
 |---|---|
-| Specified | Complete for approved `CF05-FR-001..CF05-FR-035` and applicable three-plan controls |
-| Coded | Final source-closure corrections committed; forty fresh review/fix rounds completed; zero known source defects after governed source QA |
+| Specified | Complete for approved `CF05-FR-001..CF05-FR-035`, applicable three-plan controls, and approved `CF05-FUT-001..CF05-FUT-040` Future-40 expansion |
+| Coded | Future-40 source expansion committed; forty prior fresh review/fix rounds remain preserved; zero known source defects after governed source QA |
 | Packaged | Deterministic ZIP, checksum, package manifest and CycloneDX SBOM are required and verified by the exact-head CI release-build gate |
 | Automated QA | Must be proven by GitHub Actions on the current exact repository HEAD; historical green runs do not substitute for current-head evidence |
 | Staging accepted | Pending |
@@ -12,6 +12,6 @@
 
 Candidate `1.0.0-rc.6`; schema `1.4.0`; contract `1.4.0`; runtime default `foundation_disabled`.
 
-The source-closure implementation immediately preceding this evidence-only status commit is `ce099cda125d118ea35aed713b0cb94cfa0cf447` (`fix: close remaining CF-05 coding defects`). This status file does not authorize treating GitHub source, a package, CI, staging or live deployment as interchangeable realities.
+The governed Future-40 source implementation immediately preceding this evidence-only status commit is `d3e815d806ebf6cd86955a02ba05362605851d29` (`feat: implement governed CF-05 Future-40 expansion`). That implementation contains executable handlers and QA coverage for `CF05-FUT-001..CF05-FUT-040`, 45 governed tables in total, Future-40 activation-evidence gates, independent approval controls, aggregate/advisory-only invariants and deterministic packaging. The implementation workflow completed full source QA and deterministic package verification before committing the source expansion.
 
-Future-40: `CF05-FUT-001..CF05-FUT-040` source-coded and automated-QA covered; all Future-40 runtime features remain disabled until separate activation evidence/approval and environment gates pass.
+Future-40 runtime features remain disabled until their separate configuration, independent approval, exact Future-40 activation-evidence hash and base CF-05 environment/runtime gates pass. Source coding does not authorize treating GitHub source, a package, CI, staging, live deployment or operational status as interchangeable realities.
