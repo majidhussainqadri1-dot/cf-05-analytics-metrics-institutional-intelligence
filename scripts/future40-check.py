@@ -13,6 +13,7 @@ registry=text('src/Domain/FutureFeatureRegistry.php')
 engine=text('src/Domain/Future40Engine.php')
 service=text('src/Domain/FutureFeatureService.php')
 controller=text('src/Http/FutureRestController.php')
+activation=text('src/Infrastructure/FutureActivationService.php')
 schema=text('src/Infrastructure/SchemaMigrator.php')
 db=text('src/Infrastructure/Database.php')
 audit=text('src/Infrastructure/AuditLogger.php')
@@ -29,10 +30,8 @@ for token in ['advisory_only','aggregate_only','human_governed','autonomous_deci
 for token in ['future_features','future_runs','analytics_incidents','scenario_models','research_workspaces','intelligence_alerts','transparency_records','privacy_budgets']:
     if f"'{token}'" not in db: errors.append(f'database_whitelist_missing:{token}')
     if f'CREATE TABLE {{$p}}{token} (' not in schema: errors.append(f'schema_table_missing:{token}')
-for token in ['/future/features','/configure','/transition','/run','/future/incidents']:
+for token in ['/future/features','/configure','/transition','/run','/future/incidents','/future/runtime/activation/propose','/future/runtime/activation/approve','/future/runtime/disable']:
     if token not in controller: errors.append(f'route_missing:{token}')
-for token in ['smai_future40_approved','SMAI_FUTURE40_EVIDENCE_SHA256','Independent approval','RuntimeGate::queryEnabled']:
-    if token not in service: errors.append(f'activation_guard_missing:{token}')
 for token in ['tests/future40.php','scripts/future40-check.py']:
     if token not in qa: errors.append(f'qa_gate_missing:{token}')
 # Review-1 security/lifecycle invariants.
@@ -49,6 +48,13 @@ for token in ['smai_future_run_store_failed','smai_future_incident_store_failed'
     if token not in service: errors.append(f'review2_persistence_guard_missing:{token}')
 if service.count('logInOpenTransaction') < 5:
     errors.append('future40_mutations_not_fully_audit_bound')
+# Review-3 global activation invariants.
+for token in ['smai_future40_activation_request','smai_future40_state','future40_activation_proposed','future40_activation_approved','future40_activation_disabled','independent approver','failClosed','isApproved']:
+    if token not in activation: errors.append(f'review3_activation_guard_missing:{token}')
+if "get_option('smai_future40_state', 'disabled') !== 'approved'" not in activation:
+    errors.append('future40_state_not_enforced')
+if 'FutureActivationService::isApproved()' not in service:
+    errors.append('feature_service_not_bound_to_global_activation_gate')
 if manifest.get('version')!='1.0.0-rc.6': errors.append('manifest_version_not_rc6')
 if manifest.get('schema_version')!='1.4.0': errors.append('manifest_schema_not_1_4_0')
 if manifest.get('contract_version')!='1.4.0': errors.append('manifest_contract_not_1_4_0')
