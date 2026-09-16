@@ -34,6 +34,19 @@ for token in ['smai_future40_approved','SMAI_FUTURE40_EVIDENCE_SHA256','Independ
     if token not in service: errors.append(f'activation_guard_missing:{token}')
 for token in ['tests/future40.php','scripts/future40-check.py']:
     if token not in qa: errors.append(f'qa_gate_missing:{token}')
+# Review-1 security/lifecycle invariants.
+if "current_user_can($required)||current_user_can('smai_run_future_intelligence')" in controller.replace(' ', ''):
+    errors.append('feature_specific_capability_bypass_present')
+if "return $required!=='' && current_user_can($required);" not in controller:
+    errors.append('feature_specific_capability_enforcement_missing')
+for token in [
+    "'state'=>'configured'",
+    "smai_future_retired",
+    "smai_future_approval_integrity",
+    "smai_future_schema_gate",
+    "including dry-run",
+]:
+    if token not in service: errors.append(f'review1_guard_missing:{token}')
 if manifest.get('version')!='1.0.0-rc.6': errors.append('manifest_version_not_rc6')
 if manifest.get('schema_version')!='1.4.0': errors.append('manifest_schema_not_1_4_0')
 if manifest.get('contract_version')!='1.4.0': errors.append('manifest_contract_not_1_4_0')
