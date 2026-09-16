@@ -18,20 +18,41 @@ final class HealthService
     {
         $tables = [];
         $healthy = true;
+        $degradationReasons = [];
+
         foreach ($this->db->tables() as $name => $table) {
             $exists = $this->db->exists($name);
-            $healthy = $healthy && $exists;
+            if (!$exists) {
+                $healthy = false;
+                $degradationReasons[] = 'missing_table:' . $name;
+            }
             $tables[$name] = [
                 'status' => $exists ? 'available' : 'missing',
                 'count' => $includeCounts && $exists ? $this->db->count($name) : null,
             ];
         }
+
+        $schemaReady = RuntimeGate::schemaReady();
+        $migrationError = get_option('smai_schema_migration_error', null);
+        if (!$schemaReady) {
+            $healthy = false;
+            $degradationReasons[] = 'schema_not_ready';
+        }
+        if ((is_string($migrationError) && trim($migrationError) !== '')
+            || (is_array($migrationError) && $migrationError !== [])
+            || is_object($migrationError)) {
+            $healthy = false;
+            $degradationReasons[] = 'schema_migration_error';
+        }
+
         $secretConfigured = defined('SMAI_INGESTION_SECRET') && is_string(SMAI_INGESTION_SECRET) && strlen(SMAI_INGESTION_SECRET) >= 32;
         $pseudonymConfigured = defined('SMAI_PSEUDONYM_KEY') && is_string(SMAI_PSEUDONYM_KEY) && strlen(SMAI_PSEUDONYM_KEY) >= 32;
         $exportConfigured = defined('SMAI_EXPORT_KEY') && is_string(SMAI_EXPORT_KEY) && strlen(SMAI_EXPORT_KEY) >= 32;
         if ((RuntimeGate::ingestionEnabled() || RuntimeGate::workerEnabled()) && (!$secretConfigured || !$pseudonymConfigured)) {
             $healthy = false;
+            $degradationReasons[] = 'runtime_secret_missing';
         }
+
         $queue = $this->db->exists('jobs') ? $this->db->wpdb()->get_row(
             "SELECT SUM(state IN ('queued','retrying')) AS pending,SUM(state='dead_letter') AS dead,MIN(CASE WHEN state IN ('queued','retrying') THEN next_run_at END) AS oldest FROM `{$this->db->table('jobs')}`",
             ARRAY_A
@@ -40,10 +61,38 @@ final class HealthService
             "SELECT SUM(state='open') AS open_issues,SUM(state='open' AND severity IN ('high','critical')) AS high_critical FROM `{$this->db->table('quality_issues')}`",
             ARRAY_A
         ) : [];
+
+        $deletionSloHours = max(1, min(168, (int) get_option('smai_deletion_slo_hours', 24)));
+        $overdueDeletionJobs = 0;
+        if ($this->db->exists('deletion_jobs')) {
+            $cutoff = gmdate('Y-m-d H:i:s', time() - ($deletionSloHours * HOUR_IN_SECONDS));
+            $overdueDeletionJobs = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+                "SELECT COUNT(*) FROM `{$this->db->table('deletion_jobs')}` WHERE state NOT IN ('completed','cancelled') AND requested_at < %s",
+                $cutoff
+            ));
+            if ($overdueDeletionJobs > 0) {
+                $healthy = false;
+                $degradationReasons[] = 'overdue_deletion_jobs';
+            }
+        }
+
+        if (is_array($queue) && (int) ($queue['dead'] ?? 0) > 0) {
+            $degradationReasons[] = 'dead_letter_jobs_present';
+        }
+        if (is_array($quality) && (int) ($quality['high_critical'] ?? 0) > 0) {
+            $healthy = false;
+            $degradationReasons[] = 'high_or_critical_quality_issue';
+        }
+
+        $degradationReasons = array_values(array_unique($degradationReasons));
+
         return [
             'module' => 'CF-05',
             'version' => SMAI_VERSION,
             'schema_version' => (string) get_option('smai_schema_version', 'unknown'),
+            'expected_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',
+            'schema_ready' => $schemaReady,
+            'schema_migration_error' => $migrationError,
             'contract_version' => SMAI_CONTRACT_VERSION,
             'runtime_state' => RuntimeGate::state(),
             'activation_approved' => RuntimeGate::activationApproved(),
@@ -64,6 +113,9 @@ final class HealthService
                 'open_issues' => (int) ($quality['open_issues'] ?? 0),
                 'high_critical' => (int) ($quality['high_critical'] ?? 0),
             ] : [],
+            'deletion_slo_hours' => $deletionSloHours,
+            'overdue_deletion_jobs' => $overdueDeletionJobs,
+            'degradation_reasons' => $degradationReasons,
             'audit_chain' => $this->db->exists('audit_log') ? (new AuditVerifier($this->db))->verify(10000) : ['status' => 'unavailable'],
             'tables' => $tables,
             'status' => $healthy ? 'healthy_within_declared_scope' : 'degraded_or_unavailable',
