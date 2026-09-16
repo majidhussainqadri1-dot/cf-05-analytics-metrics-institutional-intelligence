@@ -58,6 +58,13 @@ if 'FutureActivationService::isApproved()' not in service:
 # Review-4 semantic invariants.
 for token in ['breaking_added_required_fields','zero_variance_baseline','over_budget','requires_review','metric_not_allowlisted','human_review_confirmed','is_finite','validDate']:
     if token not in engine: errors.append(f'review4_semantic_guard_missing:{token}')
+# Review-5 API/governance invariants.
+for token in ['IdempotencyGuard','private function mutation','smai_invalid_json','smai_request_too_large','X-Sabri-Trace-ID']:
+    if token not in controller: errors.append(f'review5_api_guard_missing:{token}')
+for token in ['logInOpenTransaction','START TRANSACTION','smai_future_activation_request_pending']:
+    if token not in activation: errors.append(f'review5_activation_atomicity_missing:{token}')
+if service.count('smai_future_actor_required') < 4:
+    errors.append('review5_service_actor_validation_incomplete')
 if manifest.get('version')!='1.0.0-rc.6': errors.append('manifest_version_not_rc6')
 if manifest.get('schema_version')!='1.4.0': errors.append('manifest_schema_not_1_4_0')
 if manifest.get('contract_version')!='1.4.0': errors.append('manifest_contract_not_1_4_0')
