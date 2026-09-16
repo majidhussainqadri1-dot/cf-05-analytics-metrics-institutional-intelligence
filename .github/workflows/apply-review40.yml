@@ -18,172 +18,23 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Recover and apply reviewed source payload
+      - name: Recover reviewed source
+        run: python3 scripts/apply-review40.py
+      - name: PHP syntax preflight
         run: |
           set -euo pipefail
-          cp src/Domain/NarrativeService.php /tmp/NarrativeService.php.reviewed
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64
-          import io
-          import re
-          import tarfile
-
-          parts = sorted(Path('.codex').glob('review40-part-*'))
-          if not parts:
-              raise SystemExit('No review40 payload parts found')
-
-          chunks = []
-          for part in parts:
-              text = ''.join(part.read_text(encoding='utf-8').split())
-              if not re.fullmatch(r'[A-Za-z0-9+/=]*', text):
-                  bad = sorted(set(re.sub(r'[A-Za-z0-9+/=]', '', text)))
-                  raise SystemExit(f'Invalid base64 characters in {part}: {bad!r}')
-              chunks.append((part.name, text))
-
-          merged = chunks[0][1]
-          print(f'{chunks[0][0]}: {len(chunks[0][1])} chars')
-          for name, chunk in chunks[1:]:
-              max_overlap = min(len(merged), len(chunk))
-              overlap = 0
-              for candidate in range(max_overlap, 63, -1):
-                  if merged.endswith(chunk[:candidate]):
-                      overlap = candidate
-                      break
-              if overlap:
-                  print(f'{name}: {len(chunk)} chars; removed {overlap}-char duplicate/overlap')
-              else:
-                  print(f'{name}: {len(chunk)} chars; no overlap')
-              merged += chunk[overlap:]
-
-          if '=' in merged[:-4]:
-              raise SystemExit('Unexpected base64 padding found before payload tail')
-          missing_padding = (-len(merged)) % 4
-          if missing_padding:
-              print(f'Adding {missing_padding} base64 padding character(s)')
-              merged += '=' * missing_padding
-
-          archive = base64.b64decode(merged, validate=True)
-          with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tf:
-              root = Path('.').resolve()
-              members = tf.getmembers()
-              for member in members:
-                  target = (root / member.name).resolve()
-                  if root not in target.parents and target != root:
-                      raise SystemExit(f'Unsafe archive path: {member.name}')
-                  if member.issym() or member.islnk():
-                      raise SystemExit(f'Archive links are not allowed: {member.name}')
-              print(f'Extracting {len(members)} reviewed payload members')
-              tf.extractall('.')
-          PY
-
-          # The recovered archive had one damaged PHP member. Keep the separately
-          # reconstructed, plan-governed NarrativeService instead of reintroducing it.
-          cp /tmp/NarrativeService.php.reviewed src/Domain/NarrativeService.php
-
-          # Complete the schema/migration controls that the forty-round review
-          # requires but which were intentionally outside the historical payload.
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/Infrastructure/SchemaMigrator.php')
-          text = path.read_text(encoding='utf-8')
-
-          old = "            consent_version varchar(64) NULL,\n            policy_version varchar(64) NULL,"
-          new = "            consent_version varchar(64) NULL,\n            guardian_consent_version varchar(64) NULL,\n            policy_version varchar(64) NULL,"
-          if 'guardian_consent_version' not in text:
-              if old not in text:
-                  raise SystemExit('Schema patch anchor for guardian consent was not found')
-              text = text.replace(old, new, 1)
-
-          old = "            subject_ref char(64) NOT NULL,\n            variant_key varchar(100) NOT NULL,"
-          new = "            subject_ref char(64) NULL,\n            experiment_subject char(64) NULL,\n            variant_key varchar(100) NOT NULL,"
-          if 'experiment_subject' not in text:
-              if old not in text:
-                  raise SystemExit('Schema patch anchor for experiment subject was not found')
-              text = text.replace(old, new, 1)
-              text = text.replace(
-                  "            KEY subject_ref (subject_ref)\n        ) {$charset};\";",
-                  "            KEY subject_ref (subject_ref),\n            KEY experiment_subject (experiment_subject)\n        ) {$charset};\";",
-                  1,
-              )
-
-          old = """        foreach ($sql as $statement) {
-            dbDelta($statement);
-        }
-
-        $wpdb->query($wpdb->prepare(
-            \"INSERT IGNORE INTO {$p}audit_state (id,last_hash,row_version,updated_at) VALUES (1,%s,1,%s)\",
-            str_repeat('0', 64),
-            gmdate('Y-m-d H:i:s')
-        ));
-
-        update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
-"""
-          new = """        update_option('smai_schema_migration_error', [
-            'code' => 'migration_in_progress',
-            'target_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',
-            'failed_at' => null,
-            'started_at' => gmdate('c'),
-        ], false);
-
-        try {
-            foreach ($sql as $statement) {
-                $wpdb->last_error = '';
-                dbDelta($statement);
-                if ((string) $wpdb->last_error !== '') {
-                    throw new \\RuntimeException('CF-05 schema migration failed: ' . (string) $wpdb->last_error);
-                }
-            }
-
-            $inserted = $wpdb->query($wpdb->prepare(
-                \"INSERT IGNORE INTO {$p}audit_state (id,last_hash,row_version,updated_at) VALUES (1,%s,1,%s)\",
-                str_repeat('0', 64),
-                gmdate('Y-m-d H:i:s')
-            ));
-            if ($inserted === false) {
-                throw new \\RuntimeException('CF-05 audit-state initialization failed: ' . (string) $wpdb->last_error);
-            }
-
-            update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
-            delete_option('smai_schema_migration_error');
-        } catch (\\Throwable $error) {
-            update_option('smai_schema_migration_error', [
-                'code' => 'schema_migration_failed',
-                'target_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',
-                'message_hash' => hash('sha256', $error->getMessage()),
-                'failed_at' => gmdate('c'),
-            ], false);
-            throw $error;
-        }
-"""
-          if "smai_schema_migration_error" not in text:
-              if old not in text:
-                  raise SystemExit('Schema migration-error patch anchor was not found')
-              text = text.replace(old, new, 1)
-
-          path.write_text(text, encoding='utf-8')
-          PY
-
-          echo '=== Payload changed files ==='
-          git diff --name-only
-          echo '=== PHP syntax preflight ==='
-          syntax_fail=0
-          while IFS= read -r -d '' file; do
-            if ! php -l "$file" >/tmp/php-lint.out 2>&1; then
-              syntax_fail=1
-              echo "--- SYNTAX FAILURE: $file ---"
-              cat /tmp/php-lint.out
-              nl -ba "$file" | sed -n '1,220p'
-            fi
-          done < <(find . -type f -name '*.php' -print0)
-          if [ "$syntax_fail" -ne 0 ]; then
-            exit 86
-          fi
-
-          rm -rf .codex
-          bash scripts/qa.sh
-          bash scripts/verify-deterministic-build.sh
+          find . -type f -name '*.php' -print0 | while IFS= read -r -d '' file; do
+            php -l "$file" >/dev/null
+          done
+      - name: Remove one-shot payload
+        run: rm -rf .codex
+      - name: Full governed QA
+        run: bash scripts/qa.sh
+      - name: Deterministic package verification
+        run: bash scripts/verify-deterministic-build.sh
+      - name: Commit reviewed corrections
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
