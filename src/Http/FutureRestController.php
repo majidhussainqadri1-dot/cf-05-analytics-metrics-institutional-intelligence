@@ -52,8 +52,8 @@ final class FutureRestController
                 return $this->response((new FutureFeatureService($this->db))->run((string)$request['feature_id'], is_array($payload['input']??null)?$payload['input']:[], get_current_user_id(), (bool)($payload['dry_run']??false)));
             },
             'permission_callback' => static function (WP_REST_Request $request): bool {
-                $definition=FutureFeatureRegistry::get((string)$request['feature_id']);if($definition===null)return false;$required=(string)($definition['capability']??'smai_run_future_intelligence');
-                return current_user_can($required)||current_user_can('smai_run_future_intelligence');
+                $definition=FutureFeatureRegistry::get((string)$request['feature_id']);if($definition===null)return false;$required=(string)($definition['capability']??'');
+                return $required!=='' && current_user_can($required);
             },
         ]);
         register_rest_route($namespace, '/future/incidents', [
