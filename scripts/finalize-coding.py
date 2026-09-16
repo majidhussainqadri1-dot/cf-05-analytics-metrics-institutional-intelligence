@@ -145,6 +145,11 @@ def patch_release_identity() -> None:
     replace_all('scripts/build-package.py', 'cf05-analytics-1-0-0-rc-4', 'cf05-analytics-1-0-0-rc-5')
     replace_all('scripts/verify-deterministic-build.sh', '1.0.0-rc.4', '1.0.0-rc.5')
     replace_all('scripts/verify-deterministic-build.sh', 'cf05-first-rc4.zip', 'cf05-first-rc5.zip')
+    replace_all(
+        'scripts/architecture-check.py',
+        "('1.0.0-rc.4','1.2.0','1.3.0')",
+        "('1.0.0-rc.5','1.3.0','1.3.0')",
+    )
 
     for path in ['README.md', 'readme.txt', 'docs/FORTY-ROUND-COMPLETION.md', 'docs/IMPLEMENTATION-STATUS.md']:
         replace_all(path, '1.0.0-rc.4', '1.0.0-rc.5')
