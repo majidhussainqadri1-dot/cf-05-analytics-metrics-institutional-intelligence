@@ -6,6 +6,7 @@ namespace Sabri\AnalyticsIntelligence\Domain;
 
 use Sabri\AnalyticsIntelligence\Infrastructure\AuditLogger;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
+use Sabri\AnalyticsIntelligence\Infrastructure\FutureActivationService;
 use Sabri\AnalyticsIntelligence\Infrastructure\Json;
 use Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate;
 use Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector;
@@ -87,7 +88,7 @@ final class FutureFeatureService
             if((int)$row['row_version']!==$expectedRowVersion)return $this->rollbackError(new WP_Error('smai_future_version_conflict','Future feature version conflict.',['status'=>409,'current_row_version'=>(int)$row['row_version']]));
             if($action==='approve'&&(int)$row['requested_by']===$actorUserId)return $this->rollbackError(new WP_Error('smai_future_independence_required','Independent approval is required.',['status'=>409]));
             if($action==='activate'&&($row['approved_by']===null||(int)$row['approved_by']<1||(int)$row['approved_by']===(int)$row['requested_by']))return $this->rollbackError(new WP_Error('smai_future_approval_integrity','A valid independent persisted approver is required before activation.',['status'=>409]));
-            if($action==='activate'&&!$this->future40ActivationApproved())return $this->rollbackError(new WP_Error('smai_future_activation_gate','Future-40 activation evidence is not approved.',['status'=>409]));
+            if($action==='activate'&&!FutureActivationService::isApproved())return $this->rollbackError(new WP_Error('smai_future_activation_gate','Future-40 activation evidence is not approved.',['status'=>409]));
             if($action==='activate'&&!RuntimeGate::queryEnabled())return $this->rollbackError(new WP_Error('smai_future_runtime_gate','Base CF-05 runtime is not enabled for this environment.',['status'=>409]));
             $newVersion=$expectedRowVersion+1;$updates=['state'=>$next,'row_version'=>$newVersion,'updated_at'=>$this->db->now()];if($action==='approve')$updates['approved_by']=$actorUserId;
             $ok=$wpdb->update($table,$updates,['feature_id'=>$id,'row_version'=>$expectedRowVersion]);if($ok!==1)return $this->rollbackError(new WP_Error('smai_future_transition_failed','Future feature transition failed.',['status'=>409]));
@@ -164,7 +165,7 @@ final class FutureFeatureService
 
     public function scheduledTick():void
     {
-        if(!$this->future40ActivationApproved()||!RuntimeGate::queryEnabled())return;
+        if(!FutureActivationService::isApproved()||!RuntimeGate::queryEnabled())return;
         $wpdb=$this->db->wpdb();
         $active=$wpdb->get_col("SELECT feature_id FROM `{$this->db->table('future_features')}` WHERE state='active' AND feature_id IN ('CF05-FUT-036','CF05-FUT-037')");
         foreach(is_array($active)?$active:[] as $featureId){
@@ -181,13 +182,6 @@ final class FutureFeatureService
                 $this->rollback();
             }
         }
-    }
-
-    private function future40ActivationApproved():bool
-    {
-        if(get_option('smai_future40_approved','0')!=='1')return false;$stored=strtolower((string)get_option('smai_future40_evidence_hash',''));
-        if(preg_match('/^[a-f0-9]{64}$/',$stored)!==1||!defined('SMAI_FUTURE40_EVIDENCE_SHA256')||!is_string(SMAI_FUTURE40_EVIDENCE_SHA256))return false;$configured=strtolower(SMAI_FUTURE40_EVIDENCE_SHA256);
-        return preg_match('/^[a-f0-9]{64}$/',$configured)===1&&hash_equals($stored,$configured);
     }
 
     private function begin():bool
