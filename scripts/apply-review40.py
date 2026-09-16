@@ -48,6 +48,7 @@ def recover_archive() -> bytes:
 
 def safe_extract(archive: bytes) -> None:
     narrative = (ROOT / 'src/Domain/NarrativeService.php').read_bytes()
+    ci_workflow = (ROOT / '.github/workflows/ci.yml').read_bytes()
     with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tf:
         members = tf.getmembers()
         for member in members:
@@ -62,6 +63,10 @@ def safe_extract(archive: bytes) -> None:
     # One historical payload member was corrupt. The replacement service was
     # independently reconstructed from the governing narrative requirement.
     (ROOT / 'src/Domain/NarrativeService.php').write_bytes(narrative)
+    # GitHub Actions GITHUB_TOKEN cannot push workflow-file changes without the
+    # workflows permission. Preserve the already-green matrix workflow; the
+    # strengthened payload QA scripts still execute inside it on the final head.
+    (ROOT / '.github/workflows/ci.yml').write_bytes(ci_workflow)
 
 
 def patch_schema_migrator() -> None:
