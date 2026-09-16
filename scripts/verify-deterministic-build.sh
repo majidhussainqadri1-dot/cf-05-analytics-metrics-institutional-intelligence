@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+rm -rf build/dist
 bash scripts/build-package.sh >/dev/null
-first=$(sha256sum build/dist/*.zip | awk '{print $1}')
-cp build/dist/*.zip /tmp/cf05-first.zip
+archive="build/dist/CF-05-sabri-analytics-institutional-intelligence-1.0.0-rc.4.zip"
+first=$(sha256sum "$archive" | awk '{print $1}')
+cp "$archive" /tmp/cf05-first-rc4.zip
+rm -rf build/dist
 bash scripts/build-package.sh >/dev/null
-second=$(sha256sum build/dist/*.zip | awk '{print $1}')
+second=$(sha256sum "$archive" | awk '{print $1}')
 test "$first" = "$second"
-cmp -s /tmp/cf05-first.zip build/dist/*.zip
+cmp -s /tmp/cf05-first-rc4.zip "$archive"
+python3 scripts/package-parity.py
 printf 'Deterministic package verified: %s\n' "$second"

@@ -9,6 +9,8 @@ use Sabri\AnalyticsIntelligence\Infrastructure\Json;
 
 final class LineageService
 {
+    private const TYPES = ['event','dataset','build','metric','snapshot','report','export','experiment','analysis','decision','provider','restore'];
+
     private Database $db;
 
     public function __construct(Database $db)
@@ -27,8 +29,15 @@ final class LineageService
         ?string $jobUuid = null,
         ?string $codeSha = null
     ): bool {
-        $allowed = ['event','dataset','build','metric','snapshot','report','export','experiment','analysis','decision','provider','restore'];
-        if (!in_array($fromType, $allowed, true) || !in_array($toType, $allowed, true)) {
+        if (!in_array($fromType, self::TYPES, true)
+            || !in_array($toType, self::TYPES, true)
+            || !$this->validRef($fromRef, 190)
+            || !$this->validRef($toRef, 190)
+            || preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/', $ownerModule) !== 1
+            || !$this->validOptionalVersion($fromVersion)
+            || !$this->validOptionalVersion($toVersion)
+            || ($jobUuid !== null && preg_match('/^[0-9a-f-]{36}$/i', $jobUuid) !== 1)
+            || ($codeSha !== null && preg_match('/^[a-f0-9]{40,64}$/', $codeSha) !== 1)) {
             return false;
         }
         $canonical = [
@@ -58,19 +67,41 @@ final class LineageService
             $hash,
             $this->db->now()
         ));
-        return $inserted === 1 || $inserted === 0;
+        if ($inserted === 1) {
+            return true;
+        }
+        if ($inserted === 0) {
+            $existing = $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+                "SELECT edge_hash FROM `{$table}` WHERE edge_hash=%s",
+                $hash
+            ));
+            return is_string($existing) && hash_equals($existing, $hash);
+        }
+        return false;
     }
 
     /** @return array<int,array<string,mixed>> */
     public function upstream(string $type, string $ref, int $limit = 200): array
     {
-        $table = $this->db->table('lineage_edges');
+        if (!in_array($type, self::TYPES, true) || !$this->validRef($ref, 190)) {
+            return [];
+        }
         $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare(
-            "SELECT * FROM `{$table}` WHERE to_type=%s AND to_ref=%s ORDER BY id DESC LIMIT %d",
+            "SELECT * FROM `{$this->db->table('lineage_edges')}` WHERE to_type=%s AND to_ref=%s ORDER BY id DESC LIMIT %d",
             $type,
             $ref,
             max(1, min(1000, $limit))
         ), ARRAY_A);
         return is_array($rows) ? $rows : [];
+    }
+
+    private function validRef(string $value, int $maximum): bool
+    {
+        return $value !== '' && strlen($value) <= $maximum && preg_match('/^[A-Za-z0-9_.:@|\/-]+$/', $value) === 1;
+    }
+
+    private function validOptionalVersion(?string $version): bool
+    {
+        return $version === null || ($version !== '' && strlen($version) <= 64 && preg_match('/^[A-Za-z0-9_.:+-]+$/', $version) === 1);
     }
 }

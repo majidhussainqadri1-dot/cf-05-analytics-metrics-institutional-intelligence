@@ -53,6 +53,7 @@ final class SchemaMigrator
             deletion_key char(64) NULL,
             purpose varchar(190) NOT NULL,
             consent_version varchar(64) NULL,
+            guardian_consent_version varchar(64) NULL,
             policy_version varchar(64) NULL,
             trace_id varchar(100) NULL,
             properties_json longtext NOT NULL,
@@ -623,7 +624,8 @@ final class SchemaMigrator
             id bigint unsigned NOT NULL AUTO_INCREMENT,
             experiment_uuid char(36) NOT NULL,
             assignment_event_id char(36) NOT NULL,
-            subject_ref char(64) NOT NULL,
+            subject_ref char(64) NULL,
+            experiment_subject char(64) NULL,
             variant_key varchar(100) NOT NULL,
             assignment_owner varchar(100) NOT NULL,
             occurred_at datetime NOT NULL,
@@ -632,7 +634,8 @@ final class SchemaMigrator
             PRIMARY KEY (id),
             UNIQUE KEY assignment_event_id (assignment_event_id),
             KEY experiment_variant (experiment_uuid,variant_key),
-            KEY subject_ref (subject_ref)
+            KEY subject_ref (subject_ref),
+            KEY experiment_subject (experiment_subject)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}experiment_analyses (
@@ -757,16 +760,41 @@ final class SchemaMigrator
             KEY metric (metric_id,metric_version)
         ) {$charset};";
 
-        foreach ($sql as $statement) {
-            dbDelta($statement);
+        update_option('smai_schema_migration_error', [
+            'code' => 'migration_in_progress',
+            'target_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',
+            'failed_at' => null,
+            'started_at' => gmdate('c'),
+        ], false);
+
+        try {
+            foreach ($sql as $statement) {
+                $wpdb->last_error = '';
+                dbDelta($statement);
+                if ((string) $wpdb->last_error !== '') {
+                    throw new \RuntimeException('CF-05 schema migration failed: ' . (string) $wpdb->last_error);
+                }
+            }
+
+            $inserted = $wpdb->query($wpdb->prepare(
+                "INSERT IGNORE INTO {$p}audit_state (id,last_hash,row_version,updated_at) VALUES (1,%s,1,%s)",
+                str_repeat('0', 64),
+                gmdate('Y-m-d H:i:s')
+            ));
+            if ($inserted === false) {
+                throw new \RuntimeException('CF-05 audit-state initialization failed: ' . (string) $wpdb->last_error);
+            }
+
+            update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
+            delete_option('smai_schema_migration_error');
+        } catch (\Throwable $error) {
+            update_option('smai_schema_migration_error', [
+                'code' => 'schema_migration_failed',
+                'target_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',
+                'message_hash' => hash('sha256', $error->getMessage()),
+                'failed_at' => gmdate('c'),
+            ], false);
+            throw $error;
         }
-
-        $wpdb->query($wpdb->prepare(
-            "INSERT IGNORE INTO {$p}audit_state (id,last_hash,row_version,updated_at) VALUES (1,%s,1,%s)",
-            str_repeat('0', 64),
-            gmdate('Y-m-d H:i:s')
-        ));
-
-        update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
     }
 }

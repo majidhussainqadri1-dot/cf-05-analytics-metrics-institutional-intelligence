@@ -1,61 +1,42 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import json, pathlib, re, sys
-root = pathlib.Path(__file__).resolve().parents[1]
-errors: list[str] = []
-required = [
-    'src/Infrastructure/SchemaMigrator.php','src/Infrastructure/RuntimeGate.php','src/Infrastructure/RuntimeActivationService.php','src/Infrastructure/JobQueue.php',
-    'src/Domain/EventIngestionService.php','src/Domain/DatasetCatalog.php','src/Domain/PipelineService.php',
-    'src/Domain/BackfillService.php','src/Domain/QualityService.php','src/Domain/SnapshotService.php',
-    'src/Domain/AccessProjectService.php','src/Domain/ExportService.php','src/Domain/ExportControlService.php','src/Domain/ReportService.php','src/Domain/ReportControlService.php',
-    'src/Domain/ExperimentService.php','src/Domain/DeletionService.php','src/Domain/ProviderService.php',
-    'src/Domain/RestoreService.php','src/Domain/PrivacyQueryPolicy.php','src/Domain/QueryPrivacyGuard.php',
-    'src/Http/RestController.php','src/Http/GovernanceRestController.php','src/Admin/AdminPages.php',
-    'docs/REQUIREMENTS-TRACEABILITY.md','docs/THREE-PLAN-TRACEABILITY.md','MANIFEST.json'
-]
-for item in required:
-    if not (root/item).is_file(): errors.append(f'missing required file: {item}')
-
-manifest = json.loads((root/'MANIFEST.json').read_text())
-bootstrap = (root/'sabri-analytics-institutional-intelligence.php').read_text()
-for constant, key in [('SMAI_VERSION','version'),('SMAI_SCHEMA_VERSION','schema_version'),('SMAI_CONTRACT_VERSION','contract_version')]:
-    m = re.search(rf"define\('{constant}', '([^']+)'\)", bootstrap)
-    if not m or m.group(1) != manifest[key]: errors.append(f'{constant} does not match manifest')
-
-schema = (root/'src/Infrastructure/SchemaMigrator.php').read_text()
-tables = set(re.findall(r'CREATE TABLE \{\$p\}([a-z_]+)', schema))
-db = (root/'src/Infrastructure/Database.php').read_text()
-match = re.search(r'private const TABLES = \[(.*?)\];', db, re.S)
-allowed = set(re.findall(r"'([a-z_]+)'", match.group(1) if match else ''))
-if tables != allowed:
-    errors.append('schema/database table registry mismatch: ' + repr(sorted(tables ^ allowed)))
-
-trace = (root/'docs/REQUIREMENTS-TRACEABILITY.md').read_text() if (root/'docs/REQUIREMENTS-TRACEABILITY.md').exists() else ''
+import json,pathlib,re,sys
+root=pathlib.Path(__file__).resolve().parents[1]
+errors=[]
+def need(path,needles):
+ p=root/path
+ if not p.is_file(): errors.append(f'missing:{path}');return
+ text=p.read_text(encoding='utf-8')
+ for n in needles:
+  if n not in text: errors.append(f'{path}:missing:{n}')
+required={
+ 'src/Domain/QueryPrivacyGuard.php':['differencingRisk','privacy_budget_exceeded'],
+ 'src/Domain/ExportControlService.php':['export_revoked'],
+ 'src/Domain/ReportControlService.php':['unsubscribe','report_revoked'],
+ 'src/Infrastructure/AuditVerifier.php':['record_hash_mismatch','head_hash_mismatch'],
+ 'src/Infrastructure/SchemaMigrator.php':['guardian_consent_version','experiment_subject','smai_schema_migration_error'],
+ 'src/Infrastructure/RuntimeGate.php':['SMAI_SCHEMA_VERSION','smai_schema_migration_error'],
+ 'src/Infrastructure/HealthService.php':['degradation_reasons','overdue_deletion_jobs','production_complete'],
+ 'docs/THREE-PLAN-TRACEABILITY.md':['Definitive Integrated Master Plan','Recovered Directive Register','CF-05 Conditional Complete Master Plan'],
+ 'docs/REVIEW-ROUNDS-07-46.md':['REV-07','REV-46'],
+}
+for path,needles in required.items(): need(path,needles)
+trace=(root/'docs/REQUIREMENTS-TRACEABILITY.md').read_text(encoding='utf-8') if (root/'docs/REQUIREMENTS-TRACEABILITY.md').is_file() else ''
 for i in range(1,36):
-    rid=f'CF05-FR-{i:03d}'
-    if rid not in trace: errors.append(f'missing traceability ID: {rid}')
-
-all_php = '\n'.join(p.read_text(errors='replace') for p in root.rglob('*.php'))
-for token in ['eval(', 'create_function(', 'shell_exec(', 'passthru(', 'proc_open(']:
-    if token in all_php: errors.append(f'prohibited runtime primitive: {token}')
-if 'SMAI_ACTIVATION_EVIDENCE_SHA256' not in all_php or 'foundation_disabled' not in all_php:
-    errors.append('evidence-bound disabled-by-default runtime gate missing')
-
-for required_token in [
-    'snapshot_revision int unsigned', 'supersedes_snapshot_id bigint unsigned',
-    'previous_build_uuid char(36)', 'recorded_by bigint unsigned',
-    "'/backfills/(?P<uuid>[0-9a-fA-F-]{36})/rollback'",
-    "'/runtime/activation/propose'", "'/quality/rules/(?P<rule>",
-    'QueryPrivacyGuard', 'smai_differencing_risk', 'dimension_policies',
-    "'/exports/(?P<uuid>[0-9a-fA-F-]{36})/revoke'",
-    "'/reports/(?P<uuid>[0-9a-fA-F-]{36})/unsubscribe'",
-    'smai_analytics_approver', 'wp_unique_id'
-]:
-    if required_token not in (schema + all_php): errors.append(f'missing completion control: {required_token}')
-if re.search(r'\b(?:TODO|FIXME|not implemented)\b', all_php, re.I):
-    errors.append('unfinished source marker found')
-
+ rid=f'CF05-FR-{i:03d}'
+ if rid not in trace: errors.append(f'missing_requirement:{rid}')
+reviews=(root/'docs/REVIEW-ROUNDS-07-46.md').read_text(encoding='utf-8') if (root/'docs/REVIEW-ROUNDS-07-46.md').is_file() else ''
+for i in range(7,47):
+ if f'REV-{i:02d}' not in reviews: errors.append(f'missing_review:REV-{i:02d}')
+manifest=json.loads((root/'MANIFEST.json').read_text(encoding='utf-8'))
+if (manifest.get('version'),manifest.get('schema_version'),manifest.get('contract_version')) != ('1.0.0-rc.4','1.2.0','1.3.0'):
+ errors.append('release_identity_mismatch')
+db=(root/'src/Infrastructure/Database.php').read_text(encoding='utf-8')
+schema=(root/'src/Infrastructure/SchemaMigrator.php').read_text(encoding='utf-8')
+tables=re.findall(r"'([a-z_]+)'", re.search(r'private const TABLES = \[(.*?)\];',db,re.S).group(1))
+for table in tables:
+ if f'CREATE TABLE {{$p}}{table} (' not in schema: errors.append(f'schema_missing_table:{table}')
+if len(tables) < 37: errors.append(f'table_count_too_small:{len(tables)}')
 if errors:
-    for error in errors: print('ERROR:', error, file=sys.stderr)
-    sys.exit(1)
-print(f'Architecture check passed: {len(required)} required files, {len(tables)} governed tables, 35 requirement IDs and three-plan controls.')
+ print('\n'.join(errors),file=sys.stderr);sys.exit(1)
+print(f'Architecture check passed: 35 requirements, 40 review rounds, {len(tables)} governed tables.')

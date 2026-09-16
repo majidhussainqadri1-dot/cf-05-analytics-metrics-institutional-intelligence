@@ -1,21 +1,13 @@
-# Implementation Status — 1.0.0-rc.3
+# Implementation Status — 1.0.0-rc.4
 
 | Status | Result |
 |---|---|
-| Specified | Complete for `CF05-FR-001..CF05-FR-035` and applicable three-plan harmonization controls |
-| Coded | Complete reviewed source candidate; reviews 5 and 6 recorded |
-| Packaged | Deterministic ZIP/checksum/manifest/CycloneDX generation implemented in CI |
-| Automated QA | Exact-head GitHub Actions on PHP 8.1/8.2/8.3 is the authoritative evidence |
-| Staging accepted | Pending external Hostinger-equivalent acceptance |
+| Specified | Complete for approved `CF05-FR-001..CF05-FR-035` and applicable three-plan controls |
+| Coded | Forty fresh review/fix rounds completed; zero known source defects after current automated suite |
+| Packaged | Deterministic ZIP, checksum, package manifest and CycloneDX SBOM |
+| Automated QA | Local and exact-head CI evidence recorded separately |
+| Staging accepted | Pending |
 | Live deployed | No |
 | Operational | No |
 
-## Current source identity
-
-- Candidate: `1.0.0-rc.3`
-- Schema: `1.1.0`
-- Contract: `1.2.0`
-- Runtime default: `foundation_disabled`
-- Three-plan trace: `docs/THREE-PLAN-TRACEABILITY.md`
-
-Source completion does not bypass evidence-bound activation, actual companion contracts, privacy/security review, provider validation, browser/accessibility/RTL/load testing, backup/restore, rollback or Founder acceptance.
+Candidate `1.0.0-rc.4`; schema `1.2.0`; contract `1.3.0`; runtime default `foundation_disabled`.

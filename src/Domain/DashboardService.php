@@ -7,6 +7,7 @@ namespace Sabri\AnalyticsIntelligence\Domain;
 use Sabri\AnalyticsIntelligence\Infrastructure\AuditLogger;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\Json;
+use Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector;
 use Sabri\AnalyticsIntelligence\Infrastructure\Text;
 use WP_Error;
 
@@ -24,6 +25,10 @@ final class DashboardService
     /** @param array<string,mixed> $definition */
     public function register(array $definition, int $actorUserId): array|WP_Error
     {
+        $allowedDefinitionKeys = ['dashboard_id','dashboard_version','name','project_uuid','audience','widgets','expires_at'];
+        if (array_diff(array_keys($definition), $allowedDefinitionKeys) !== []) {
+            return new WP_Error('smai_invalid_dashboard', 'Dashboard definition contains unsupported fields.', ['status' => 400]);
+        }
         foreach (['dashboard_id','dashboard_version','name','project_uuid','audience','widgets'] as $key) {
             if (!array_key_exists($key, $definition)) {
                 return new WP_Error('smai_invalid_dashboard', 'Dashboard definition is incomplete.', ['status' => 400, 'field' => $key]);
@@ -33,6 +38,8 @@ final class DashboardService
             || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) $definition['dashboard_id']) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', (string) $definition['dashboard_version']) !== 1
             || strlen(trim((string) $definition['name'])) < 3
+            || (new SensitiveValueDetector())->violations((string) $definition['name']) !== []
+            || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', (string) $definition['project_uuid']) !== 1
             || !is_array($definition['audience'])
             || !is_array($definition['widgets'])
             || $definition['widgets'] === []
@@ -54,6 +61,10 @@ final class DashboardService
             if (!is_array($widget)) {
                 return new WP_Error('smai_invalid_dashboard_widget', 'Dashboard widget must be an object.', ['status' => 400]);
             }
+            $allowedWidgetKeys = ['key','metric_id','metric_version','dimensions','label','description','visualization','unit'];
+            if (array_diff(array_keys($widget), $allowedWidgetKeys) !== [] || (new SensitiveValueDetector())->violations($widget) !== []) {
+                return new WP_Error('smai_invalid_dashboard_widget', 'Dashboard widget contains unsupported or sensitive fields.', ['status' => 400]);
+            }
             $key = (string) ($widget['key'] ?? 'widget-' . $position);
             $metricId = (string) ($widget['metric_id'] ?? '');
             $metricVersion = (string) ($widget['metric_version'] ?? '');
@@ -70,9 +81,12 @@ final class DashboardService
             }
             $allowedDimensions = array_map('strval', (array) (($metric['definition']['dimensions'] ?? [])));
             foreach (array_keys($dimensions) as $dimension) {
-                if (!in_array((string) $dimension, $allowedDimensions, true) || !is_scalar($dimensions[$dimension]) && $dimensions[$dimension] !== null) {
+                if (!in_array((string) $dimension, $allowedDimensions, true) || (!is_scalar($dimensions[$dimension]) && $dimensions[$dimension] !== null)) {
                     return new WP_Error('smai_dashboard_dimension_denied', 'Dashboard dimension is not approved.', ['status' => 400]);
                 }
+            }
+            if (PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) !== []) {
+                return new WP_Error('smai_dashboard_privacy_policy_denied', 'Dashboard widget violates the metric privacy policy.', ['status' => 403]);
             }
             ksort($dimensions);
             $widget['key'] = $key;
@@ -144,8 +158,10 @@ final class DashboardService
                     throw new \RuntimeException('Dashboard widget could not be stored.');
                 }
             }
+            if (!$this->audit->log('dashboard_registered', 'dashboard', $definition['dashboard_id'] . '@' . $definition['dashboard_version'], 'success', ['project_uuid' => $definition['project_uuid'], 'definition_hash' => $hash], 'institutional_reporting', null, $actorUserId)) {
+                throw new \RuntimeException('Dashboard audit evidence could not be stored.');
+            }
             $wpdb->query('COMMIT');
-            $this->audit->log('dashboard_registered', 'dashboard', $definition['dashboard_id'] . '@' . $definition['dashboard_version'], 'success', ['project_uuid' => $definition['project_uuid'], 'definition_hash' => $hash], 'institutional_reporting', null, $actorUserId);
             return ['id' => $id, 'state' => 'draft', 'row_version' => 1, 'definition_hash' => $hash];
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
@@ -155,6 +171,11 @@ final class DashboardService
 
     public function activate(string $dashboardId, string $version, int $expectedVersion, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || $expectedVersion < 1
+            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $dashboardId) !== 1
+            || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1) {
+            return new WP_Error('smai_invalid_dashboard_activation', 'Dashboard activation request is invalid.', ['status' => 400]);
+        }
         $table = $this->db->table('dashboard_definitions');
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE dashboard_id=%s AND dashboard_version=%s", $dashboardId, $version), ARRAY_A);
         if (!is_array($row) || (string) $row['state'] !== 'draft' || (int) $row['row_version'] !== $expectedVersion) {
@@ -167,22 +188,30 @@ final class DashboardService
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_dashboard_project_inactive', 'Dashboard access project is inactive.', ['status' => 409]);
         }
-        $updated = $this->db->wpdb()->update($table, [
+        $wpdb = $this->db->wpdb();
+        $wpdb->query('START TRANSACTION');
+        $updated = $wpdb->update($table, [
             'state' => 'active',
             'approved_by' => $actorUserId,
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'state' => 'draft', 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {
-            return new WP_Error('smai_dashboard_conflict', 'Dashboard changed concurrently.', ['status' => 409]);
+        if ($updated !== 1 || !$this->audit->log('dashboard_activated', 'dashboard', $dashboardId . '@' . $version, 'success', [], 'institutional_reporting', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_dashboard_conflict', 'Dashboard activation or audit evidence could not be committed.', ['status' => 409]);
         }
-        $this->audit->log('dashboard_activated', 'dashboard', $dashboardId . '@' . $version, 'success', [], 'institutional_reporting', null, $actorUserId);
+        $wpdb->query('COMMIT');
         return ['dashboard_id' => $dashboardId, 'dashboard_version' => $version, 'state' => 'active', 'row_version' => $expectedVersion + 1];
     }
 
     /** @return array<string,mixed>|WP_Error */
     public function bundle(string $dashboardId, string $version, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1
+            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $dashboardId) !== 1
+            || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1) {
+            return new WP_Error('smai_invalid_dashboard_query', 'Dashboard query is invalid.', ['status' => 400]);
+        }
         $table = $this->db->table('dashboard_definitions');
         $dashboard = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
             "SELECT * FROM `{$table}` WHERE dashboard_id=%s AND dashboard_version=%s AND state='active'",
@@ -227,7 +256,11 @@ final class DashboardService
                     hash('sha256', Json::canonical($dimensions))
                 ), ARRAY_A)
                 : null;
-            $suppressed = is_array($row) && (string) $row['quality_status'] === 'suppressed';
+            $metric = (new MetricCatalog($this->db))->active($metricId, $metricVersion);
+            $minimum = is_array($metric) ? PrivacyQueryPolicy::effectiveMinimum((array) $metric['definition'], $dimensions, (int) get_option('smai_minimum_cohort', 20)) : PHP_INT_MAX;
+            $suppressed = is_array($row) && ((string) $row['quality_status'] === 'suppressed' || (int) $row['cohort_size'] < $minimum);
+            $invalidated = is_array($row) && (string) $row['quality_status'] === 'invalidated';
+            if ($invalidated) { $row = null; }
             $out['widgets'][] = [
                 'key' => $widget['widget_key'],
                 'label' => Text::truncate(wp_strip_all_tags((string) ($config['label'] ?? $widget['widget_key'])), 190),
@@ -243,17 +276,27 @@ final class DashboardService
                 'caveats' => is_array($row) ? Json::list((string) ($row['caveats_json'] ?? '[]')) : ['No approved snapshot is available.'],
             ];
         }
-        $this->audit->log('dashboard_viewed', 'dashboard', $dashboardId . '@' . $version, 'success', ['widget_count' => count($out['widgets'])], 'institutional_reporting', null, $actorUserId);
+        if (!$this->audit->log('dashboard_viewed', 'dashboard', $dashboardId . '@' . $version, 'success', ['widget_count' => count($out['widgets'])], 'institutional_reporting', null, $actorUserId)) {
+            return new WP_Error('smai_audit_failed', 'Dashboard was withheld because access audit evidence failed.', ['status' => 503]);
+        }
         return $out;
     }
 
     /** @param array<string,mixed> $audience @return array<string,mixed>|WP_Error */
     private function normalizeAudience(array $audience): array|WP_Error
     {
-        $caps = array_values(array_unique(array_filter(array_map('strval', (array) ($audience['capabilities'] ?? [])), static fn(string $cap): bool => preg_match('/^[a-z][a-z0-9_]{2,99}$/', $cap) === 1)));
+        if (array_diff(array_keys($audience), ['capabilities','user_ids']) !== []) {
+            return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience contains unsupported fields.', ['status' => 400]);
+        }
+        $allowedCaps = ['smai_view_insights','smai_audit'];
+        $caps = array_values(array_unique(array_map('strval', (array) ($audience['capabilities'] ?? []))));
+        if (array_diff($caps, $allowedCaps) !== []) {
+            return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience capability is not approved.', ['status' => 400]);
+        }
+        sort($caps, SORT_STRING);
         $users = [];
         foreach ((array) ($audience['user_ids'] ?? []) as $userId) {
-            if ((int) $userId < 1) {
+            if ((int) $userId < 1 || !user_can((int) $userId, 'smai_view_insights')) {
                 return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience contains an invalid user.', ['status' => 400]);
             }
             $users[(int) $userId] = (int) $userId;
@@ -274,7 +317,7 @@ final class DashboardService
             return true;
         }
         foreach (array_map('strval', (array) ($audience['capabilities'] ?? [])) as $capability) {
-            if (current_user_can($capability)) {
+            if (user_can($actorUserId, $capability)) {
                 return true;
             }
         }

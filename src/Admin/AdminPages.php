@@ -182,16 +182,21 @@ final class AdminPages
     {
         $this->requireCapability('smai_manage_quality');
         check_admin_referer('smai_safe_repair');
-        (new RepairService($this->db))->safeRepair();
-        wp_safe_redirect(add_query_arg(['page' => 'smai-system', 'smai_repaired' => '1'], admin_url('admin.php')));
+        $result = (new RepairService($this->db))->safeRepair();
+        $targetPage = current_user_can('smai_audit') ? 'smai-system' : 'smai-quality';
+        $status = is_array($result) && ($result['status'] ?? '') === 'repaired' ? '1' : '0';
+        wp_safe_redirect(add_query_arg(['page' => $targetPage, 'smai_repaired' => $status], admin_url('admin.php')));
         exit;
     }
 
     private function open(string $title, string $icon): void
     {
         echo '<div class="wrap smai-wrap" dir="auto"><h1><span class="dashicons ' . esc_attr($icon) . '" aria-hidden="true"></span> ' . esc_html($title) . '</h1>';
-        if (isset($_GET['smai_repaired']) && $_GET['smai_repaired'] === '1') { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $repairStatus = isset($_GET['smai_repaired']) ? sanitize_key(wp_unslash((string) $_GET['smai_repaired'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        if ($repairStatus === '1') {
             echo '<div class="notice notice-success inline"><p>' . esc_html__('Safe repair completed. Review the fresh health evidence below.', 'sabri-analytics-institutional-intelligence') . '</p></div>';
+        } elseif ($repairStatus === '0') {
+            echo '<div class="notice notice-warning inline"><p>' . esc_html__('Safe repair completed with unresolved conditions. Review the health evidence and audit trail.', 'sabri-analytics-institutional-intelligence') . '</p></div>';
         }
     }
 

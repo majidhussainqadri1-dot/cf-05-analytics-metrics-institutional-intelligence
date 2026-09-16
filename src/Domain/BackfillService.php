@@ -31,7 +31,10 @@ final class BackfillService
     {
         $startDate = $this->normalizeDate($start);
         $endDate = $this->normalizeDate($end);
-        if ($actorUserId < 1 || $startDate === null || $endDate === null || $startDate >= $endDate) {
+        if ($actorUserId < 1
+            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $datasetId) !== 1
+            || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1
+            || $startDate === null || $endDate === null || $startDate >= $endDate) {
             return new WP_Error('smai_invalid_backfill_window', 'Backfill window is invalid.', ['status' => 400]);
         }
         if ((strtotime($endDate) - strtotime($startDate)) > 366 * DAY_IN_SECONDS) {
@@ -61,7 +64,9 @@ final class BackfillService
         ];
         $uuid = Uuid::v4();
         $now = $this->db->now();
-        $ok = $this->db->wpdb()->insert($this->db->table('backfills'), [
+        $wpdb = $this->db->wpdb();
+        $wpdb->query('START TRANSACTION');
+        $ok = $wpdb->insert($this->db->table('backfills'), [
             'backfill_uuid' => $uuid,
             'dataset_id' => $datasetId,
             'dataset_version' => $version,
@@ -75,14 +80,22 @@ final class BackfillService
             'updated_at' => $now,
         ]);
         if ($ok !== 1) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_backfill_store_failed', 'Backfill plan could not be stored.', ['status' => 500]);
         }
-        $this->audit->log('backfill_planned', 'backfill', $uuid, 'success', ['dataset_ref' => $datasetId . '@' . $version, 'window_start' => $startDate, 'window_end' => $endDate], 'data_rebuild', null, $actorUserId);
+        if (!$this->audit->log('backfill_planned', 'backfill', $uuid, 'success', ['dataset_ref' => $datasetId . '@' . $version, 'window_start' => $startDate, 'window_end' => $endDate], 'data_rebuild', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_audit_failed', 'Backfill plan was not committed because audit evidence failed.', ['status' => 503]);
+        }
+        $wpdb->query('COMMIT');
         return ['backfill_uuid' => $uuid, 'state' => 'planned', 'row_version' => 1];
     }
 
     public function dryRun(string $uuid, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1) {
+            return new WP_Error('smai_invalid_backfill_request', 'Backfill request is invalid.', ['status' => 400]);
+        }
         $row = $this->backfill($uuid);
         if ($row === null || (string) $row['state'] !== 'planned') {
             return new WP_Error('smai_backfill_not_planned', 'Backfill is not in planned state.', ['status' => 409]);
@@ -103,21 +116,31 @@ final class BackfillService
             'window_start' => $row['date_start'],
             'window_end' => $row['date_end'],
         ];
-        $updated = $this->db->wpdb()->update($this->db->table('backfills'), [
+        $wpdb = $this->db->wpdb();
+        $wpdb->query('START TRANSACTION');
+        $updated = $wpdb->update($this->db->table('backfills'), [
             'state' => 'dry_run',
             'dry_run_json' => Json::encode($estimate),
             'row_version' => (int) $row['row_version'] + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'state' => 'planned', 'row_version' => (int) $row['row_version']]);
         if ($updated !== 1) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_backfill_conflict', 'Backfill changed concurrently.', ['status' => 409]);
         }
-        $this->audit->log('backfill_dry_run', 'backfill', $uuid, 'success', $estimate, 'data_rebuild', null, $actorUserId);
+        if (!$this->audit->log('backfill_dry_run', 'backfill', $uuid, 'success', $estimate, 'data_rebuild', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_audit_failed', 'Dry-run result was not committed because audit evidence failed.', ['status' => 503]);
+        }
+        $wpdb->query('COMMIT');
         return ['backfill_uuid' => $uuid, 'state' => 'dry_run', 'estimate' => $estimate, 'row_version' => (int) $row['row_version'] + 1];
     }
 
     public function approveAndQueue(string $uuid, int $expectedVersion, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || $expectedVersion < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1) {
+            return new WP_Error('smai_invalid_backfill_request', 'Backfill request is invalid.', ['status' => 400]);
+        }
         $row = $this->backfill($uuid);
         if ($row === null || (string) $row['state'] !== 'dry_run' || (int) $row['row_version'] !== $expectedVersion) {
             return new WP_Error('smai_backfill_not_ready', 'Backfill is not ready or is stale.', ['status' => 409]);
@@ -130,20 +153,28 @@ final class BackfillService
         if (isset($definition['expected_source_events']) && abs((int) $dryRun['source_events'] - (int) $definition['expected_source_events']) > (int) $definition['max_count_delta']) {
             return new WP_Error('smai_backfill_dry_run_outside_tolerance', 'Dry-run source count is outside the approved tolerance.', ['status' => 409]);
         }
-        $updated = $this->db->wpdb()->update($this->db->table('backfills'), [
+        $wpdb = $this->db->wpdb();
+        $wpdb->query('START TRANSACTION');
+        $updated = $wpdb->update($this->db->table('backfills'), [
             'state' => 'approved',
             'approved_by' => $actorUserId,
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'state' => 'dry_run', 'row_version' => $expectedVersion]);
         if ($updated !== 1) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_backfill_conflict', 'Backfill changed concurrently.', ['status' => 409]);
         }
         $job = (new JobQueue($this->db))->enqueue('backfill.run', ['backfill_uuid' => $uuid, 'actor_user_id' => $actorUserId], 'backfill|' . $uuid . '|cursor|0');
         if (is_wp_error($job)) {
-            $this->db->wpdb()->update($this->db->table('backfills'), ['state' => 'dry_run', 'approved_by' => null, 'row_version' => $expectedVersion + 2, 'updated_at' => $this->db->now()], ['id' => (int) $row['id'], 'state' => 'approved']);
+            $wpdb->query('ROLLBACK');
             return $job;
         }
+        if (!$this->audit->log('backfill_approved', 'backfill', $uuid, 'success', ['job_uuid' => $job['job_uuid'] ?? null], 'data_rebuild', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_audit_failed', 'Backfill approval was not committed because audit evidence failed.', ['status' => 503]);
+        }
+        $wpdb->query('COMMIT');
         return ['backfill_uuid' => $uuid, 'state' => 'approved', 'row_version' => $expectedVersion + 1, 'job' => $job];
     }
 
@@ -341,7 +372,7 @@ final class BackfillService
             $args[] = (string) ($source['event_name'] ?? '');
             $args[] = (string) ($source['event_version'] ?? '');
         }
-        return $clauses === [] ? ['', []] : ["occurred_at>=%s AND occurred_at<%s AND id>%d AND (" . implode(' OR ', $clauses) . ')', $args];
+        return $clauses === [] ? ['', []] : ["occurred_at>=%s AND occurred_at<%s AND id>%d AND (expires_at IS NULL OR expires_at>%s) AND (" . implode(' OR ', $clauses) . ')', array_merge(array_slice($args, 0, 3), [$this->db->now()], array_slice($args, 3))];
     }
 
     private function buildHash(string $buildUuid): string

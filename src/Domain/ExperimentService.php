@@ -55,7 +55,9 @@ final class ExperimentService
         $now = $this->db->now();
         $startsAt = !empty($definition['starts_at']) ? gmdate('Y-m-d H:i:s', (int) strtotime((string) $definition['starts_at'])) : null;
         $endsAt = !empty($definition['ends_at']) ? gmdate('Y-m-d H:i:s', (int) strtotime((string) $definition['ends_at'])) : null;
-        $ok = $this->db->wpdb()->insert($this->db->table('experiments'), [
+        $wpdb = $this->db->wpdb();
+        $wpdb->query('START TRANSACTION');
+        $ok = $wpdb->insert($this->db->table('experiments'), [
             'experiment_uuid' => $uuid,
             'name' => Text::truncate(trim(wp_strip_all_tags((string) $definition['name'])), 190),
             'state' => 'proposed',
@@ -74,15 +76,21 @@ final class ExperimentService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        if ($ok !== 1) {
+        if ($ok !== 1 || !$this->audit->log('experiment_created', 'experiment', $uuid, 'success', ['enhanced_review' => $enhanced], 'experiment_governance', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_experiment_store_failed', 'Experiment could not be stored.', ['status' => 500]);
         }
-        $this->audit->log('experiment_created', 'experiment', $uuid, 'success', ['enhanced_review' => $enhanced], 'experiment_governance', null, $actorUserId);
+        $wpdb->query('COMMIT');
         return ['experiment_uuid' => $uuid, 'state' => 'proposed', 'row_version' => 1, 'enhanced_review' => $enhanced];
     }
 
     public function transition(string $uuid, string $target, int $expectedVersion, string $reason, int $actorUserId): array|WP_Error
     {
+        $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
+        if ($actorUserId < 1 || $expectedVersion < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1
+            || strlen($reason) < 8 || (new SensitiveValueDetector())->violations($reason) !== []) {
+            return new WP_Error('smai_invalid_experiment_transition', 'Experiment transition request is invalid.', ['status' => 400]);
+        }
         $table = $this->db->table('experiments');
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE experiment_uuid=%s", $uuid), ARRAY_A);
         if (!is_array($row) || (int) $row['row_version'] !== $expectedVersion) {
@@ -95,32 +103,39 @@ final class ExperimentService
         if (in_array($target, ['reviewed','scheduled'], true) && (int) $row['owner_user_id'] === $actorUserId) {
             return new WP_Error('smai_separation_of_duties', 'Independent experiment review is required.', ['status' => 403]);
         }
-        if ((int) $row['enhanced_review'] === 1 && $target === 'scheduled' && !current_user_can('smai_approve_catalog')) {
+        if ((int) $row['enhanced_review'] === 1 && $target === 'scheduled' && !user_can($actorUserId, 'smai_approve_catalog')) {
             return new WP_Error('smai_enhanced_review_required', 'Enhanced privacy/safety approval is required.', ['status' => 403]);
         }
         if ($target === 'scheduled' && ($row['starts_at'] === null || $row['ends_at'] === null || strtotime((string) $row['ends_at']) <= strtotime((string) $row['starts_at']))) {
             return new WP_Error('smai_experiment_window_required', 'A valid experiment window is required before scheduling.', ['status' => 409]);
         }
-        if ($target === 'running' && ($row['starts_at'] !== null && time() < strtotime((string) $row['starts_at']) || $row['ends_at'] !== null && time() >= strtotime((string) $row['ends_at']))) {
+        if ($target === 'running' && (($row['starts_at'] !== null && time() < strtotime((string) $row['starts_at'])) || ($row['ends_at'] !== null && time() >= strtotime((string) $row['ends_at'])))) {
             return new WP_Error('smai_experiment_outside_window', 'Experiment cannot run outside its approved window.', ['status' => 409]);
         }
-        $updated = $this->db->wpdb()->update($table, [
+        $wpdb = $this->db->wpdb();
+        $wpdb->query('START TRANSACTION');
+        $updated = $wpdb->update($table, [
             'state' => $target,
             'approved_by' => in_array($target, ['reviewed','scheduled'], true) ? $actorUserId : $row['approved_by'],
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'state' => $from, 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {
+        if ($updated !== 1 || !$this->audit->log('experiment_transition', 'experiment', $uuid, 'success', ['from' => $from, 'to' => $target, 'reason' => $reason], 'experiment_governance', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_experiment_conflict', 'Experiment changed concurrently.', ['status' => 409]);
         }
-        $this->audit->log('experiment_transition', 'experiment', $uuid, 'success', ['from' => $from, 'to' => $target, 'reason' => Text::truncate(wp_strip_all_tags($reason), 500)], 'experiment_governance', null, $actorUserId);
+        $wpdb->query('COMMIT');
         return ['experiment_uuid' => $uuid, 'state' => $target, 'row_version' => $expectedVersion + 1];
     }
 
     /** @param array<string,mixed> $fact */
     public function recordAssignment(array $fact, string $service): array|WP_Error
     {
-        foreach (['experiment_uuid','assignment_event_id','subject_ref','variant_key','assignment_owner','occurred_at'] as $key) {
+        if (array_diff(array_keys($fact), ['experiment_uuid','assignment_event_id','subject_ref','deletion_key','variant_key','assignment_owner','occurred_at']) !== []
+            || preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/', $service) !== 1) {
+            return new WP_Error('smai_invalid_assignment_fact', 'Assignment fact contains unsupported fields.', ['status' => 400]);
+        }
+        foreach (['experiment_uuid','assignment_event_id','subject_ref','deletion_key','variant_key','assignment_owner','occurred_at'] as $key) {
             if (!isset($fact[$key])) {
                 return new WP_Error('smai_invalid_assignment_fact', 'Assignment fact is incomplete.', ['status' => 400]);
             }
@@ -134,6 +149,7 @@ final class ExperimentService
         }
         $occurred = strtotime((string) $fact['occurred_at']);
         if (preg_match('/^[a-f0-9]{64}$/', (string) $fact['subject_ref']) !== 1
+            || preg_match('/^[a-f0-9]{64}$/', (string) $fact['deletion_key']) !== 1
             || preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', (string) $fact['assignment_event_id']) !== 1
             || $occurred === false || $occurred > time() + 300) {
             return new WP_Error('smai_invalid_assignment_fact', 'Assignment fact validation failed.', ['status' => 400]);
@@ -149,36 +165,58 @@ final class ExperimentService
             'experiment_uuid' => (string) $fact['experiment_uuid'],
             'assignment_event_id' => strtolower((string) $fact['assignment_event_id']),
             'subject_ref' => (string) $fact['subject_ref'],
+            'deletion_key' => (string) $fact['deletion_key'],
             'variant_key' => (string) $fact['variant_key'],
             'assignment_owner' => (string) $fact['assignment_owner'],
             'occurred_at' => gmdate('Y-m-d H:i:s', $occurred),
         ];
         $hash = hash('sha256', Json::canonical($canonical));
         $table = $this->db->table('experiment_facts');
-        $existing = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT fact_hash FROM `{$table}` WHERE assignment_event_id=%s", $canonical['assignment_event_id']), ARRAY_A);
-        if (is_array($existing)) {
-            return hash_equals((string) $existing['fact_hash'], $hash)
-                ? ['assignment_event_id' => $canonical['assignment_event_id'], 'status' => 'duplicate_ignored']
-                : new WP_Error('smai_assignment_id_collision', 'Assignment event ID was reused with different content.', ['status' => 409]);
+        $lockName = 'smai_exp_' . substr(hash('sha256', $canonical['experiment_uuid'] . '|' . $canonical['subject_ref']), 0, 55);
+        $acquired = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare('SELECT GET_LOCK(%s,5)', $lockName)) === 1;
+        if (!$acquired) {
+            return new WP_Error('smai_assignment_lock_timeout', 'Assignment is being processed concurrently.', ['status' => 409]);
         }
-        $inserted = $this->db->wpdb()->insert($table, [
-            'experiment_uuid' => $canonical['experiment_uuid'],
-            'assignment_event_id' => $canonical['assignment_event_id'],
-            'subject_ref' => $canonical['subject_ref'],
-            'variant_key' => Text::truncate($canonical['variant_key'], 100),
-            'assignment_owner' => $canonical['assignment_owner'],
-            'occurred_at' => $canonical['occurred_at'],
-            'fact_hash' => $hash,
-            'created_at' => $this->db->now(),
-        ]);
-        return $inserted === 1
-            ? ['assignment_event_id' => $canonical['assignment_event_id'], 'status' => 'accepted']
-            : new WP_Error('smai_assignment_store_failed', 'Assignment fact could not be stored.', ['status' => 500]);
+        try {
+            $subjectExisting = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT assignment_event_id,variant_key FROM `{$table}` WHERE experiment_uuid=%s AND subject_ref=%s LIMIT 1", $canonical['experiment_uuid'], $canonical['subject_ref']), ARRAY_A);
+            if (is_array($subjectExisting)) {
+                return hash_equals((string) $subjectExisting['variant_key'], $canonical['variant_key'])
+                    ? ['assignment_event_id' => $subjectExisting['assignment_event_id'], 'status' => 'subject_already_assigned']
+                    : new WP_Error('smai_subject_assignment_collision', 'Subject was already assigned to another variant.', ['status' => 409]);
+            }
+            $existing = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT fact_hash FROM `{$table}` WHERE assignment_event_id=%s", $canonical['assignment_event_id']), ARRAY_A);
+            if (is_array($existing)) {
+                return hash_equals((string) $existing['fact_hash'], $hash)
+                    ? ['assignment_event_id' => $canonical['assignment_event_id'], 'status' => 'duplicate_ignored']
+                    : new WP_Error('smai_assignment_id_collision', 'Assignment event ID was reused with different content.', ['status' => 409]);
+            }
+            $wpdb = $this->db->wpdb();
+            $wpdb->query('START TRANSACTION');
+            $inserted = $wpdb->insert($table, [
+                'experiment_uuid' => $canonical['experiment_uuid'],
+                'assignment_event_id' => $canonical['assignment_event_id'],
+                'subject_ref' => $canonical['subject_ref'],
+                'deletion_key' => $canonical['deletion_key'],
+                'variant_key' => Text::truncate($canonical['variant_key'], 100),
+                'assignment_owner' => $canonical['assignment_owner'],
+                'occurred_at' => $canonical['occurred_at'],
+                'fact_hash' => $hash,
+                'created_at' => $this->db->now(),
+            ]);
+            if ($inserted !== 1 || !$this->audit->log('experiment_assignment_recorded', 'experiment_assignment', $canonical['assignment_event_id'], 'success', ['experiment_uuid' => $canonical['experiment_uuid'], 'variant_key' => $canonical['variant_key']], 'experiment_assignment', null, null, 'service')) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('smai_assignment_store_failed', 'Assignment fact could not be stored.', ['status' => 500]);
+            }
+            $wpdb->query('COMMIT');
+            return ['assignment_event_id' => $canonical['assignment_event_id'], 'status' => 'accepted'];
+        } finally {
+            $this->db->wpdb()->get_var($this->db->wpdb()->prepare('SELECT RELEASE_LOCK(%s)', $lockName));
+        }
     }
 
     public function analyze(string $uuid, string $analysisVersion, int $actorUserId): array|WP_Error
     {
-        if (preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $analysisVersion) !== 1) {
+        if ($actorUserId < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1 || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $analysisVersion) !== 1) {
             return new WP_Error('smai_invalid_analysis_version', 'Analysis version must be semantic.', ['status' => 400]);
         }
         $experiment = $this->get($uuid);
@@ -258,7 +296,9 @@ final class ExperimentService
         }
         $analysisUuid = Uuid::v4();
         $now = $this->db->now();
-        $ok = $this->db->wpdb()->insert($table, [
+        $wpdb = $this->db->wpdb();
+        $wpdb->query('START TRANSACTION');
+        $ok = $wpdb->insert($table, [
             'analysis_uuid' => $analysisUuid,
             'experiment_uuid' => $uuid,
             'analysis_version' => $analysisVersion,
@@ -273,10 +313,11 @@ final class ExperimentService
             'published_at' => null,
             'updated_at' => $now,
         ]);
-        if ($ok !== 1) {
+        if ($ok !== 1 || !$this->audit->log('experiment_analysis_created', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $uuid, 'analysis_version' => $analysisVersion, 'result_hash' => $hash, 'conclusion' => $result['conclusion']], 'experiment_analysis', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_analysis_store_failed', 'Analysis could not be stored.', ['status' => 500]);
         }
-        $this->audit->log('experiment_analysis_created', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $uuid, 'analysis_version' => $analysisVersion, 'result_hash' => $hash, 'conclusion' => $result['conclusion']], 'experiment_analysis', null, $actorUserId);
+        $wpdb->query('COMMIT');
         return ['analysis_uuid' => $analysisUuid, 'status' => 'draft', 'row_version' => 1, 'result' => $result];
     }
 
@@ -315,8 +356,8 @@ final class ExperimentService
             ], ['id' => (int) $experiment['id'], 'state' => 'stopped', 'row_version' => (int) $experiment['row_version']]) !== 1) {
                 throw new \RuntimeException('experiment_conflict');
             }
+            if (!$this->audit->log('experiment_analysis_published', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $analysis['experiment_uuid'], 'analysis_version' => $analysis['analysis_version']], 'experiment_analysis', null, $actorUserId)) { throw new \RuntimeException('audit_failed'); }
             $wpdb->query('COMMIT');
-            $this->audit->log('experiment_analysis_published', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $analysis['experiment_uuid'], 'analysis_version' => $analysis['analysis_version']], 'experiment_analysis', null, $actorUserId);
             return ['analysis_uuid' => $analysisUuid, 'status' => 'published', 'row_version' => $expectedVersion + 1, 'experiment_state' => 'analyzed'];
         } catch (\DomainException $error) {
             $wpdb->query('ROLLBACK');
@@ -406,6 +447,7 @@ final class ExperimentService
     /** @return array<string,mixed>|null */
     public function get(string $uuid): ?array
     {
+        if (preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1) { return null; }
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$this->db->table('experiments')}` WHERE experiment_uuid=%s", $uuid), ARRAY_A);
         return is_array($row) ? $row : null;
     }
@@ -470,7 +512,7 @@ final class ExperimentService
     {
         ksort($dimensions);
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
-            "SELECT * FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND dimensions_hash=%s AND state='published' ORDER BY window_end DESC,snapshot_revision DESC LIMIT 1",
+            "SELECT * FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND dimensions_hash=%s AND state='published' AND quality_status NOT IN ('suppressed','invalidated') ORDER BY window_end DESC,snapshot_revision DESC LIMIT 1",
             $metricId,
             $version,
             hash('sha256', Json::canonical($dimensions))

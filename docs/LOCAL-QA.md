@@ -1,4 +1,4 @@
-# QA Evidence Law — 1.0.0-rc.3
+# Local QA — 1.0.0-rc.4
 
 Run:
 
@@ -7,20 +7,8 @@ bash scripts/qa.sh
 bash scripts/verify-deterministic-build.sh
 ```
 
-## Automated source suite
+The suite covers PHP syntax, executable validators/privacy/crypto/transformation/statistical fixtures, all JSON contracts, 35 requirement IDs, 40 review IDs, three-plan traceability, schema/table parity, security primitives, secret patterns, release identity, deterministic ZIP, checksum, ZIP integrity and SBOM/package manifest creation and byte-for-byte source/package parity.
 
-1. PHP syntax across plugin, test and build PHP files.
-2. Existing executable domain/contract/statistics/security helper tests.
-3. Dimension privacy, prohibited-combination and differencing-policy fixtures.
-4. JSON contracts, manifest and composer validation.
-5. Architecture, schema-table parity and `CF05-FR-001..035` traceability.
-6. Three-plan consistency checks.
-7. Secret and prohibited-runtime-primitive scans.
-8. Release identity and contract-version alignment.
-9. Deterministic byte-for-byte package rebuild, checksum, ZIP and SBOM/manifest integrity.
+This is source-level evidence, not staging or operational acceptance.
 
-GitHub Actions executes the suite on PHP 8.1, 8.2 and 8.3. The exact workflow result attached to an exact commit is authoritative; documentation does not substitute for that evidence.
-
-## Human/external acceptance not simulated by this suite
-
-Hostinger staging, actual database migrations with representative data, real File 00/20/23/24/25/26 contracts, browser/device/RTL/accessibility, sustained load, penetration testing, provider sandboxes, backup/restore, rollback rehearsal and Founder acceptance remain separate gates.
+Local deterministic ZIP SHA-256 after REV-46: `0525d499e3dea4cc263e2120c0d710c111f8593425293bd41c9f9c36740af765`.

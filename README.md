@@ -1,33 +1,18 @@
 # CF-05 — Analytics, Metrics and Institutional Intelligence
 
-CF-05 is the conditional analytical owner for the Sabri Social Homeopathy Platform. The `1.0.0-rc.3` source candidate implements `CF05-FR-001` through `CF05-FR-035` and the applicable harmonized controls of the Definitive Master Plan v3.0 and Consolidated All-Chats Directive Register 2.1, while remaining **disabled by default and fail-closed**.
+CF-05 is the conditional derivative-analytics owner for the Sabri Social Homeopathy Platform. Candidate `1.0.0-rc.4` implements `CF05-FR-001` through `CF05-FR-035`, applicable Definitive Master Plan v3.0 controls and Consolidated All-Chats Directive Register 2.1 controls, while remaining disabled by default.
 
-## Implemented source domains
+## Implemented domains
 
-- immutable event schemas, signed replay-resistant ingestion, consent/purpose/minor gates, allowlist-first minimization, pseudonymization and redacted quarantine;
-- derivative dataset registry, effective-dated models, event pipeline, checkpoints, quality rules, lineage, shadow backfills and atomic activation;
-- version-pinned metric catalog, dimension-specific privacy policies, prohibited combinations, privacy budgets, differencing resistance, reproducible aggregate snapshots, minimum cohorts, freshness, uncertainty and caveats;
-- purpose-limited access projects, dashboards, scheduled reports with pause/resume/update/revoke/unsubscribe controls, encrypted time-limited exports with explicit revocation, narrative insights and minimized audit evidence;
-- governed experiments, assignment-fact separation, statistical integrity, guardrail evidence and human decision records;
-- retention tiers, deletion/anonymization propagation, provider registry/exit evidence, restore points, repair, health, least-privilege roles and CLI operations.
+Immutable event contracts and signed ingestion; minimization/pseudonymization/quarantine; derivative datasets, transformations, checkpoints, lineage, quality and backfills; versioned metrics and revisioned snapshots; dimension-specific privacy, cohort floors, privacy budgets and differencing defense; purpose-limited access, dashboards, report lifecycle and encrypted revocable exports; governed experiments and human decisions; retention, deletion, provider exit, restore, health and least-privilege roles.
 
-## Safety boundary
+CF-05 never owns identity, native domain entities, clinical records, payments, messages, publication, moderation, search or recommendation decisions.
 
-CF-05 never becomes the source of truth for users, roles, posts, clinics, payments, messages, clinical records, recommendations or moderation. Raw clinical notes, prescriptions, private messages, identity evidence, credentials, unrestricted search queries and payment secrets are prohibited.
-
-## Runtime activation
-
-Installation does not activate ingestion or queries. Activation requires approved evidence matching `SMAI_ACTIVATION_EVIDENCE_SHA256`, private keys outside the repository, compatible owner contracts, Hostinger-equivalent staging and Founder acceptance.
-
-## QA
+## Verification
 
 ```bash
 composer qa
 bash scripts/verify-deterministic-build.sh
 ```
 
-The automated suite includes syntax, executable domain tests, privacy/differencing policy tests, JSON contracts, architecture/traceability, three-plan consistency, secret scanning and release identity checks on PHP 8.1–8.3.
-
-## Truth status
-
-Source coding and automated QA do not equal staging, live deployment or operational acceptance. Those later statuses require real integrations, browser/accessibility/load/security testing, backup/restore, rollback rehearsal and Founder approval.
+Forty fresh review/fix rounds are recorded in `docs/REVIEW-ROUNDS-07-46.md`. Source/CI completion does not equal staging, live deployment or operation.
