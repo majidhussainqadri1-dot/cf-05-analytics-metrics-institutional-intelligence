@@ -62,11 +62,7 @@ jobs:
               print(f'Adding {missing_padding} base64 padding character(s)')
               merged += '=' * missing_padding
 
-          try:
-              archive = base64.b64decode(merged, validate=True)
-          except Exception as exc:
-              raise SystemExit(f'Base64 decode failed: {exc}')
-
+          archive = base64.b64decode(merged, validate=True)
           with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tf:
               root = Path('.').resolve()
               members = tf.getmembers()
@@ -79,6 +75,23 @@ jobs:
               print(f'Extracting {len(members)} reviewed payload members')
               tf.extractall('.')
           PY
+
+          echo '=== Payload changed files ==='
+          git diff --name-only
+          echo '=== PHP syntax preflight ==='
+          syntax_fail=0
+          while IFS= read -r -d '' file; do
+            if ! php -l "$file" >/tmp/php-lint.out 2>&1; then
+              syntax_fail=1
+              echo "--- SYNTAX FAILURE: $file ---"
+              cat /tmp/php-lint.out
+              nl -ba "$file" | sed -n '1,180p'
+            fi
+          done < <(find . -type f -name '*.php' -print0)
+          if [ "$syntax_fail" -ne 0 ]; then
+            exit 86
+          fi
+
           rm -rf .codex
           bash scripts/qa.sh
           bash scripts/verify-deterministic-build.sh
