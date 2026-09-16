@@ -7,6 +7,7 @@ namespace Sabri\AnalyticsIntelligence\Http;
 use Sabri\AnalyticsIntelligence\Domain\FutureFeatureRegistry;
 use Sabri\AnalyticsIntelligence\Domain\FutureFeatureService;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
+use Sabri\AnalyticsIntelligence\Infrastructure\FutureActivationService;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -21,6 +22,30 @@ final class FutureRestController
     public function routes(): void
     {
         $namespace = 'sabri-analytics/v1';
+        register_rest_route($namespace, '/future/runtime/activation/propose', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => function (WP_REST_Request $request): WP_REST_Response|WP_Error {
+                $payload=(array)$request->get_json_params();
+                return $this->response((new FutureActivationService($this->db))->propose((string)($payload['evidence_hash']??''),(string)($payload['reason']??''),get_current_user_id()));
+            },
+            'permission_callback' => static fn(): bool => current_user_can('smai_manage_future_intelligence'),
+        ]);
+        register_rest_route($namespace, '/future/runtime/activation/approve', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => function (WP_REST_Request $request): WP_REST_Response|WP_Error {
+                $payload=(array)$request->get_json_params();
+                return $this->response((new FutureActivationService($this->db))->approve((string)($payload['request_hash']??''),get_current_user_id()));
+            },
+            'permission_callback' => static fn(): bool => current_user_can('smai_approve_future_intelligence'),
+        ]);
+        register_rest_route($namespace, '/future/runtime/disable', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => function (WP_REST_Request $request): WP_REST_Response|WP_Error {
+                $payload=(array)$request->get_json_params();
+                return $this->response((new FutureActivationService($this->db))->disable((string)($payload['reason']??''),get_current_user_id()));
+            },
+            'permission_callback' => static fn(): bool => current_user_can('smai_approve_future_intelligence'),
+        ]);
         register_rest_route($namespace, '/future/features', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => fn() => $this->response(['features' => (new FutureFeatureService($this->db))->list()]),
