@@ -1,0 +1,43 @@
+name: Apply CF-05 Future-40
+
+on:
+  push:
+    branches:
+      - codex/cf-05-foundation-0.1.0
+    paths:
+      - .codex/future40.ready
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Apply Future-40 source expansion
+        run: python3 scripts/apply-future40.py
+      - name: Remove one-shot marker
+        run: rm -rf .codex
+      - name: Full governed QA
+        run: bash scripts/qa.sh
+      - name: Deterministic package verification
+        run: bash scripts/verify-deterministic-build.sh
+      - name: Commit Future-40 source expansion
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No Future-40 changes to commit."
+            exit 0
+          fi
+          git commit -m "feat: implement governed CF-05 Future-40 expansion"
+          git push origin HEAD:codex/cf-05-foundation-0.1.0
