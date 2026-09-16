@@ -77,22 +77,96 @@ jobs:
               tf.extractall('.')
           PY
 
-          # Historical payload contains a corrupted NarrativeService member.
+          # The recovered archive had one damaged PHP member. Keep the separately
+          # reconstructed, plan-governed NarrativeService instead of reintroducing it.
           cp /tmp/NarrativeService.php.reviewed src/Domain/NarrativeService.php
+
+          # Complete the schema/migration controls that the forty-round review
+          # requires but which were intentionally outside the historical payload.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/Infrastructure/SchemaMigrator.php')
+          text = path.read_text(encoding='utf-8')
+
+          old = "            consent_version varchar(64) NULL,\n            policy_version varchar(64) NULL,"
+          new = "            consent_version varchar(64) NULL,\n            guardian_consent_version varchar(64) NULL,\n            policy_version varchar(64) NULL,"
+          if 'guardian_consent_version' not in text:
+              if old not in text:
+                  raise SystemExit('Schema patch anchor for guardian consent was not found')
+              text = text.replace(old, new, 1)
+
+          old = "            subject_ref char(64) NOT NULL,\n            variant_key varchar(100) NOT NULL,"
+          new = "            subject_ref char(64) NULL,\n            experiment_subject char(64) NULL,\n            variant_key varchar(100) NOT NULL,"
+          if 'experiment_subject' not in text:
+              if old not in text:
+                  raise SystemExit('Schema patch anchor for experiment subject was not found')
+              text = text.replace(old, new, 1)
+              text = text.replace(
+                  "            KEY subject_ref (subject_ref)\n        ) {$charset};\";",
+                  "            KEY subject_ref (subject_ref),\n            KEY experiment_subject (experiment_subject)\n        ) {$charset};\";",
+                  1,
+              )
+
+          old = """        foreach ($sql as $statement) {
+            dbDelta($statement);
+        }
+
+        $wpdb->query($wpdb->prepare(
+            \"INSERT IGNORE INTO {$p}audit_state (id,last_hash,row_version,updated_at) VALUES (1,%s,1,%s)\",
+            str_repeat('0', 64),
+            gmdate('Y-m-d H:i:s')
+        ));
+
+        update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
+"""
+          new = """        update_option('smai_schema_migration_error', [
+            'code' => 'migration_in_progress',
+            'target_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',
+            'failed_at' => null,
+            'started_at' => gmdate('c'),
+        ], false);
+
+        try {
+            foreach ($sql as $statement) {
+                $wpdb->last_error = '';
+                dbDelta($statement);
+                if ((string) $wpdb->last_error !== '') {
+                    throw new \\RuntimeException('CF-05 schema migration failed: ' . (string) $wpdb->last_error);
+                }
+            }
+
+            $inserted = $wpdb->query($wpdb->prepare(
+                \"INSERT IGNORE INTO {$p}audit_state (id,last_hash,row_version,updated_at) VALUES (1,%s,1,%s)\",
+                str_repeat('0', 64),
+                gmdate('Y-m-d H:i:s')
+            ));
+            if ($inserted === false) {
+                throw new \\RuntimeException('CF-05 audit-state initialization failed: ' . (string) $wpdb->last_error);
+            }
+
+            update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
+            delete_option('smai_schema_migration_error');
+        } catch (\\Throwable $error) {
+            update_option('smai_schema_migration_error', [
+                'code' => 'schema_migration_failed',
+                'target_schema_version' => defined('SMAI_SCHEMA_VERSION') ? SMAI_SCHEMA_VERSION : 'undefined',
+                'message_hash' => hash('sha256', $error->getMessage()),
+                'failed_at' => gmdate('c'),
+            ], false);
+            throw $error;
+        }
+"""
+          if "smai_schema_migration_error" not in text:
+              if old not in text:
+                  raise SystemExit('Schema migration-error patch anchor was not found')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
 
           echo '=== Payload changed files ==='
           git diff --name-only
-          if [ "${CF05_PAYLOAD_DIAGNOSTICS:-0}" = "1" ]; then
-            echo '=== Extracted EventSchemaValidator ==='
-            sed -n '1,260p' src/Contracts/EventSchemaValidator.php
-            echo '=== Extracted DatasetDefinitionValidator ==='
-            sed -n '1,260p' src/Contracts/DatasetDefinitionValidator.php
-            echo '=== Extracted MetricDefinitionValidator ==='
-            sed -n '1,360p' src/Contracts/MetricDefinitionValidator.php
-            echo '=== Extracted ExperimentDefinitionValidator ==='
-            sed -n '1,320p' src/Contracts/ExperimentDefinitionValidator.php
-          fi
-
           echo '=== PHP syntax preflight ==='
           syntax_fail=0
           while IFS= read -r -d '' file; do
@@ -100,7 +174,7 @@ jobs:
               syntax_fail=1
               echo "--- SYNTAX FAILURE: $file ---"
               cat /tmp/php-lint.out
-              nl -ba "$file" | sed -n '1,180p'
+              nl -ba "$file" | sed -n '1,220p'
             fi
           done < <(find . -type f -name '*.php' -print0)
           if [ "$syntax_fail" -ne 0 ]; then
@@ -115,5 +189,3 @@ jobs:
           git add -A
           git commit -m "review: apply forty-round CF-05 source corrections"
           git push origin HEAD:${GITHUB_REF_NAME}
-        env:
-          CF05_PAYLOAD_DIAGNOSTICS: '1'
