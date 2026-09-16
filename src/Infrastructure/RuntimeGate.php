@@ -24,6 +24,29 @@ final class RuntimeGate
         ], true) ? $state : self::SAFE_MODE;
     }
 
+    /**
+     * Schema readiness is an independent fail-closed activation prerequisite.
+     * A migration error or a stored version different from the exact source
+     * SMAI_SCHEMA_VERSION blocks catalog/runtime activity rather than allowing
+     * a partially migrated database to serve analytics.
+     */
+    public static function schemaReady(): bool
+    {
+        if (!defined('SMAI_SCHEMA_VERSION') || !is_string(SMAI_SCHEMA_VERSION) || SMAI_SCHEMA_VERSION === '') {
+            return false;
+        }
+
+        $migrationError = get_option('smai_schema_migration_error', null);
+        if ((is_string($migrationError) && trim($migrationError) !== '')
+            || (is_array($migrationError) && $migrationError !== [])
+            || (is_object($migrationError))) {
+            return false;
+        }
+
+        $stored = (string) get_option('smai_schema_version', '');
+        return $stored !== '' && hash_equals(SMAI_SCHEMA_VERSION, $stored);
+    }
+
     public static function activationApproved(): bool
     {
         $stored = strtolower((string) get_option('smai_activation_evidence_hash', ''));
@@ -39,12 +62,16 @@ final class RuntimeGate
 
     public static function ingestionEnabled(): bool
     {
-        return self::activeRuntimeIsEnvironmentCompatible() && self::activationApproved();
+        return self::schemaReady()
+            && self::activeRuntimeIsEnvironmentCompatible()
+            && self::activationApproved();
     }
 
     public static function queryEnabled(): bool
     {
-        return self::activeRuntimeIsEnvironmentCompatible() && self::activationApproved();
+        return self::schemaReady()
+            && self::activeRuntimeIsEnvironmentCompatible()
+            && self::activationApproved();
     }
 
     public static function workerEnabled(): bool
@@ -54,7 +81,8 @@ final class RuntimeGate
 
     public static function catalogEnabled(): bool
     {
-        return in_array(self::state(), [self::CATALOG_ONLY, self::STAGING_ACTIVE, self::PRODUCTION_ACTIVE], true);
+        return self::schemaReady()
+            && in_array(self::state(), [self::CATALOG_ONLY, self::STAGING_ACTIVE, self::PRODUCTION_ACTIVE], true);
     }
 
     public static function isProduction(): bool
