@@ -21,6 +21,7 @@ jobs:
       - name: Recover and apply reviewed source payload
         run: |
           set -euo pipefail
+          cp src/Domain/NarrativeService.php /tmp/NarrativeService.php.reviewed
           python3 - <<'PY'
           from pathlib import Path
           import base64
@@ -75,6 +76,10 @@ jobs:
               print(f'Extracting {len(members)} reviewed payload members')
               tf.extractall('.')
           PY
+
+          # The historical payload contains one corrupted NarrativeService member.
+          # Preserve the independently reconstructed, plan-governed reviewed source.
+          cp /tmp/NarrativeService.php.reviewed src/Domain/NarrativeService.php
 
           echo '=== Payload changed files ==='
           git diff --name-only
