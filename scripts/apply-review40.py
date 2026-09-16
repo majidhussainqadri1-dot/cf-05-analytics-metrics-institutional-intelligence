@@ -145,41 +145,6 @@ def patch_schema_migrator() -> None:
     path.write_text(text, encoding='utf-8')
 
 
-def patch_event_ingestion() -> None:
-    path = ROOT / 'src/Domain/EventIngestionService.php'
-    text = path.read_text(encoding='utf-8')
-
-    if "'guardian_consent_version' => 64" not in text:
-        text = replace_once(
-            text,
-            "foreach (['consent_version' => 64, 'policy_version' => 64, 'trace_id' => 100] as $field => $maxLength)",
-            "foreach (['consent_version' => 64, 'guardian_consent_version' => 64, 'policy_version' => 64, 'trace_id' => 100] as $field => $maxLength)",
-            'guardian consent envelope validation',
-        )
-
-    if 'consent_version,guardian_consent_version,policy_version' not in text:
-        text = replace_once(
-            text,
-            'purpose,consent_version,policy_version,trace_id,properties_json',
-            'purpose,consent_version,guardian_consent_version,policy_version,trace_id,properties_json',
-            'guardian consent event insert columns',
-        )
-        text = replace_once(
-            text,
-            'VALUES (%s,%s,%s,%s,%s,%s,NULLIF(%d,0),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%s,%s,%s)',
-            'VALUES (%s,%s,%s,%s,%s,%s,NULLIF(%d,0),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%s,%s,%s)',
-            'guardian consent event insert placeholders',
-        )
-        text = replace_once(
-            text,
-            "            isset($event['consent_version']) ? (string) $event['consent_version'] : null,\n            isset($event['policy_version']) ? (string) $event['policy_version'] : null,",
-            "            isset($event['consent_version']) ? (string) $event['consent_version'] : null,\n            isset($event['guardian_consent_version']) ? (string) $event['guardian_consent_version'] : null,\n            isset($event['policy_version']) ? (string) $event['policy_version'] : null,",
-            'guardian consent event insert value',
-        )
-
-    path.write_text(text, encoding='utf-8')
-
-
 def patch_experiment_subject() -> None:
     path = ROOT / 'src/Domain/ExperimentService.php'
     text = path.read_text(encoding='utf-8')
@@ -199,9 +164,8 @@ def main() -> None:
     archive = recover_archive()
     safe_extract(archive)
     patch_schema_migrator()
-    patch_event_ingestion()
     patch_experiment_subject()
-    print('CF-05 forty-round payload recovered and governing schema/privacy patches applied.')
+    print('CF-05 forty-round payload recovered and governing schema/migration patches applied.')
 
 
 if __name__ == '__main__':
