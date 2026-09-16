@@ -77,12 +77,22 @@ jobs:
               tf.extractall('.')
           PY
 
-          # The historical payload contains one corrupted NarrativeService member.
-          # Preserve the independently reconstructed, plan-governed reviewed source.
+          # Historical payload contains a corrupted NarrativeService member.
           cp /tmp/NarrativeService.php.reviewed src/Domain/NarrativeService.php
 
           echo '=== Payload changed files ==='
           git diff --name-only
+          if [ "${CF05_PAYLOAD_DIAGNOSTICS:-0}" = "1" ]; then
+            echo '=== Extracted EventSchemaValidator ==='
+            sed -n '1,260p' src/Contracts/EventSchemaValidator.php
+            echo '=== Extracted DatasetDefinitionValidator ==='
+            sed -n '1,260p' src/Contracts/DatasetDefinitionValidator.php
+            echo '=== Extracted MetricDefinitionValidator ==='
+            sed -n '1,360p' src/Contracts/MetricDefinitionValidator.php
+            echo '=== Extracted ExperimentDefinitionValidator ==='
+            sed -n '1,320p' src/Contracts/ExperimentDefinitionValidator.php
+          fi
+
           echo '=== PHP syntax preflight ==='
           syntax_fail=0
           while IFS= read -r -d '' file; do
@@ -105,3 +115,5 @@ jobs:
           git add -A
           git commit -m "review: apply forty-round CF-05 source corrections"
           git push origin HEAD:${GITHUB_REF_NAME}
+        env:
+          CF05_PAYLOAD_DIAGNOSTICS: '1'
