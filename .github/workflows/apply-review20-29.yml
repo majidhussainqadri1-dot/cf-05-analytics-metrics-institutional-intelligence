@@ -23,13 +23,16 @@ jobs:
           php-version: '8.3'
           coverage: none
           ini-file: production
-      - name: Detach one-shot runner from repository hygiene surface
+      - name: Remove one-shot marker and workflow from QA surface
         run: |
-          cp scripts/apply-review20-29.py /tmp/apply-review20-29.py
-          rm -f .codex/review20-29.ready scripts/apply-review20-29.py .github/workflows/apply-review20-29.yml
+          rm -f .codex/review20-29.ready .github/workflows/apply-review20-29.yml
           rmdir .codex 2>/dev/null || true
       - name: Run ten sequential review rounds
-        run: python3 /tmp/apply-review20-29.py
+        run: python3 scripts/apply-review20-29.py
+      - name: Remove one-shot review script
+        run: rm -f scripts/apply-review20-29.py
+      - name: Final source QA after one-shot cleanup
+        run: bash scripts/qa.sh
       - name: Verify deterministic release build
         run: bash scripts/verify-deterministic-build.sh
       - name: Commit corrections and review evidence
