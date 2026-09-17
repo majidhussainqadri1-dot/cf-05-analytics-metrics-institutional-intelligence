@@ -76,17 +76,23 @@ final class PipelineService
                     $build['build_uuid']
                 ));
             }
-            $this->lineage->link('event', $eventId, (string) $event['event_version'], 'build', (string) $build['build_uuid'], (string) $dataset['dataset_version'], (string) $dataset['owner_module'], (string) ($payload['job_uuid'] ?? null), defined('SMAI_CODE_SHA') ? SMAI_CODE_SHA : null);
+            if (!$this->lineage->link('event', $eventId, (string) $event['event_version'], 'build', (string) $build['build_uuid'], (string) $dataset['dataset_version'], (string) $dataset['owner_module'], isset($payload['job_uuid']) ? (string)$payload['job_uuid'] : null, defined('SMAI_CODE_SHA') ? SMAI_CODE_SHA : null)) {
+                throw new \RuntimeException('Dataset lineage evidence could not be recorded.');
+            }
         }
-        $this->db->wpdb()->update($this->db->table('events'), ['processed_at' => $this->db->now()], ['event_id' => $eventId]);
-        (new CheckpointService($this->db))->advance(
+        if (!(new CheckpointService($this->db))->advance(
             (string) $event['source_module'] . ':' . (string) $event['source_environment'],
             'cf05-pipeline',
             SMAI_CONTRACT_VERSION,
             (string) $event['occurred_at'],
             $event['source_sequence'] === null ? null : (int) $event['source_sequence'],
             ['event_id' => $eventId]
-        );
+        )) {
+            throw new \RuntimeException('Pipeline checkpoint could not be advanced safely.');
+        }
+        if ($this->db->wpdb()->update($this->db->table('events'), ['processed_at' => $this->db->now()], ['event_id' => $eventId]) === false) {
+            throw new \RuntimeException('Event processing state could not be recorded.');
+        }
         return ['event_id' => $eventId, 'projected_datasets' => $projected];
     }
 

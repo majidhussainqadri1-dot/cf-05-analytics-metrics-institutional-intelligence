@@ -53,14 +53,19 @@ final class QualityService
             return new WP_Error('smai_quality_rule_immutable', 'Existing quality rule version is immutable.', ['status' => 409]);
         }
         $now = $this->db->now();
-        $ok = $this->db->wpdb()->insert($table, [
+        $wpdb = $this->db->wpdb();
+        if ($wpdb->query('START TRANSACTION') === false) {return new WP_Error('smai_quality_transaction_failed', 'Quality-rule transaction could not start.', ['status'=>500]);}
+        $ok = $wpdb->insert($table, [
             'rule_id' => $rule['rule_id'], 'rule_version' => $rule['rule_version'], 'dataset_ref' => $rule['dataset_ref'],
             'rule_type' => $rule['rule_type'], 'severity' => $rule['severity'], 'state' => 'draft',
             'config_json' => $json, 'config_hash' => $hash, 'owner_user_id' => $actorUserId,
             'row_version' => 1, 'created_at' => $now, 'updated_at' => $now,
         ]);
-        if ($ok !== 1) {return new WP_Error('smai_quality_rule_store_failed', 'Quality rule could not be stored.', ['status' => 500]);}
-        return ['id' => (int) $this->db->wpdb()->insert_id, 'state' => 'draft', 'row_version' => 1, 'config_hash' => $hash];
+        if ($ok !== 1) {$wpdb->query('ROLLBACK');return new WP_Error('smai_quality_rule_store_failed', 'Quality rule could not be stored.', ['status' => 500]);}
+        $id=(int)$wpdb->insert_id;
+        if(!$this->audit->logInOpenTransaction('quality_rule_registered','quality_rule',(string)$id,'success',['rule_id'=>$rule['rule_id'],'rule_version'=>$rule['rule_version'],'dataset_ref'=>$rule['dataset_ref'],'config_hash'=>$hash],'data_quality',null,$actorUserId)){$wpdb->query('ROLLBACK');return new WP_Error('smai_quality_audit_failed','Quality rule was not committed because audit evidence failed.',['status'=>503]);}
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_quality_commit_failed','Quality rule could not be committed.',['status'=>500]);}
+        return ['id' => $id, 'state' => 'draft', 'row_version' => 1, 'config_hash' => $hash];
     }
 
     public function activate(string $ruleId, string $version, int $expectedVersion, int $actorUserId): array|WP_Error
@@ -71,9 +76,12 @@ final class QualityService
             return new WP_Error('smai_quality_rule_stale', 'Quality rule is unavailable or stale.', ['status' => 409]);
         }
         if ((int) $row['owner_user_id'] === $actorUserId) {return new WP_Error('smai_separation_of_duties', 'Independent quality-rule approval is required.', ['status' => 403]);}
-        $updated = $this->db->wpdb()->update($table, ['state' => 'active', 'approved_by' => $actorUserId, 'row_version' => $expectedVersion + 1, 'updated_at' => $this->db->now()], ['id' => (int) $row['id'], 'state' => 'draft', 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {return new WP_Error('smai_quality_rule_conflict', 'Quality rule changed concurrently.', ['status' => 409]);}
-        $this->audit->log('quality_rule_activated', 'quality_rule', $ruleId . '@' . $version, 'success', ['dataset_ref' => $row['dataset_ref']], 'data_quality', null, $actorUserId);
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_quality_transaction_failed','Quality-rule activation transaction could not start.',['status'=>500]);}
+        $updated = $wpdb->update($table, ['state' => 'active', 'approved_by' => $actorUserId, 'row_version' => $expectedVersion + 1, 'updated_at' => $this->db->now()], ['id' => (int) $row['id'], 'state' => 'draft', 'row_version' => $expectedVersion]);
+        if ($updated !== 1) {$wpdb->query('ROLLBACK');return new WP_Error('smai_quality_rule_conflict', 'Quality rule changed concurrently.', ['status' => 409]);}
+        if(!$this->audit->logInOpenTransaction('quality_rule_activated', 'quality_rule', $ruleId . '@' . $version, 'success', ['dataset_ref' => $row['dataset_ref']], 'data_quality', null, $actorUserId)){$wpdb->query('ROLLBACK');return new WP_Error('smai_quality_audit_failed','Quality-rule activation audit evidence failed.',['status'=>503]);}
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_quality_commit_failed','Quality-rule activation could not be committed.',['status'=>500]);}
         return ['rule_id' => $ruleId, 'rule_version' => $version, 'state' => 'active', 'row_version' => $expectedVersion + 1];
     }
 

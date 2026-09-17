@@ -72,6 +72,9 @@ final class DatasetCatalog
             return new WP_Error('smai_dataset_immutable', 'An existing dataset version cannot be changed.', ['status' => 409]);
         }
         $now = $this->db->now();
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_dataset_transaction_failed', 'Dataset registration transaction could not start.', ['status' => 500]);
+        }
         $inserted = $wpdb->insert($table, [
             'dataset_id' => $definition['dataset_id'],
             'dataset_version' => $definition['dataset_version'],
@@ -92,10 +95,11 @@ final class DatasetCatalog
             'updated_at' => $now,
         ]);
         if ($inserted !== 1) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_dataset_store_failed', 'Dataset could not be stored.', ['status' => 500]);
         }
         $id = (int) $wpdb->insert_id;
-        if (!$this->audit->log(
+        if (!$this->audit->logInOpenTransaction(
             'dataset_registered',
             'dataset',
             (string) $id,
@@ -105,8 +109,12 @@ final class DatasetCatalog
             null,
             $actorUserId
         )) {
-            $wpdb->delete($table, ['id' => $id, 'state' => 'draft', 'row_version' => 1]);
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_dataset_audit_failed', 'Dataset registration was rolled back because audit evidence was unavailable.', ['status' => 503]);
+        }
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_dataset_commit_failed', 'Dataset registration could not be committed.', ['status' => 500]);
         }
         return ['id' => $id, 'state' => 'draft', 'row_version' => 1, 'definition_hash' => $hash];
     }
