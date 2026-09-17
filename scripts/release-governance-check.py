@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import sys
+root=Path(__file__).resolve().parents[1]
+errors=[]
+def text(rel):
+    p=root/rel
+    if not p.is_file(): errors.append('missing:'+rel); return ''
+    return p.read_text(encoding='utf-8')
+runtime=text('src/Infrastructure/RuntimeActivationService.php')
+gov=text('src/Http/GovernanceRestController.php')
+uninstall=text('uninstall.php')
+for token in ['START TRANSACTION','logInOpenTransaction','RuntimeGate::schemaReady()','smai_activation_request_pending','actorUserId<1','INSERT IGNORE']:
+    if token not in runtime: errors.append('runtime_activation_guard_missing:'+token)
+for token in ['IdempotencyGuard','private function mutation','smai_request_too_large','smai_invalid_json','X-Sabri-Trace-ID']:
+    if token not in gov: errors.append('governance_rest_guard_missing:'+token)
+for token in ['smai_future_intelligence_tick','smai_future_run_retention_days','smai_future_scenario_retention_days','smai_future_alert_retention_days','smai_future_incident_retention_days','smai_future40_activation_request','smai_future40_approved_by','smai_future40_approved_at','smai_activation_request','remove_role','remove_cap']:
+    if token not in uninstall: errors.append('uninstall_cleanup_missing:'+token)
+if errors:
+    print('\n'.join(errors),file=sys.stderr);sys.exit(1)
+print('Release governance check passed: base activation atomicity, governance REST parity and uninstall least-privilege cleanup verified.')

@@ -2,6 +2,7 @@
 
 ## 1.0.0-rc.6 — 2026-09-16
 
+- Final ten-round adversarial review hardened base runtime activation atomicity, governance REST idempotency/request parity and least-privilege uninstall cleanup.
 - Hardened Future-40 API mutation idempotency, request limits, trace/error contracts, actor boundaries and global activation atomicity.
 - Bound active Future runs to governed persistent artifacts and configuration/schema provenance.
 - Added explicit Future derivative retention, bounded research-workspace expiry, and idempotent scheduled evidence with independent-approval rechecks.
