@@ -347,8 +347,8 @@ final class Future40Engine
     /** @param array<string,mixed> $input */
     private static function researchWorkspace(array $input): array
     {
-        $title=trim((string)($input['title']??''));$purpose=trim((string)($input['purpose']??''));$datasets=self::stringList($input['approved_aggregate_datasets']??[]);
-        return ['valid'=>$title!==''&&$purpose!==''&&$datasets!==[],'title'=>$title,'purpose'=>$purpose,'datasets'=>$datasets,'raw_data_allowed'=>false];
+        $title=trim((string)($input['title']??''));$purpose=trim((string)($input['purpose']??''));$datasets=self::stringList($input['approved_aggregate_datasets']??[]);$expiresOn=trim((string)($input['expires_on']??''));$expiryValid=self::validDate($expiresOn);
+        return ['valid'=>$title!==''&&$purpose!==''&&$datasets!==[]&&$expiryValid,'title'=>$title,'purpose'=>$purpose,'datasets'=>$datasets,'expires_on'=>$expiryValid?$expiresOn:null,'raw_data_allowed'=>false];
     }
 
     /** @param array<string,mixed> $input */

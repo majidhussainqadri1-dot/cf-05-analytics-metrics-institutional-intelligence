@@ -42,7 +42,7 @@ $inputs = [
 'CF05-FUT-026'=>['epsilon'=>1,'sensitivity'=>1,'cohort_size'=>100,'minimum_cohort'=>20],
 'CF05-FUT-027'=>['cohort_size'=>100,'dimensions'=>['country'],'sensitive_dimensions'=>0],
 'CF05-FUT-028'=>['dimensions'=>['country'],'allowed_dimensions'=>['country','device'],'estimated_cohort_size'=>100,'minimum_cohort'=>20],
-'CF05-FUT-029'=>['title'=>'Aggregate study','purpose'=>'quality','approved_aggregate_datasets'=>['d1']],
+'CF05-FUT-029'=>['title'=>'Aggregate study','purpose'=>'quality','approved_aggregate_datasets'=>['d1'],'expires_on'=>'2026-12-31'],
 'CF05-FUT-030'=>['control_n'=>100,'variant_n'=>100,'control_rate'=>0.5,'variant_rate'=>0.6],
 'CF05-FUT-031'=>['treatment_before'=>10,'treatment_after'=>15,'control_before'=>10,'control_after'=>11],
 'CF05-FUT-032'=>['value'=>120,'benchmark'=>100,'benchmark_type'=>'historical'],
@@ -84,6 +84,7 @@ $r=Future40Engine::evaluate('CF05-FUT-018',['series_a'=>[1,1,1],'series_b'=>[1,2
 $r=Future40Engine::evaluate('CF05-FUT-022',['projected_demand'=>10,'available_capacity'=>0]); f40_truth(($r['valid']??true)===false&&($r['status']??'')==='unavailable','Zero capacity must fail closed.');
 $r=Future40Engine::evaluate('CF05-FUT-025',['allocated'=>10,'spent'=>11,'request'=>0]); f40_truth(($r['over_budget']??false)===true&&($r['allowed']??true)===false,'Over-budget privacy ledger must fail closed.');
 $r=Future40Engine::evaluate('CF05-FUT-027',['cohort_size'=>1,'dimensions'=>['country'],'sensitive_dimensions'=>1]); f40_truth(($r['approval_recommended']??true)===false&&($r['requires_review']??false)===true,'High re-identification risk must not recommend approval.');
+$r=Future40Engine::evaluate('CF05-FUT-029',['title'=>'x','purpose'=>'y','approved_aggregate_datasets'=>['d1']]); f40_truth(($r['valid']??true)===false,'Research workspace must require governed expiry metadata.');
 $r=Future40Engine::evaluate('CF05-FUT-030',['control_n'=>10,'variant_n'=>10,'control_rate'=>1.2,'variant_rate'=>0.5]); f40_truth(($r['valid']??true)===false,'Experiment rates outside [0,1] must be rejected.');
 $r=Future40Engine::evaluate('CF05-FUT-033',['query'=>'metric secret.metric by patient','allowed_metric_ids'=>['clinic.visits'],'allowed_dimensions'=>['country']]); f40_truth(($r['parsed']??true)===false&&($r['execution_authorized']??true)===false,'Natural-language metric query must enforce allowlists.');
 $r=Future40Engine::evaluate('CF05-FUT-033',['query'=>'metric clinic.visits from 2026-02-30 to 2026-01-01','allowed_metric_ids'=>['clinic.visits'],'allowed_dimensions'=>[]]); f40_truth(($r['parsed']??true)===false,'Natural-language metric query must reject invalid/unordered dates.');

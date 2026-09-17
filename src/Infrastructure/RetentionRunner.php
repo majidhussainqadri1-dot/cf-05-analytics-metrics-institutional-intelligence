@@ -25,9 +25,17 @@ final class RetentionRunner
         $eventDays = max(1, min(365, (int) get_option('smai_raw_retention_days', 30)));
         $modeledDays = max(1, min(730, (int) get_option('smai_modeled_retention_days', 180)));
         $quarantineDays = max(1, min(90, (int) get_option('smai_quarantine_retention_days', 14)));
+        $futureRunDays = max(1, min(730, (int) get_option('smai_future_run_retention_days', 180)));
+        $futureScenarioDays = max(1, min(730, (int) get_option('smai_future_scenario_retention_days', 365)));
+        $futureAlertDays = max(1, min(365, (int) get_option('smai_future_alert_retention_days', 180)));
+        $futureIncidentDays = max(1, min(730, (int) get_option('smai_future_incident_retention_days', 365)));
         $eventCutoff = gmdate('Y-m-d H:i:s', time() - $eventDays * DAY_IN_SECONDS);
         $modelCutoff = gmdate('Y-m-d H:i:s', time() - $modeledDays * DAY_IN_SECONDS);
         $quarantineCutoff = gmdate('Y-m-d H:i:s', time() - $quarantineDays * DAY_IN_SECONDS);
+        $futureRunCutoff = gmdate('Y-m-d H:i:s', time() - $futureRunDays * DAY_IN_SECONDS);
+        $futureScenarioCutoff = gmdate('Y-m-d H:i:s', time() - $futureScenarioDays * DAY_IN_SECONDS);
+        $futureAlertCutoff = gmdate('Y-m-d H:i:s', time() - $futureAlertDays * DAY_IN_SECONDS);
+        $futureIncidentCutoff = gmdate('Y-m-d H:i:s', time() - $futureIncidentDays * DAY_IN_SECONDS);
 
         $wpdb->query($wpdb->prepare(
             "DELETE FROM `{$this->db->table('events')}` WHERE (expires_at IS NOT NULL AND expires_at<%s) OR (expires_at IS NULL AND created_at<%s)",
@@ -70,5 +78,14 @@ final class RetentionRunner
             "DELETE FROM `{$this->db->table('jobs')}` WHERE state='completed' AND completed_at<%s",
             gmdate('Y-m-d H:i:s', time() - 30 * DAY_IN_SECONDS)
         ));
+
+        // Future-40 derivative evidence is explicitly retention-bound. Governance
+        // configuration and published transparency records are not silently purged.
+        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('future_runs')}` WHERE created_at<%s", $futureRunCutoff));
+        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('scenario_models')}` WHERE updated_at<%s", $futureScenarioCutoff));
+        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('intelligence_alerts')}` WHERE updated_at<%s", $futureAlertCutoff));
+        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('analytics_incidents')}` WHERE state IN ('resolved','closed') AND updated_at<%s", $futureIncidentCutoff));
+        $wpdb->query($wpdb->prepare("UPDATE `{$this->db->table('research_workspaces')}` SET state='expired',updated_at=%s WHERE expires_at IS NOT NULL AND expires_at<%s AND state NOT IN ('expired','revoked')", $now, $now));
+        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('research_workspaces')}` WHERE state IN ('expired','revoked') AND updated_at<%s", $modelCutoff));
     }
 }

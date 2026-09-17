@@ -98,10 +98,12 @@ final class FutureArtifactStore
     /** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
     private function persistResearchWorkspace(array $input, int $actorUserId): array|WP_Error
     {
-        $title=Text::truncate(trim((string)($input['title']??'')),190);$purpose=Text::truncate(trim((string)($input['purpose']??'')),500);$datasets=$input['approved_aggregate_datasets']??[];
+        $title=Text::truncate(trim((string)($input['title']??'')),190);$purpose=Text::truncate(trim((string)($input['purpose']??'')),500);$datasets=$input['approved_aggregate_datasets']??[];$expiresOn=trim((string)($input['expires_on']??''));
         if($title===''||$purpose===''||!is_array($datasets)||$datasets===[])return new WP_Error('smai_future_research_metadata_required','Research workspace requires title, purpose and approved aggregate datasets.',['status'=>400]);
-        $uuid=Uuid::v4();$now=$this->db->now();$ok=$this->db->wpdb()->insert($this->db->table('research_workspaces'),[
-            'workspace_uuid'=>$uuid,'title'=>$title,'purpose'=>$purpose,'datasets_json'=>Json::canonical(array_values(array_map('strval',$datasets))),'state'=>'draft','owner_user_id'=>$actorUserId,'approved_by'=>null,'expires_at'=>null,'row_version'=>1,'created_at'=>$now,'updated_at'=>$now,
+        $tz=new \DateTimeZone('UTC');$expiry=\DateTimeImmutable::createFromFormat('!Y-m-d',$expiresOn,$tz);$today=new \DateTimeImmutable('today',$tz);
+        if($expiry===false||$expiry->format('Y-m-d')!==$expiresOn||$expiry<=$today||$expiry>$today->modify('+365 days'))return new WP_Error('smai_future_research_expiry_required','Research workspace expiry must be a valid future date within 365 days.',['status'=>400]);
+        $expiresAt=$expiry->format('Y-m-d 23:59:59');$uuid=Uuid::v4();$now=$this->db->now();$ok=$this->db->wpdb()->insert($this->db->table('research_workspaces'),[
+            'workspace_uuid'=>$uuid,'title'=>$title,'purpose'=>$purpose,'datasets_json'=>Json::canonical(array_values(array_map('strval',$datasets))),'state'=>'draft','owner_user_id'=>$actorUserId,'approved_by'=>null,'expires_at'=>$expiresAt,'row_version'=>1,'created_at'=>$now,'updated_at'=>$now,
         ]);
         return $ok===1?['workspace_uuid'=>$uuid]:new WP_Error('smai_future_research_store_failed','Research workspace metadata could not be persisted.',['status'=>500]);
     }

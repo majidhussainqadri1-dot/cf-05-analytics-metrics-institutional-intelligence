@@ -58,6 +58,17 @@ if 'FutureActivationService::isApproved()' not in service:
 # Review-4 semantic invariants.
 for token in ['breaking_added_required_fields','zero_variance_baseline','over_budget','requires_review','metric_not_allowlisted','human_review_confirmed','is_finite','validDate']:
     if token not in engine: errors.append(f'review4_semantic_guard_missing:{token}')
+# Review-7 privacy/retention invariants.
+retention=text('src/Infrastructure/RetentionRunner.php')
+activator=text('src/Infrastructure/Activator.php')
+artifact=text('src/Domain/FutureArtifactStore.php')
+for token in ['smai_future_run_retention_days','smai_future_scenario_retention_days','smai_future_alert_retention_days','smai_future_incident_retention_days']:
+    if token not in activator or token not in retention: errors.append(f'review7_retention_option_missing:{token}')
+for token in ["table('future_runs')","table('scenario_models')","table('intelligence_alerts')","table('research_workspaces')"]:
+    if token not in retention: errors.append(f'review7_retention_target_missing:{token}')
+if 'expires_on' not in engine: errors.append('review7_research_expiry_engine_missing')
+if 'smai_future_research_expiry_required' not in artifact or "'expires_at'=>$expiresAt" not in artifact:
+    errors.append('review7_research_expiry_persistence_missing')
 # Review-5 API/governance invariants.
 for token in ['IdempotencyGuard','private function mutation','smai_invalid_json','smai_request_too_large','X-Sabri-Trace-ID']:
     if token not in controller: errors.append(f'review5_api_guard_missing:{token}')
