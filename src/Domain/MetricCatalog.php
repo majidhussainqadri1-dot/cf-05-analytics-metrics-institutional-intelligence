@@ -74,7 +74,11 @@ final class MetricCatalog
         }
 
         $now = $this->db->now();
-        $inserted = $this->db->wpdb()->insert($table, [
+        $wpdb = $this->db->wpdb();
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_metric_transaction_failed', 'Metric registration transaction could not start.', ['status' => 500]);
+        }
+        $inserted = $wpdb->insert($table, [
             'metric_id' => $normalized['metric_id'],
             'metric_version' => $normalized['metric_version'],
             'name' => $normalized['name'],
@@ -94,10 +98,11 @@ final class MetricCatalog
             'updated_at' => $now,
         ]);
         if ($inserted !== 1) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_metric_store_failed', 'Metric definition could not be stored.', ['status' => 500]);
         }
-        $id = (int) $this->db->wpdb()->insert_id;
-        if (!$this->audit->log(
+        $id = (int) $wpdb->insert_id;
+        if (!$this->audit->logInOpenTransaction(
             'metric_registered',
             'metric_definition',
             (string) $id,
@@ -107,8 +112,12 @@ final class MetricCatalog
             null,
             $actorUserId
         )) {
-            $this->db->wpdb()->delete($table, ['id' => $id, 'state' => 'draft', 'row_version' => 1]);
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_metric_audit_failed', 'Metric registration was rolled back because audit evidence was unavailable.', ['status' => 503]);
+        }
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_metric_commit_failed', 'Metric registration could not be committed.', ['status' => 500]);
         }
         return ['id' => $id, 'status' => 'draft', 'row_version' => 1, 'definition_hash' => $hash];
     }

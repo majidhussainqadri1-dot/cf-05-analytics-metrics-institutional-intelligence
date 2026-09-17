@@ -44,6 +44,10 @@ final class QueryPrivacyGuard
             return $this->deny('smai_cohort_suppressed', 'Result is suppressed by a dimension-specific minimum cohort policy.', $metricId, $metricVersion, $projectUuid, $actorUserId, $purpose, ['minimum_cohort' => $minimum]);
         }
 
+        if (!defined('SMAI_PSEUDONYM_KEY') || !is_string(SMAI_PSEUDONYM_KEY) || strlen(SMAI_PSEUDONYM_KEY) < 32) {
+            return new WP_Error('smai_query_privacy_key_missing', 'Query privacy protection is unavailable.', ['status' => 503]);
+        }
+        $privacyKey = SMAI_PSEUDONYM_KEY;
         $controls = is_array($definition['privacy_controls'] ?? null) ? $definition['privacy_controls'] : [];
         $differencingFloor = max($minimum, (int) ($controls['differencing_floor'] ?? $minimum));
         $maxSlices = max(5, min(200, (int) ($controls['max_distinct_slices_per_hour'] ?? 30)));
@@ -53,20 +57,27 @@ final class QueryPrivacyGuard
         ksort($dimensions);
         $dimensionHashes = [];
         foreach ($dimensions as $name => $value) {
-            $dimensionHashes[(string) $name] = hash('sha256', Json::canonical($value));
+            $dimensionHashes[(string) $name] = hash_hmac('sha256', Json::canonical($value), $privacyKey);
         }
         $current = [
             'window_start' => $windowStart,
             'window_end' => $windowEnd,
             'dimension_names' => array_values(array_map('strval', array_keys($dimensions))),
             'dimension_hashes' => $dimensionHashes,
-            'dimensions_fingerprint' => hash('sha256', Json::canonical($dimensions)),
+            'dimensions_fingerprint' => hash_hmac('sha256', Json::canonical($dimensions), $privacyKey),
             'cohort_size' => $cohortSize,
             'privacy_cost' => $cost,
         ];
 
-        $actorRef = hash('sha256', 'query|' . $actorUserId . '|' . $projectUuid . '|' . $metricId . '@' . $metricVersion);
+        $actorRef = hash_hmac('sha256', 'query|' . $actorUserId . '|' . $projectUuid . '|' . $metricId . '@' . $metricVersion, $privacyKey);
         $table = $this->db->table('idempotency_keys');
+        $wpdb = $this->db->wpdb();
+        $lockName = 'smai_privacy_' . substr(hash_hmac('sha256', $actorRef, $privacyKey), 0, 48);
+        $lock = (int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s,5)', $lockName));
+        if ($lock !== 1) {
+            return new WP_Error('smai_privacy_lock_unavailable', 'Query privacy accounting is temporarily unavailable.', ['status' => 503]);
+        }
+        try {
         $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare(
             "SELECT request_hash,response_json,created_at FROM `{$table}` WHERE scope='privacy-query' AND actor_ref=%s AND state='completed' AND created_at>=%s ORDER BY created_at DESC LIMIT 200",
             $actorRef,
@@ -95,17 +106,17 @@ final class QueryPrivacyGuard
             return $this->deny('smai_privacy_budget_exceeded', 'The query privacy budget for this project and metric has been exhausted.', $metricId, $metricVersion, $projectUuid, $actorUserId, $purpose, ['max_privacy_budget' => $maxBudget]);
         }
 
-        $requestHash = hash('sha256', Json::canonical([
+        $requestHash = hash_hmac('sha256', Json::canonical([
             'metric_id' => $metricId,
             'metric_version' => $metricVersion,
             'project_uuid' => $projectUuid,
             'window_start' => $windowStart,
             'window_end' => $windowEnd,
             'dimensions' => $dimensions,
-        ]));
-        $idempotencyKey = hash('sha256', 'privacy-query|' . $actorRef . '|' . $requestHash);
+        ]), $privacyKey);
+        $idempotencyKey = hash_hmac('sha256', 'privacy-query|' . $actorRef . '|' . $requestHash, $privacyKey);
         $now = $this->db->now();
-        $this->db->wpdb()->query($this->db->wpdb()->prepare(
+        $stored = $wpdb->query($wpdb->prepare(
             "INSERT IGNORE INTO `{$table}` (idempotency_key,scope,actor_ref,request_hash,response_json,status_code,state,expires_at,created_at,updated_at) VALUES (%s,'privacy-query',%s,%s,%s,200,'completed',%s,%s,%s)",
             $idempotencyKey,
             $actorRef,
@@ -115,8 +126,19 @@ final class QueryPrivacyGuard
             $now,
             $now
         ));
-
+        if ($stored === false) {
+            return new WP_Error('smai_privacy_evidence_unavailable', 'Query privacy accounting could not be persisted.', ['status' => 503]);
+        }
+        if ($stored === 0) {
+            $existingHash = $wpdb->get_var($wpdb->prepare("SELECT request_hash FROM `{$table}` WHERE idempotency_key=%s AND scope='privacy-query' AND actor_ref=%s AND state='completed'", $idempotencyKey, $actorRef));
+            if (!is_string($existingHash) || !hash_equals($requestHash, $existingHash)) {
+                return new WP_Error('smai_privacy_evidence_conflict', 'Query privacy accounting conflicted with existing evidence.', ['status' => 503]);
+            }
+        }
         return true;
+        } finally {
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lockName));
+        }
     }
 
     /** @param array<string,mixed> $context */

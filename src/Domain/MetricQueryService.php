@@ -150,9 +150,10 @@ final class MetricQueryService
         }
         $caveats = array_values(array_unique(array_map('strval', $caveats)));
 
-        $fingerprint = defined('SMAI_PSEUDONYM_KEY') && is_string(SMAI_PSEUDONYM_KEY) && strlen(SMAI_PSEUDONYM_KEY) >= 32
-            ? hash_hmac('sha256', $dimensionsJson, SMAI_PSEUDONYM_KEY)
-            : hash('sha256', $dimensionsJson);
+        if (!defined('SMAI_PSEUDONYM_KEY') || !is_string(SMAI_PSEUDONYM_KEY) || strlen(SMAI_PSEUDONYM_KEY) < 32) {
+            return new WP_Error('smai_query_privacy_key_missing', 'Metric result was withheld because keyed privacy evidence is unavailable.', ['status' => 503]);
+        }
+        $fingerprint = hash_hmac('sha256', $dimensionsJson, SMAI_PSEUDONYM_KEY);
         $logged = $this->audit->log('metric_query', 'metric_snapshot', $metricId . '@' . $version, 'success', [
             'project_uuid' => $projectUuid,
             'dimension_names' => array_keys($dimensions),
