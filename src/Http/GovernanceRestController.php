@@ -25,7 +25,7 @@ final class GovernanceRestController
         register_rest_route($namespace,'/exports/(?P<uuid>[0-9a-fA-F-]{36})/revoke',[
             'methods'=>WP_REST_Server::CREATABLE,
             'callback'=>fn(WP_REST_Request $request)=>$this->mutation('export-revoke:'.(string)$request['uuid'],$request,fn(array $p)=>(new ExportControlService($this->db))->revoke((string)$request['uuid'],(string)($p['reason']??''),get_current_user_id())),
-            'permission_callback'=>static fn():bool=>current_user_can('smai_export_metrics')||current_user_can('smai_manage_access')||current_user_can('smai_audit'),
+            'permission_callback'=>static fn():bool=>current_user_can('smai_export_metrics')||current_user_can('smai_manage_access'),
         ]);
         register_rest_route($namespace,'/reports/(?P<uuid>[0-9a-fA-F-]{36})',[
             'methods'=>WP_REST_Server::EDITABLE,

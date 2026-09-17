@@ -13,6 +13,7 @@ python3 scripts/schema-contract-check.py
 python3 scripts/future40-check.py
 python3 scripts/repository-hygiene-check.py
 python3 scripts/release-governance-check.py
+python3 scripts/authorization-invariants-check.py
 python3 scripts/security-static-check.py
 python3 scripts/secret-scan.py
 printf 'CF-05 source QA passed.

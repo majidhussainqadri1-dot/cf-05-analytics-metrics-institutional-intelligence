@@ -121,6 +121,7 @@ final class FutureFeatureService
             if($state==='retired')return $this->rollbackError(new WP_Error('smai_future_retired','Retired future features cannot be executed.',['status'=>409]));
             if(!$dryRun&&$state!=='active')return $this->rollbackError(new WP_Error('smai_future_not_active','Future feature is not active. Use governed dry-run or complete activation gates.',['status'=>409]));
             if(!$dryRun&&($row['approved_by']===null||(int)$row['approved_by']<1||(int)$row['approved_by']===(int)$row['requested_by']))return $this->rollbackError(new WP_Error('smai_future_approval_integrity','Active execution requires valid independent approval evidence.',['status'=>409]));
+            if(!$dryRun&&!FutureActivationService::isApproved())return $this->rollbackError(new WP_Error('smai_future_activation_gate','Future-40 activation evidence is no longer approved.',['status'=>409]));
             if(!$dryRun&&!RuntimeGate::queryEnabled())return $this->rollbackError(new WP_Error('smai_future_runtime_gate','Base CF-05 runtime is not enabled.',['status'=>409]));
             $artifactStore=new FutureArtifactStore($this->db);
             $prepared=$artifactStore->prepareInput($id,$input,$dryRun);
