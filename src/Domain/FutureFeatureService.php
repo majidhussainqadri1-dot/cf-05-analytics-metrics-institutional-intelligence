@@ -179,21 +179,40 @@ final class FutureFeatureService
     {
         if(!FutureActivationService::isApproved()||!RuntimeGate::queryEnabled())return;
         $wpdb=$this->db->wpdb();
-        $active=$wpdb->get_col("SELECT feature_id FROM `{$this->db->table('future_features')}` WHERE state='active' AND feature_id IN ('CF05-FUT-036','CF05-FUT-037')");
-        foreach(is_array($active)?$active:[] as $featureId){
+        $rows=$wpdb->get_results("SELECT feature_id,approved_by,requested_by,row_version,config_hash FROM `{$this->db->table('future_features')}` WHERE state='active' AND feature_id IN ('CF05-FUT-036','CF05-FUT-037')",ARRAY_A);
+        $bucket=gmdate('Y-m-d\\TH:00:00\\Z');
+        foreach(is_array($rows)?$rows:[] as $candidate){
+            if(!is_array($candidate))continue;
+            $featureId=(string)($candidate['feature_id']??'');
+            if((int)($candidate['approved_by']??0)<1||(int)$candidate['approved_by']===(int)($candidate['requested_by']??0))continue;
             if(!$this->begin())continue;
             try {
-                $state=$wpdb->get_var($wpdb->prepare('SELECT state FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s FOR UPDATE',(string)$featureId));
-                if($state!=='active'){ $this->rollback(); continue; }
-                $uuid=Uuid::v4();
-                $inserted=$wpdb->insert($this->db->table('intelligence_alerts'),['alert_uuid'=>$uuid,'feature_id'=>(string)$featureId,'severity'=>'info','state'=>'evidence_ready','title'=>'Scheduled Future-40 evaluation window','evidence_json'=>Json::canonical(['automatic_external_delivery'=>false]),'created_at'=>$this->db->now(),'updated_at'=>$this->db->now()]);
-                if($inserted!==1){ $this->rollback(); continue; }
-                if(!(new AuditLogger($this->db))->logInOpenTransaction('future_scheduled_evidence_created','intelligence_alert',$uuid,'success',['feature_id'=>(string)$featureId],'future40_operations',null,null,'system')){ $this->rollback(); continue; }
+                $row=$wpdb->get_row($wpdb->prepare('SELECT state,approved_by,requested_by,row_version,config_hash FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s FOR UPDATE',$featureId),ARRAY_A);
+                if(!is_array($row)||(string)$row['state']!=='active'||(int)($row['approved_by']??0)<1||(int)$row['approved_by']===(int)($row['requested_by']??0)){ $this->rollback(); continue; }
+                $configHash=(string)($row['config_hash']??'');$rowVersion=(int)($row['row_version']??0);
+                if($rowVersion<1||preg_match('/^[a-f0-9]{64}$/',$configHash)!==1){ $this->rollback(); continue; }
+                $uuid=$this->scheduledEvidenceUuid($featureId,$bucket,$rowVersion,$configHash);
+                $evidence=['automatic_external_delivery'=>false,'scheduled_bucket'=>$bucket,'feature_row_version'=>$rowVersion,'config_hash'=>$configHash];
+                $inserted=$wpdb->query($wpdb->prepare(
+                    'INSERT IGNORE INTO `'.$this->db->table('intelligence_alerts').'` (alert_uuid,feature_id,severity,state,title,evidence_json,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
+                    $uuid,$featureId,'info','evidence_ready','Scheduled Future-40 evaluation window',Json::canonical($evidence),$this->db->now(),$this->db->now()
+                ));
+                if($inserted===false){ $this->rollback(); continue; }
+                if($inserted===0){ $this->rollback(); continue; }
+                if(!(new AuditLogger($this->db))->logInOpenTransaction('future_scheduled_evidence_created','intelligence_alert',$uuid,'success',$evidence+['feature_id'=>$featureId],'future40_operations',null,null,'system')){ $this->rollback(); continue; }
                 if(!$this->commit())continue;
             } catch (\Throwable $error) {
                 $this->rollback();
             }
         }
+    }
+
+    private function scheduledEvidenceUuid(string $featureId,string $bucket,int $rowVersion,string $configHash):string
+    {
+        $hex=substr(hash('sha256',$featureId.'|'.$bucket.'|'.$rowVersion.'|'.$configHash),0,32);
+        $hex[12]='5';
+        $hex[16]=dechex((hexdec($hex[16])&0x3)|0x8);
+        return substr($hex,0,8).'-'.substr($hex,8,4).'-'.substr($hex,12,4).'-'.substr($hex,16,4).'-'.substr($hex,20,12);
     }
 
     private function begin():bool

@@ -69,6 +69,11 @@ for token in ["table('future_runs')","table('scenario_models')","table('intellig
 if 'expires_on' not in engine: errors.append('review7_research_expiry_engine_missing')
 if 'smai_future_research_expiry_required' not in artifact or "'expires_at'=>$expiresAt" not in artifact:
     errors.append('review7_research_expiry_persistence_missing')
+# Review-8 scheduler/idempotency invariants.
+for token in ['scheduledEvidenceUuid','scheduled_bucket','INSERT IGNORE','feature_row_version','config_hash']:
+    if token not in service: errors.append(f'review8_scheduler_guard_missing:{token}')
+if "SELECT state,approved_by,requested_by,row_version,config_hash" not in service:
+    errors.append('review8_scheduler_approval_recheck_missing')
 # Review-5 API/governance invariants.
 for token in ['IdempotencyGuard','private function mutation','smai_invalid_json','smai_request_too_large','X-Sabri-Trace-ID']:
     if token not in controller: errors.append(f'review5_api_guard_missing:{token}')
