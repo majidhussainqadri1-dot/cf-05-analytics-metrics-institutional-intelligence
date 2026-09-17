@@ -2,6 +2,10 @@
 
 ## 1.0.0-rc.6 — 2026-09-16
 
+- Hardened Future-40 API mutation idempotency, request limits, trace/error contracts, actor boundaries and global activation atomicity.
+- Bound active Future runs to governed persistent artifacts and configuration/schema provenance.
+- Added explicit Future derivative retention, bounded research-workspace expiry, and idempotent scheduled evidence with independent-approval rechecks.
+- Removed retired one-shot mutation workflows/scripts and added a permanent repository-hygiene QA gate.
 - Added governed CF-05 Future-40 expansion (`CF05-FUT-001..CF05-FUT-040`) with executable aggregate/advisory handlers.
 - Added Future-40 lifecycle, independent approval, activation evidence, dry-run execution, incident evidence and scheduled internal evidence controls.
 - Added Future-40 persistence, public feature contract, REST governance routes, privacy/re-identification safeguards and executable coverage for all 40 features.

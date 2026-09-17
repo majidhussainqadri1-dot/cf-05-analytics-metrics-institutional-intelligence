@@ -60,9 +60,10 @@ Status: **Coded, disabled by default, activation-gated.** These capabilities ext
 
 - `FutureFeatureRegistry` is the authoritative Future-40 feature registry.
 - `Future40Engine` supplies a bounded executable handler for every `CF05-FUT-001..040` feature.
-- `FutureFeatureService` provides configuration, row-versioned lifecycle, independent approval, activation gating, run evidence, incident evidence and scheduled internal evidence generation.
-- `FutureRestController` exposes governed list/configure/transition/run and incident endpoints.
-- New derivative-only tables persist feature governance, run evidence, incidents, scenarios/research metadata, internal alerts, transparency records and privacy budget state.
+- `FutureFeatureService` provides configuration, row-versioned lifecycle, independent approval, activation gating, run evidence, incident evidence and idempotent scheduled internal evidence generation pinned to feature row-version/config-hash provenance.
+- `FutureArtifactStore` binds active scenario, privacy-budget, research-workspace and transparency runs to governed persistent derivative artifacts; research workspaces require bounded expiry.
+- `FutureRestController` exposes governed list/configure/transition/run and incident endpoints through the same request-size, trace and idempotency discipline as the base API.
+- New derivative-only tables persist feature governance, run evidence, incidents, scenarios/research metadata, internal alerts, transparency records and privacy budget state; derivative Future evidence is governed by explicit retention windows.
 - `tests/future40.php` executes every one of the 40 handlers and asserts aggregate/advisory safety invariants.
 - `scripts/future40-check.py` prevents ID omissions, missing handlers, missing persistence, missing routes, missing activation guards and release/contract drift.
 
