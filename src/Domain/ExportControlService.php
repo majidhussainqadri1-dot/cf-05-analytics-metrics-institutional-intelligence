@@ -33,7 +33,7 @@ final class ExportControlService
         if (!is_array($export)) {
             return new WP_Error('smai_export_unavailable', 'Export is unavailable.', ['status' => 404]);
         }
-        if ((int) $export['requester_user_id'] !== $actorUserId && !user_can($actorUserId, 'smai_manage_access') && !user_can($actorUserId, 'smai_audit')) {
+        if ((int) $export['requester_user_id'] !== $actorUserId && !user_can($actorUserId, 'smai_manage_access')) {
             return new WP_Error('smai_export_revoke_denied', 'You are not authorized to revoke this export.', ['status' => 403]);
         }
         if ((string) $export['state'] === 'revoked' || $export['revoked_at'] !== null) {
@@ -46,7 +46,7 @@ final class ExportControlService
             'state' => 'revoked', 'revoked_at' => $now, 'expires_at' => $now, 'token_hash' => null, 'updated_at' => $now,
         ], ['id' => (int) $export['id'], 'state' => (string) $export['state'], 'revoked_at' => $export['revoked_at']]);
         $deleted = $wpdb->delete($this->db->table('export_payloads'), ['export_uuid' => $uuid], ['%s']);
-        if ($updated !== 1 || $deleted === false || !$this->audit->log('analytics_export_revoked', 'export', $uuid, 'success', [
+        if ($updated !== 1 || $deleted === false || !$this->audit->logInOpenTransaction('analytics_export_revoked', 'export', $uuid, 'success', [
             'previous_state' => (string) $export['state'], 'reason' => $reason, 'project_uuid' => (string) $export['project_uuid'],
         ], (string) $export['purpose'], null, $actorUserId)) {
             $wpdb->query('ROLLBACK');

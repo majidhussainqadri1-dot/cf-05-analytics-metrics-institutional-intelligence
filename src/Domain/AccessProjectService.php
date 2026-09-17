@@ -92,7 +92,7 @@ final class AccessProjectService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        if ($ok !== 1 || !$this->audit->log('analytics_access_requested', 'access_project', $uuid, 'success', [
+        if ($ok !== 1 || !$this->audit->logInOpenTransaction('analytics_access_requested', 'access_project', $uuid, 'success', [
             'dataset_count' => count($cleanDatasetList),
             'expires_at' => gmdate('Y-m-d H:i:s', $expiry),
             'training_confirmed' => $trainingConfirmed,
@@ -137,7 +137,7 @@ final class AccessProjectService
             'row_version' => $expectedVersion + 1,
             'updated_at' => $now,
         ], ['id' => (int) $project['id'], 'state' => 'requested', 'row_version' => $expectedVersion]);
-        if ($updated !== 1 || !$this->audit->log('analytics_access_granted', 'access_project', $uuid, 'success', [
+        if ($updated !== 1 || !$this->audit->logInOpenTransaction('analytics_access_granted', 'access_project', $uuid, 'success', [
             'owner_user_id' => (int) $project['owner_user_id'],
             'expires_at' => $project['expires_at'],
         ], 'access_governance', null, $actorUserId)) {
@@ -168,7 +168,7 @@ final class AccessProjectService
             'updated_at' => $now,
         ], ['id' => (int) $project['id'], 'state' => (string) $project['state'], 'row_version' => (int) $project['row_version']]);
         if ($updated !== 1 || !$this->revokeChildren($uuid, $now)
-            || !$this->audit->log('analytics_access_revoked', 'access_project', $uuid, 'success', ['reason' => $cleanReason], 'access_governance', null, $actorUserId)) {
+            || !$this->audit->logInOpenTransaction('analytics_access_revoked', 'access_project', $uuid, 'success', ['reason' => $cleanReason], 'access_governance', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_access_project_conflict', 'Access revocation and dependent revocations could not be committed.', ['status' => 409]);
         }
@@ -222,7 +222,7 @@ final class AccessProjectService
                 'updated_at' => $now,
             ], ['id' => (int) $project['id'], 'state' => (string) $project['state'], 'row_version' => (int) $project['row_version']]);
             if ($updated === 1 && $this->revokeChildren((string) $project['project_uuid'], $now)
-                && $this->audit->log('analytics_access_expired', 'access_project', (string) $project['project_uuid'], 'success', [], 'access_governance', null, null, 'system')) {
+                && $this->audit->logInOpenTransaction('analytics_access_expired', 'access_project', (string) $project['project_uuid'], 'success', [], 'access_governance', null, null, 'system')) {
                 $wpdb->query('COMMIT');
                 $count++;
             } else {

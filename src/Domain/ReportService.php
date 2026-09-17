@@ -82,7 +82,11 @@ final class ReportService
         $definition['recipients'] = $recipients;
         $uuid = Uuid::v4();
         $now = $this->db->now();
-        $ok = $this->db->wpdb()->insert($this->db->table('reports'), [
+        $wpdb = $this->db->wpdb();
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_report_transaction_failed', 'Report transaction could not start.', ['status'=>500]);
+        }
+        $ok = $wpdb->insert($this->db->table('reports'), [
             'report_uuid' => $uuid,
             'name' => Text::truncate(trim(wp_strip_all_tags($name)), 190),
             'state' => 'draft',
@@ -97,9 +101,14 @@ final class ReportService
             'updated_at' => $now,
         ]);
         if ($ok !== 1) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_report_store_failed', 'Report could not be stored.', ['status' => 500]);
         }
-        $this->audit->log('report_created', 'report', $uuid, 'success', ['project_uuid' => $projectUuid], 'institutional_reporting', null, $actorUserId);
+        if (!$this->audit->logInOpenTransaction('report_created', 'report', $uuid, 'success', ['project_uuid' => $projectUuid], 'institutional_reporting', null, $actorUserId)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_report_audit_failed', 'Report was not committed because audit evidence failed.', ['status'=>503]);
+        }
+        if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_commit_failed','Report could not be committed.',['status'=>500]); }
         return ['report_uuid' => $uuid, 'state' => 'draft', 'row_version' => 1];
     }
 
@@ -119,13 +128,15 @@ final class ReportService
         }
         $schedule = $report['schedule_rrule'] === null ? null : (string) $report['schedule_rrule'];
         $next = $schedule === null ? null : gmdate('Y-m-d H:i:s', $this->nextTimestamp($schedule, time()));
-        $updated = $this->db->wpdb()->update($table, [
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_report_transaction_failed','Report activation transaction could not start.',['status'=>500]);}
+        $updated = $wpdb->update($table, [
             'state' => 'active',
             'next_run_at' => $next,
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'state' => 'draft', 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {
+        if ($updated !== 1) { $wpdb->query('ROLLBACK');
             return new WP_Error('smai_report_conflict', 'Report changed concurrently.', ['status' => 409]);
         }
         if ($schedule === null) {
@@ -133,12 +144,10 @@ final class ReportService
                 'report_uuid' => $uuid,
                 'scheduled_for' => 'manual:' . $uuid,
             ], 'report|' . $uuid . '|manual');
-            if (is_wp_error($job)) {
-                $this->db->wpdb()->update($table, ['state' => 'paused', 'updated_at' => $this->db->now()], ['id' => (int) $report['id'], 'state' => 'active']);
-                return $job;
-            }
+            if (is_wp_error($job)) { $wpdb->query('ROLLBACK'); return $job; }
         }
-        $this->audit->log('report_activated', 'report', $uuid, 'success', ['schedule' => $schedule], 'institutional_reporting', null, $actorUserId);
+        if(!$this->audit->logInOpenTransaction('report_activated', 'report', $uuid, 'success', ['schedule' => $schedule], 'institutional_reporting', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_audit_failed','Report activation was not committed because audit evidence failed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_commit_failed','Report activation could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => 'active', 'row_version' => $expectedVersion + 1, 'next_run_at' => $next];
     }
 
@@ -224,7 +233,7 @@ final class ReportService
                 continue;
             }
             $userId = (int) $recipient['user_id'];
-            $runKey = hash('sha256', $uuid . '|' . $runRef . '|user:' . $userId);
+            $runKey = hash_hmac('sha256', $uuid . '|' . $runRef . '|user:' . $userId, $this->privacyKey());
             $existing = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
                 "SELECT delivery_uuid,state,expires_at FROM `{$this->db->table('report_deliveries')}` WHERE run_key=%s",
                 $runKey
@@ -241,7 +250,7 @@ final class ReportService
                 'delivery_uuid' => $deliveryUuid,
                 'report_uuid' => $uuid,
                 'run_key' => $runKey,
-                'recipient_hash' => hash('sha256', 'user:' . $userId),
+                'recipient_hash' => $this->recipientHash($userId),
                 'channel' => 'file19',
                 'state' => 'ready',
                 'token_hash' => CryptoBox::tokenHash($token),
@@ -272,7 +281,7 @@ final class ReportService
         $table = $this->db->table('report_deliveries');
         $delivery = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE delivery_uuid=%s AND state IN ('ready','sent')", $deliveryUuid), ARRAY_A);
         if (!is_array($delivery)
-            || !hash_equals((string) $delivery['recipient_hash'], hash('sha256', 'user:' . $actorUserId))
+            || !hash_equals((string) $delivery['recipient_hash'], $this->recipientHash($actorUserId))
             || !hash_equals((string) $delivery['token_hash'], CryptoBox::tokenHash($token))
             || strtotime((string) $delivery['expires_at']) <= time()
             || $delivery['revoked_at'] !== null
@@ -284,7 +293,11 @@ final class ReportService
         if (!is_array($report) || (string) $report['state'] !== 'active' || !is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_report_delivery_revoked', 'Report delivery is no longer authorized.', ['status' => 404]);
         }
-        $this->db->wpdb()->update($table, ['state' => 'sent', 'sent_at' => $delivery['sent_at'] ?? $this->db->now(), 'updated_at' => $this->db->now()], ['id' => (int) $delivery['id']]);
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_report_delivery_unavailable','Report delivery audit is unavailable.',['status'=>503]);}
+        $marked=$wpdb->update($table, ['state' => 'sent', 'sent_at' => $delivery['sent_at'] ?? $this->db->now(), 'updated_at' => $this->db->now()], ['id' => (int) $delivery['id']]);
+        if($marked===false || !$this->audit->logInOpenTransaction('report_delivery_accessed','report_delivery',$deliveryUuid,'success',['report_uuid'=>(string)$delivery['report_uuid']],'institutional_reporting',null,$actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_delivery_unavailable','Report delivery audit could not be committed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_delivery_unavailable','Report delivery could not be committed.',['status'=>503]);}
         return Json::object((string) $delivery['bundle_json']);
     }
 
@@ -316,6 +329,19 @@ final class ReportService
             'uncertainty' => Json::object((string) ($row['uncertainty_json'] ?? '{}')),
             'caveats' => Json::list((string) ($row['caveats_json'] ?? '[]')),
         ];
+    }
+
+    private function privacyKey(): string
+    {
+        if (!defined('SMAI_PSEUDONYM_KEY') || !is_string(SMAI_PSEUDONYM_KEY) || strlen(SMAI_PSEUDONYM_KEY) < 32) {
+            throw new \RuntimeException('Report pseudonym key is unavailable.');
+        }
+        return SMAI_PSEUDONYM_KEY;
+    }
+
+    private function recipientHash(int $userId): string
+    {
+        return hash_hmac('sha256', 'user:' . $userId, $this->privacyKey());
     }
 
     private function nextTimestamp(string $schedule, int $from): int

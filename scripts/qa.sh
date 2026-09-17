@@ -17,6 +17,7 @@ python3 scripts/authorization-invariants-check.py
 python3 scripts/event-privacy-invariants-check.py
 python3 scripts/metric-privacy-invariants-check.py
 python3 scripts/pipeline-quality-invariants-check.py
+python3 scripts/reporting-governance-invariants-check.py
 python3 scripts/security-static-check.py
 python3 scripts/secret-scan.py
 printf 'CF-05 source QA passed.

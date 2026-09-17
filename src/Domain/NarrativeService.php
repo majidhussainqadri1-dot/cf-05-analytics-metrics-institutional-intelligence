@@ -184,7 +184,9 @@ final class NarrativeService
 
         $uuid = Uuid::v4();
         $now = $this->db->now();
-        $ok = $this->db->wpdb()->insert($this->db->table('narratives'), [
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_narrative_transaction_failed','Narrative transaction could not start.',['status'=>500]);}
+        $ok = $wpdb->insert($this->db->table('narratives'), [
             'insight_uuid' => $uuid,
             'state' => 'draft',
             'title' => $title,
@@ -200,6 +202,7 @@ final class NarrativeService
         ]);
 
         if ($ok !== 1) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error(
                 'smai_narrative_store_failed',
                 'Narrative insight could not be stored.',
@@ -207,7 +210,7 @@ final class NarrativeService
             );
         }
 
-        $this->audit->log(
+        if(!$this->audit->logInOpenTransaction(
             'narrative_insight_created',
             'narrative',
             $uuid,
@@ -216,7 +219,8 @@ final class NarrativeService
             'institutional_reporting',
             null,
             $actorUserId
-        );
+        )) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_narrative_audit_failed','Narrative was not committed because audit evidence failed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_narrative_commit_failed','Narrative could not be committed.',['status'=>500]);}
 
         return [
             'insight_uuid' => $uuid,
@@ -246,7 +250,9 @@ final class NarrativeService
             return new WP_Error('smai_separation_of_duties', 'Independent narrative review is required.', ['status' => 403]);
         }
 
-        $updated = $this->db->wpdb()->update($table, [
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_narrative_transaction_failed','Narrative publication transaction could not start.',['status'=>500]);}
+        $updated = $wpdb->update($table, [
             'state' => 'published',
             'reviewer_user_id' => $reviewerUserId,
             'row_version' => $expectedVersion + 1,
@@ -257,11 +263,11 @@ final class NarrativeService
             'row_version' => $expectedVersion,
         ]);
 
-        if ($updated !== 1) {
+        if ($updated !== 1) { $wpdb->query('ROLLBACK');
             return new WP_Error('smai_narrative_conflict', 'Narrative changed concurrently.', ['status' => 409]);
         }
 
-        $this->audit->log(
+        if(!$this->audit->logInOpenTransaction(
             'narrative_insight_published',
             'narrative',
             $uuid,
@@ -270,7 +276,8 @@ final class NarrativeService
             'institutional_reporting',
             null,
             $reviewerUserId
-        );
+        )) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_narrative_audit_failed','Narrative publication was not committed because audit evidence failed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_narrative_commit_failed','Narrative publication could not be committed.',['status'=>500]);}
 
         return [
             'insight_uuid' => $uuid,

@@ -156,7 +156,7 @@ final class ReportControlService
         if ($updated !== 1) {
             return new WP_Error('smai_report_revoke_conflict', 'Report changed concurrently.', ['status' => 409]);
         }
-        $this->revokeDeliveries($uuid, null, $now);
+        if (!$this->revokeDeliveries($uuid, null, $now)) { return new WP_Error('smai_report_delivery_revoke_failed','Report delivery revocation failed.',['status'=>503]); }
         $this->audit->log('report_revoked', 'report', $uuid, 'success', ['reason' => $reason], 'institutional_reporting', null, $actorUserId);
         return ['report_uuid' => $uuid, 'state' => 'revoked', 'row_version' => $expectedVersion + 1, 'unchanged' => false];
     }
@@ -194,7 +194,7 @@ final class ReportControlService
             return new WP_Error('smai_report_unsubscribe_conflict', 'Report changed concurrently.', ['status' => 409]);
         }
         $now = $this->db->now();
-        $this->revokeDeliveries($uuid, hash('sha256', 'user:' . $actorUserId), $now);
+        if (!$this->revokeDeliveries($uuid, $this->recipientHash($actorUserId), $now)) { return new WP_Error('smai_report_delivery_revoke_failed','Report delivery revocation failed.',['status'=>503]); }
         $this->audit->log('report_unsubscribed', 'report', $uuid, 'success', ['recipient_user_id' => $actorUserId], 'institutional_reporting', null, $actorUserId);
         return ['report_uuid' => $uuid, 'state' => $newState, 'row_version' => $expectedVersion + 1, 'subscribed' => false];
     }
@@ -275,7 +275,7 @@ final class ReportControlService
         return true;
     }
 
-    private function revokeDeliveries(string $uuid, ?string $recipientHash, string $now): void
+    private function revokeDeliveries(string $uuid, ?string $recipientHash, string $now): bool
     {
         $where = 'report_uuid=%s AND revoked_at IS NULL';
         $args = [$now, $now, $now, $uuid];
@@ -283,10 +283,16 @@ final class ReportControlService
             $where .= ' AND recipient_hash=%s';
             $args[] = $recipientHash;
         }
-        $this->db->wpdb()->query($this->db->wpdb()->prepare(
+        return $this->db->wpdb()->query($this->db->wpdb()->prepare(
             "UPDATE `{$this->db->table('report_deliveries')}` SET state='revoked',revoked_at=%s,expires_at=%s,token_hash=NULL,updated_at=%s WHERE {$where}",
             ...$args
-        ));
+        )) !== false;
+    }
+
+    private function recipientHash(int $userId): string
+    {
+        if (!defined('SMAI_PSEUDONYM_KEY') || !is_string(SMAI_PSEUDONYM_KEY) || strlen(SMAI_PSEUDONYM_KEY) < 32) { throw new \RuntimeException('Report pseudonym key is unavailable.'); }
+        return hash_hmac('sha256', 'user:' . $userId, SMAI_PSEUDONYM_KEY);
     }
 
     private function get(string $uuid): ?array

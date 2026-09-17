@@ -158,7 +158,7 @@ final class DashboardService
                     throw new \RuntimeException('Dashboard widget could not be stored.');
                 }
             }
-            if (!$this->audit->log('dashboard_registered', 'dashboard', $definition['dashboard_id'] . '@' . $definition['dashboard_version'], 'success', ['project_uuid' => $definition['project_uuid'], 'definition_hash' => $hash], 'institutional_reporting', null, $actorUserId)) {
+            if (!$this->audit->logInOpenTransaction('dashboard_registered', 'dashboard', $definition['dashboard_id'] . '@' . $definition['dashboard_version'], 'success', ['project_uuid' => $definition['project_uuid'], 'definition_hash' => $hash], 'institutional_reporting', null, $actorUserId)) {
                 throw new \RuntimeException('Dashboard audit evidence could not be stored.');
             }
             $wpdb->query('COMMIT');
@@ -196,7 +196,7 @@ final class DashboardService
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'state' => 'draft', 'row_version' => $expectedVersion]);
-        if ($updated !== 1 || !$this->audit->log('dashboard_activated', 'dashboard', $dashboardId . '@' . $version, 'success', [], 'institutional_reporting', null, $actorUserId)) {
+        if ($updated !== 1 || !$this->audit->logInOpenTransaction('dashboard_activated', 'dashboard', $dashboardId . '@' . $version, 'success', [], 'institutional_reporting', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_dashboard_conflict', 'Dashboard activation or audit evidence could not be committed.', ['status' => 409]);
         }

@@ -107,7 +107,7 @@ final class ExportService
             'export_uuid' => $uuid,
             'actor_user_id' => $actorUserId,
         ], 'export|' . $uuid) : new WP_Error('smai_export_store_failed', 'Export request could not be stored.', ['status' => 500]);
-        if ($ok !== 1 || is_wp_error($job) || !$this->audit->log('analytics_export_requested', 'export', $uuid, 'success', [
+        if ($ok !== 1 || is_wp_error($job) || !$this->audit->logInOpenTransaction('analytics_export_requested', 'export', $uuid, 'success', [
             'metric_ref' => $metricId . '@' . $metricVersion,
             'column_count' => count($columns),
             'row_limit' => $rowLimit,
@@ -171,7 +171,7 @@ final class ExportService
                 'completed_at' => $this->db->now(),
                 'updated_at' => $this->db->now(),
             ], ['id' => (int) $export['id'], 'state' => 'building']);
-            if ($payloadResult === false || $ready !== 1 || !$this->audit->log('analytics_export_ready', 'export', $uuid, 'success', [
+            if ($payloadResult === false || $ready !== 1 || !$this->audit->logInOpenTransaction('analytics_export_ready', 'export', $uuid, 'success', [
                 'rows' => count($rows), 'columns' => $columns, 'sha256' => $sha,
             ], (string) $export['purpose'], null, (int) $export['requester_user_id'])) {
                 throw new \RuntimeException('Export payload or audit evidence could not be committed.');
