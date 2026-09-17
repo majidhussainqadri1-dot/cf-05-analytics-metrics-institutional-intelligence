@@ -76,7 +76,7 @@ final class ExperimentService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        if ($ok !== 1 || !$this->audit->log('experiment_created', 'experiment', $uuid, 'success', ['enhanced_review' => $enhanced], 'experiment_governance', null, $actorUserId)) {
+        if ($ok !== 1 || !$this->audit->logInOpenTransaction('experiment_created', 'experiment', $uuid, 'success', ['enhanced_review' => $enhanced], 'experiment_governance', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_experiment_store_failed', 'Experiment could not be stored.', ['status' => 500]);
         }
@@ -120,7 +120,7 @@ final class ExperimentService
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'state' => $from, 'row_version' => $expectedVersion]);
-        if ($updated !== 1 || !$this->audit->log('experiment_transition', 'experiment', $uuid, 'success', ['from' => $from, 'to' => $target, 'reason' => $reason], 'experiment_governance', null, $actorUserId)) {
+        if ($updated !== 1 || !$this->audit->logInOpenTransaction('experiment_transition', 'experiment', $uuid, 'success', ['from' => $from, 'to' => $target, 'reason' => $reason], 'experiment_governance', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_experiment_conflict', 'Experiment changed concurrently.', ['status' => 409]);
         }
@@ -204,7 +204,7 @@ final class ExperimentService
                 'fact_hash' => $hash,
                 'created_at' => $this->db->now(),
             ]);
-            if ($inserted !== 1 || !$this->audit->log('experiment_assignment_recorded', 'experiment_assignment', $canonical['assignment_event_id'], 'success', ['experiment_uuid' => $canonical['experiment_uuid'], 'variant_key' => $canonical['variant_key']], 'experiment_assignment', null, null, 'service')) {
+            if ($inserted !== 1 || !$this->audit->logInOpenTransaction('experiment_assignment_recorded', 'experiment_assignment', $canonical['assignment_event_id'], 'success', ['experiment_uuid' => $canonical['experiment_uuid'], 'variant_key' => $canonical['variant_key']], 'experiment_assignment', null, null, 'service')) {
                 $wpdb->query('ROLLBACK');
                 return new WP_Error('smai_assignment_store_failed', 'Assignment fact could not be stored.', ['status' => 500]);
             }
@@ -275,7 +275,6 @@ final class ExperimentService
         $primary = $result['metrics'][0] ?? null;
         if ($result['guardrail_breached']) {
             $result['conclusion'] = 'guardrail_breached';
-            do_action('smai_experiment_guardrail_breached', ['experiment_uuid' => $uuid, 'analysis_version' => $analysisVersion, 'guardrails' => $result['guardrails']]);
         } elseif ($result['deviations'] !== []) {
             $result['conclusion'] = 'inconclusive_protocol_or_sample';
         } elseif (is_array($primary) && ($primary['status'] ?? '') === 'compared' && !empty($primary['comparison']['conclusive']) && !empty($primary['comparison']['practical'])) {
@@ -314,11 +313,14 @@ final class ExperimentService
             'published_at' => null,
             'updated_at' => $now,
         ]);
-        if ($ok !== 1 || !$this->audit->log('experiment_analysis_created', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $uuid, 'analysis_version' => $analysisVersion, 'result_hash' => $hash, 'conclusion' => $result['conclusion']], 'experiment_analysis', null, $actorUserId)) {
+        if ($ok !== 1 || !$this->audit->logInOpenTransaction('experiment_analysis_created', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $uuid, 'analysis_version' => $analysisVersion, 'result_hash' => $hash, 'conclusion' => $result['conclusion']], 'experiment_analysis', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_analysis_store_failed', 'Analysis could not be stored.', ['status' => 500]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_analysis_commit_failed', 'Analysis could not be committed.', ['status'=>500]); }
+        if ($result['guardrail_breached']) {
+            do_action('smai_experiment_guardrail_breached', ['experiment_uuid' => $uuid, 'analysis_version' => $analysisVersion, 'guardrails' => $result['guardrails']]);
+        }
         return ['analysis_uuid' => $analysisUuid, 'status' => 'draft', 'row_version' => 1, 'result' => $result];
     }
 
@@ -357,7 +359,7 @@ final class ExperimentService
             ], ['id' => (int) $experiment['id'], 'state' => 'stopped', 'row_version' => (int) $experiment['row_version']]) !== 1) {
                 throw new \RuntimeException('experiment_conflict');
             }
-            if (!$this->audit->log('experiment_analysis_published', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $analysis['experiment_uuid'], 'analysis_version' => $analysis['analysis_version']], 'experiment_analysis', null, $actorUserId)) { throw new \RuntimeException('audit_failed'); }
+            if (!$this->audit->logInOpenTransaction('experiment_analysis_published', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $analysis['experiment_uuid'], 'analysis_version' => $analysis['analysis_version']], 'experiment_analysis', null, $actorUserId)) { throw new \RuntimeException('audit_failed'); }
             $wpdb->query('COMMIT');
             return ['analysis_uuid' => $analysisUuid, 'status' => 'published', 'row_version' => $expectedVersion + 1, 'experiment_state' => 'analyzed'];
         } catch (\DomainException $error) {
@@ -399,7 +401,9 @@ final class ExperimentService
         }
         $uuid = Uuid::v4();
         $now = $this->db->now();
-        $ok = $this->db->wpdb()->insert($this->db->table('decision_records'), [
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_decision_transaction_failed','Decision transaction could not start.',['status'=>500]);}
+        $ok = $wpdb->insert($this->db->table('decision_records'), [
             'decision_uuid' => $uuid,
             'subject_type' => $subjectType,
             'subject_ref' => $subjectRef,
@@ -415,10 +419,11 @@ final class ExperimentService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        if ($ok !== 1) {
+        if ($ok !== 1) { $wpdb->query('ROLLBACK');
             return new WP_Error('smai_decision_store_failed', 'Decision record could not be stored.', ['status' => 500]);
         }
-        $this->audit->log('decision_recorded', 'decision', $uuid, 'success', ['subject_type' => $subjectType, 'subject_ref' => $subjectRef], 'institutional_decision_support', null, $actorUserId);
+        if(!$this->audit->logInOpenTransaction('decision_recorded', 'decision', $uuid, 'success', ['subject_type' => $subjectType, 'subject_ref' => $subjectRef], 'institutional_decision_support', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_decision_audit_failed','Decision was not committed because audit evidence failed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_decision_commit_failed','Decision could not be committed.',['status'=>500]);}
         return ['decision_uuid' => $uuid, 'status' => 'recorded', 'row_version' => 1];
     }
 
@@ -433,15 +438,18 @@ final class ExperimentService
         if (!is_array($row) || (int) $row['row_version'] !== $expectedVersion) {
             return new WP_Error('smai_decision_stale', 'Decision record is unavailable or stale.', ['status' => 409]);
         }
-        $updated = $this->db->wpdb()->update($table, [
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_decision_transaction_failed','Decision outcome transaction could not start.',['status'=>500]);}
+        $updated = $wpdb->update($table, [
             'outcome_json' => Json::canonical($outcome),
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {
+        if ($updated !== 1) { $wpdb->query('ROLLBACK');
             return new WP_Error('smai_decision_conflict', 'Decision record changed concurrently.', ['status' => 409]);
         }
-        $this->audit->log('decision_outcome_recorded', 'decision', $decisionUuid, 'success', [], 'institutional_decision_support', null, $actorUserId);
+        if(!$this->audit->logInOpenTransaction('decision_outcome_recorded', 'decision', $decisionUuid, 'success', [], 'institutional_decision_support', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_decision_audit_failed','Decision outcome was not committed because audit evidence failed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_decision_commit_failed','Decision outcome could not be committed.',['status'=>500]);}
         return ['decision_uuid' => $decisionUuid, 'status' => 'outcome_recorded', 'row_version' => $expectedVersion + 1];
     }
 
