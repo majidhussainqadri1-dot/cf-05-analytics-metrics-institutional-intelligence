@@ -1,0 +1,33 @@
+name: Apply CF-05 Review 9 Hygiene
+on:
+  push:
+    branches: [codex/cf-05-foundation-0.1.0]
+    paths: ['.codex/review9-hygiene.ready']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Apply review 9 hygiene fixes
+        run: python3 scripts/apply-review9-hygiene.py
+      - name: Remove one-shot review 9 files
+        run: rm -f .codex/review9-hygiene.ready scripts/apply-review9-hygiene.py .github/workflows/apply-review9-hygiene.yml && rmdir .codex 2>/dev/null || true
+      - name: Full governed QA
+        run: bash scripts/qa.sh
+      - name: Deterministic package verification
+        run: bash scripts/verify-deterministic-build.sh
+      - name: Commit review 9 fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'review 9: remove retired mutation tooling and enforce hygiene'
+          git push origin HEAD:codex/cf-05-foundation-0.1.0
