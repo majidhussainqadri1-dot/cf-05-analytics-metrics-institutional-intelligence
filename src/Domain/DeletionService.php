@@ -57,13 +57,13 @@ final class DeletionService
             return ['job_uuid' => (string) $existing['job_uuid'], 'state' => (string) $existing['state'], 'duplicate' => true];
         }
         $worker = (new JobQueue($this->db))->enqueue('deletion.apply', ['deletion_job_uuid' => $uuid, 'actor_user_id' => $actorUserId], 'deletion|' . $normalized . '|' . $sourceModule . '|' . $sourceVersion);
-        if (is_wp_error($worker) || !$this->audit->log('analytics_deletion_requested', 'deletion_job', $uuid, 'success', [
+        if (is_wp_error($worker) || !$this->audit->logInOpenTransaction('analytics_deletion_requested', 'deletion_job', $uuid, 'success', [
             'source_module' => $sourceModule, 'scope' => array_keys(array_filter($scope, static fn(mixed $v): bool => $v === true)),
         ], 'privacy_rights', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return is_wp_error($worker) ? $worker : new WP_Error('smai_audit_failed', 'Deletion request audit evidence failed.', ['status' => 503]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_deletion_commit_failed','Deletion request could not be committed.',['status'=>500]); }
         return ['job_uuid' => $uuid, 'state' => 'requested', 'duplicate' => false, 'worker_job' => $worker];
     }
 
@@ -154,8 +154,14 @@ final class DeletionService
             $this->retry($job, $reconciliation, array_keys($failed));
             throw new \RuntimeException('Deletion reconciliation is incomplete and has been scheduled for retry.');
         }
-        if ($wpdb->update($table, ['state' => 'completed', 'result_json' => Json::encode($reconciliation), 'completed_at' => $now, 'next_retry_at' => null, 'updated_at' => $now], ['id' => (int) $job['id'], 'state' => 'running']) !== 1
-            || !$this->audit->log('analytics_deletion_completed', 'deletion_job', $uuid, 'success', ['stores' => array_keys($reconciliation)], 'privacy_rights', null, (int) ($payload['actor_user_id'] ?? 0))) {
+        if ($wpdb->query('START TRANSACTION') === false) {
+            $this->retry($job, $reconciliation, ['completion_transaction']);
+            throw new \RuntimeException('Deletion completion transaction could not start.');
+        }
+        $completed = $wpdb->update($table, ['state' => 'completed', 'result_json' => Json::encode($reconciliation), 'completed_at' => $now, 'next_retry_at' => null, 'updated_at' => $now], ['id' => (int) $job['id'], 'state' => 'running']);
+        $audited = $completed === 1 && $this->audit->logInOpenTransaction('analytics_deletion_completed', 'deletion_job', $uuid, 'success', ['stores' => array_keys($reconciliation)], 'privacy_rights', null, (int) ($payload['actor_user_id'] ?? 0));
+        if (!$audited || $wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
             $this->retry($job, $reconciliation, ['completion_evidence']);
             throw new \RuntimeException('Deletion completion evidence could not be committed.');
         }

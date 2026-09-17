@@ -41,7 +41,9 @@ final class RestoreService
         $checkpoints = $this->checkpointSnapshot();
         $deletionFloor = (int) $this->db->wpdb()->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('deletion_jobs')}`");
         $accessFloor = (int) $this->db->wpdb()->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('access_projects')}`");
-        $ok = $this->db->wpdb()->insert($this->db->table('restore_points'), [
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_restore_transaction_failed','Restore evidence transaction could not start.',['status'=>500]);}
+        $ok = $wpdb->insert($this->db->table('restore_points'), [
             'restore_uuid' => $uuid,
             'state' => 'recorded',
             'code_sha' => strtolower($codeSha),
@@ -54,10 +56,11 @@ final class RestoreService
             'recorded_by' => $actorUserId,
             'created_at' => $this->db->now(),
         ]);
-        if ($ok !== 1) {
+        if ($ok !== 1) { $wpdb->query('ROLLBACK');
             return new WP_Error('smai_restore_point_store_failed', 'Restore point could not be stored.', ['status' => 500]);
         }
-        $this->audit->log('restore_point_recorded', 'restore_point', $uuid, 'success', ['code_sha' => $codeSha, 'catalog_hash' => $catalogHash], 'disaster_recovery', null, $actorUserId);
+        if(!$this->audit->logInOpenTransaction('restore_point_recorded', 'restore_point', $uuid, 'success', ['code_sha' => $codeSha, 'catalog_hash' => $catalogHash], 'disaster_recovery', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_restore_audit_failed','Restore point was not committed because audit evidence failed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_restore_commit_failed','Restore point could not be committed.',['status'=>500]);}
         return ['restore_uuid' => $uuid, 'state' => 'recorded', 'catalog_hash' => $catalogHash, 'checkpoint_hash' => hash('sha256', Json::canonical($checkpoints))];
     }
 
@@ -84,8 +87,10 @@ final class RestoreService
             'provider_restore_verified' => $this->verifyProviders($uuid),
         ];
         $verified = !in_array(false, $checks, true);
-        $this->db->wpdb()->update($table, ['state' => $verified ? 'verified' : 'failed', 'verified_by' => $actorUserId, 'verified_at' => $this->db->now()], ['id' => (int) $point['id']]);
-        $this->audit->log('warehouse_restore_verified', 'restore_point', $uuid, $verified ? 'success' : 'failed', $checks, 'disaster_recovery', null, $actorUserId);
+        $wpdb=$this->db->wpdb();if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_restore_transaction_failed','Restore verification transaction could not start.',['status'=>500]);}
+        $updated=$wpdb->update($table, ['state' => $verified ? 'verified' : 'failed', 'verified_by' => $actorUserId, 'verified_at' => $this->db->now()], ['id' => (int) $point['id']]);
+        if($updated!==1 || !$this->audit->logInOpenTransaction('warehouse_restore_verified', 'restore_point', $uuid, $verified ? 'success' : 'failed', $checks, 'disaster_recovery', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_restore_audit_failed','Restore verification evidence could not be committed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_restore_commit_failed','Restore verification could not be committed.',['status'=>500]);}
         do_action('smai_restore_verification_completed', ['restore_uuid' => $uuid, 'verified' => $verified, 'checks' => $checks]);
         return ['restore_uuid' => $uuid, 'state' => $verified ? 'verified' : 'failed', 'checks' => $checks];
     }
@@ -126,7 +131,7 @@ final class RestoreService
         $jobs = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT deletion_key FROM `{$this->db->table('deletion_jobs')}` WHERE id<=%d AND state='completed'", $floor), ARRAY_A);
         foreach (is_array($jobs) ? $jobs : [] as $job) {
             $key = (string) $job['deletion_key'];
-            foreach ([['events','deletion_key'],['dataset_rows','deletion_key'],['experiment_facts','subject_ref']] as [$table,$column]) {
+            foreach ([['events','deletion_key'],['dataset_rows','deletion_key'],['experiment_facts','deletion_key']] as [$table,$column]) {
                 $count = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table($table)}` WHERE `{$column}`=%s", $key));
                 if ($count !== 0) {return false;}
             }

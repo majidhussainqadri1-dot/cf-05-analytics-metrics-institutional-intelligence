@@ -37,20 +37,22 @@ final class RetentionRunner
         $futureAlertCutoff = gmdate('Y-m-d H:i:s', time() - $futureAlertDays * DAY_IN_SECONDS);
         $futureIncidentCutoff = gmdate('Y-m-d H:i:s', time() - $futureIncidentDays * DAY_IN_SECONDS);
 
-        $wpdb->query($wpdb->prepare(
+        if ($wpdb->query('START TRANSACTION') === false) { throw new \RuntimeException('Retention transaction could not start.'); }
+        try {
+        $this->mustQuery($wpdb, $wpdb->prepare(
             "DELETE FROM `{$this->db->table('events')}` WHERE (expires_at IS NOT NULL AND expires_at<%s) OR (expires_at IS NULL AND created_at<%s)",
             $now,
             $eventCutoff
         ));
-        $wpdb->query($wpdb->prepare(
+        $this->mustQuery($wpdb, $wpdb->prepare(
             "DELETE r FROM `{$this->db->table('dataset_rows')}` r INNER JOIN `{$this->db->table('datasets')}` d ON d.dataset_id=r.dataset_id AND d.dataset_version=r.dataset_version WHERE r.created_at<DATE_SUB(%s, INTERVAL d.retention_days DAY)",
             $now
         ));
-        $wpdb->query($wpdb->prepare(
+        $this->mustQuery($wpdb, $wpdb->prepare(
             "DELETE FROM `{$this->db->table('dataset_rows')}` WHERE created_at<%s AND dataset_id NOT IN (SELECT dataset_id FROM `{$this->db->table('datasets')}`)",
             $modelCutoff
         ));
-        $wpdb->query($wpdb->prepare(
+        $this->mustQuery($wpdb, $wpdb->prepare(
             "DELETE FROM `{$this->db->table('quarantine')}` WHERE created_at<%s AND status IN ('resolved','discarded')",
             $quarantineCutoff
         ));
@@ -59,33 +61,47 @@ final class RetentionRunner
             $now
         ));
         foreach (is_array($expiredExports) ? $expiredExports : [] as $uuid) {
-            $wpdb->delete($this->db->table('export_payloads'), ['export_uuid' => $uuid]);
+            if ($wpdb->delete($this->db->table('export_payloads'), ['export_uuid' => $uuid]) === false) { throw new \RuntimeException('Retention export payload purge failed.'); }
         }
-        $wpdb->query($wpdb->prepare(
+        $this->mustQuery($wpdb, $wpdb->prepare(
             "UPDATE `{$this->db->table('exports')}` SET state='expired',updated_at=%s WHERE expires_at<%s AND state IN ('requested','building','ready','revoked')",
             $now,
             $now
         ));
-        $wpdb->query($wpdb->prepare(
+        $this->mustQuery($wpdb, $wpdb->prepare(
             "UPDATE `{$this->db->table('report_deliveries')}` SET state='expired',token_hash=NULL,bundle_json=NULL,updated_at=%s WHERE expires_at<%s AND state IN ('queued','ready','sent','revoked')",
             $now,
             $now
         ));
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('ingestion_nonces')}` WHERE expires_at<%s", $now));
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('rate_limits')}` WHERE expires_at<%s", $now));
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('idempotency_keys')}` WHERE expires_at<%s", $now));
-        $wpdb->query($wpdb->prepare(
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('ingestion_nonces')}` WHERE expires_at<%s", $now));
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('rate_limits')}` WHERE expires_at<%s", $now));
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('idempotency_keys')}` WHERE expires_at<%s", $now));
+        $this->mustQuery($wpdb, $wpdb->prepare(
             "DELETE FROM `{$this->db->table('jobs')}` WHERE state='completed' AND completed_at<%s",
             gmdate('Y-m-d H:i:s', time() - 30 * DAY_IN_SECONDS)
         ));
 
         // Future-40 derivative evidence is explicitly retention-bound. Governance
         // configuration and published transparency records are not silently purged.
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('future_runs')}` WHERE created_at<%s", $futureRunCutoff));
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('scenario_models')}` WHERE updated_at<%s", $futureScenarioCutoff));
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('intelligence_alerts')}` WHERE updated_at<%s", $futureAlertCutoff));
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('analytics_incidents')}` WHERE state IN ('resolved','closed') AND updated_at<%s", $futureIncidentCutoff));
-        $wpdb->query($wpdb->prepare("UPDATE `{$this->db->table('research_workspaces')}` SET state='expired',updated_at=%s WHERE expires_at IS NOT NULL AND expires_at<%s AND state NOT IN ('expired','revoked')", $now, $now));
-        $wpdb->query($wpdb->prepare("DELETE FROM `{$this->db->table('research_workspaces')}` WHERE state IN ('expired','revoked') AND updated_at<%s", $modelCutoff));
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('future_runs')}` WHERE created_at<%s", $futureRunCutoff));
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('scenario_models')}` WHERE updated_at<%s", $futureScenarioCutoff));
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('intelligence_alerts')}` WHERE updated_at<%s", $futureAlertCutoff));
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('analytics_incidents')}` WHERE state IN ('resolved','closed') AND updated_at<%s", $futureIncidentCutoff));
+        $this->mustQuery($wpdb, $wpdb->prepare("UPDATE `{$this->db->table('research_workspaces')}` SET state='expired',updated_at=%s WHERE expires_at IS NOT NULL AND expires_at<%s AND state NOT IN ('expired','revoked')", $now, $now));
+        $this->mustQuery($wpdb, $wpdb->prepare("DELETE FROM `{$this->db->table('research_workspaces')}` WHERE state IN ('expired','revoked') AND updated_at<%s", $modelCutoff));
+        $audit = new AuditLogger($this->db);
+        if (!$audit->logInOpenTransaction('analytics_retention_completed','retention_run',gmdate('Y-m-d'),'success',['event_cutoff'=>$eventCutoff,'model_cutoff'=>$modelCutoff,'quarantine_cutoff'=>$quarantineCutoff],'retention',null,null,'system')) { throw new \RuntimeException('Retention audit evidence failed.'); }
+        if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Retention commit failed.'); }
+        } catch (\Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            throw new \RuntimeException('Retention run failed safely.', 0, $error);
+        }
+    }
+
+    private function mustQuery($wpdb, string $sql): int
+    {
+        $result = $wpdb->query($sql);
+        if ($result === false) { throw new \RuntimeException('Retention database operation failed.'); }
+        return (int) $result;
     }
 }
