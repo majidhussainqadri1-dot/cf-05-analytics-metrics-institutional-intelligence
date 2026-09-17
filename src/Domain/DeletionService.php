@@ -39,7 +39,7 @@ final class DeletionService
         $now = $this->db->now();
         $table = $this->db->table('deletion_jobs');
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) { return new WP_Error('smai_deletion_transaction_failed', 'Deletion request transaction could not start.', ['status'=>500]); }
         $inserted = $wpdb->query($wpdb->prepare(
             "INSERT IGNORE INTO `{$table}` (job_uuid,deletion_key,source_module,source_version,state,scope_json,retry_count,requested_at,updated_at) VALUES (%s,%s,%s,%s,'requested',%s,0,%s,%s)",
             $uuid, $normalized, $sourceModule, $sourceVersion, Json::canonical($scope), $now, $now
@@ -89,7 +89,7 @@ final class DeletionService
         $now = $this->db->now();
 
         try {
-            $wpdb->query('START TRANSACTION');
+            if ($wpdb->query('START TRANSACTION') === false) { throw new \RuntimeException('Deletion local transaction could not start.'); }
             if (($scope['events'] ?? false) === true) {
                 $before = $this->eligibleCount('events', $key);
                 $results['events'] = $this->deleteWhere('events', 'deletion_key', $key);
@@ -129,7 +129,7 @@ final class DeletionService
                     $reconciliation[$store] = ['eligible_before' => (int) $results[$store], 'eligible_after' => 0, 'state' => 'verified'];
                 }
             }
-            $wpdb->query('COMMIT');
+            if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Deletion local transaction could not be committed.'); }
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
             $this->retry($job, $reconciliation, ['local_transaction']);

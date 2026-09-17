@@ -56,7 +56,7 @@ final class CatalogLifecycleService
             }
         }
 
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) { return new WP_Error('smai_catalog_transaction_failed', 'Catalog transition transaction could not start.', ['status' => 500]); }
         try {
             $row = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM `{$table}` WHERE id=%d FOR UPDATE",
@@ -122,13 +122,15 @@ final class CatalogLifecycleService
                 $wpdb->query('ROLLBACK');
                 return new WP_Error('smai_transition_history_failed', 'Transition history could not be stored.', ['status' => 500]);
             }
-            $wpdb->query('COMMIT');
-            $this->audit->log('catalog_lifecycle_transition', $objectType, (string) $objectId, 'success', [
+            if (!$this->audit->logInOpenTransaction('catalog_lifecycle_transition', $objectType, (string) $objectId, 'success', [
                 'from_state' => $from,
                 'to_state' => $targetState,
                 'row_version_from' => $actualVersion,
                 'row_version_to' => $newVersion,
-            ], 'analytics_governance', null, $actorUserId);
+            ], 'analytics_governance', null, $actorUserId)) {
+                throw new \RuntimeException('Catalog transition audit evidence failed.');
+            }
+            if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Catalog transition commit failed.'); }
             return ['id' => $objectId, 'object_type' => $objectType, 'from_state' => $from, 'state' => $targetState, 'row_version' => $newVersion, 'duplicate' => false];
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
@@ -149,8 +151,9 @@ final class CatalogLifecycleService
                     $datasetId,
                     $version
                 ), ARRAY_A);
-                if (!is_array($build) || !in_array((string) $build['state'], ['compared','active'], true)) {
-                    $errors[] = 'dataset_build_missing_or_uncompared';
+                $allowedBuildStates = $targetState === 'published' ? ['active'] : ['compared','active'];
+                if (!is_array($build) || !in_array((string) $build['state'], $allowedBuildStates, true)) {
+                    $errors[] = $targetState === 'published' ? 'dataset_active_build_missing' : 'dataset_build_missing_or_uncompared';
                 }
             }
             if (in_array($targetState, ['quality_validated','privacy_approved','published'], true) && (string) $row['quality_status'] !== 'green') {

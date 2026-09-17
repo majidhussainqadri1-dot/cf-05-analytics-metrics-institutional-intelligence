@@ -76,7 +76,7 @@ final class PrivacyGateway
             'number' => is_int($value) || is_float($value) ? $this->boundedNumber((float) $value, $definition, $errors, $name) : $this->reject($errors, 'invalid_number_' . $name),
             'enum' => is_scalar($value) && in_array((string) $value, array_map('strval', (array) ($definition['values'] ?? [])), true) ? (string) $value : $this->reject($errors, 'invalid_enum_' . $name),
             'safe_string' => is_string($value) ? $this->safeString($value, $definition, $errors, $name) : $this->reject($errors, 'invalid_string_' . $name),
-            'timestamp' => is_string($value) && strtotime($value) !== false ? gmdate('c', (int) strtotime($value)) : $this->reject($errors, 'invalid_timestamp_' . $name),
+            'timestamp' => is_string($value) && ($timestamp = $this->strictTimestamp($value)) !== null ? gmdate('c', $timestamp) : $this->reject($errors, 'invalid_timestamp_' . $name),
             'pseudonymous_ref' => is_scalar($value) ? $this->pseudonymize((string) $value, 'field:' . $name) : $this->reject($errors, 'invalid_ref_' . $name),
             default => $this->reject($errors, 'unsupported_type_' . $name),
         };
@@ -130,6 +130,15 @@ final class PrivacyGateway
     {
         $errors[] = $error;
         return null;
+    }
+
+    private function strictTimestamp(string $value): ?int
+    {
+        if (strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $value) !== 1) {
+            return null;
+        }
+        $timestamp = strtotime($value);
+        return $timestamp === false ? null : $timestamp;
     }
 
     private function pseudonymizeNullable(mixed $value, string $context): ?string

@@ -21,6 +21,11 @@ final class JobQueue
         if (!preg_match('/^[a-z][a-z0-9_.-]{2,99}$/', $type) || strlen($idempotencyKey) < 8) {
             return new WP_Error('smai_invalid_job', 'Job type or idempotency key is invalid.', ['status' => 400]);
         }
+        if ($runAt !== null) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $runAt) !== 1 || strtotime($runAt . ' UTC') === false) {
+                return new WP_Error('smai_invalid_job_schedule', 'Job run time is invalid.', ['status' => 400]);
+            }
+        }
         $table = $this->db->table('jobs');
         $wpdb = $this->db->wpdb();
         $now = gmdate('Y-m-d H:i:s');
@@ -64,8 +69,14 @@ final class JobQueue
             return null;
         }
         try {
+            $expired = $wpdb->query($wpdb->prepare(
+                "UPDATE `{$table}` SET state='dead_letter',error_code='lease_attempts_exhausted',error_message='Worker lease expired after the maximum attempts.',lease_owner=NULL,lease_until=NULL,updated_at=%s WHERE state='running' AND lease_until<%s AND attempts>=max_attempts",
+                $now,
+                $now
+            ));
+            if ($expired === false) { throw new \RuntimeException('Expired job fencing failed.'); }
             $row = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM `{$table}` WHERE ((state IN ('queued','retrying') AND next_run_at<=%s) OR (state='running' AND lease_until<%s)) ORDER BY next_run_at,id LIMIT 1 FOR UPDATE",
+                "SELECT * FROM `{$table}` WHERE ((state IN ('queued','retrying') AND next_run_at<=%s AND attempts<max_attempts) OR (state='running' AND lease_until<%s AND attempts<max_attempts)) ORDER BY next_run_at,id LIMIT 1 FOR UPDATE",
                 $now,
                 $now
             ), ARRAY_A);

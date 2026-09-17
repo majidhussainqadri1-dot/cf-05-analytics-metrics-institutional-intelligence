@@ -9,6 +9,8 @@ use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\Json;
 use Sabri\AnalyticsIntelligence\Infrastructure\RateLimiter;
 use Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate;
+use Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector;
+use Sabri\AnalyticsIntelligence\Infrastructure\Text;
 use WP_Error;
 
 final class MetricQueryService
@@ -38,11 +40,13 @@ final class MetricQueryService
         if (!RuntimeGate::queryEnabled()) {
             return new WP_Error('smai_query_disabled', 'Metric queries are disabled.', ['status' => 503]);
         }
+        $purpose = Text::truncate(trim(wp_strip_all_tags($purpose)), 2000);
         if ($actorUserId < 1
             || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1
             || preg_match('/^[0-9a-f-]{36}$/i', $projectUuid) !== 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $purpose) !== 1) {
+            || strlen($purpose) < 12
+            || (new SensitiveValueDetector())->violations($purpose) !== []) {
             return new WP_Error('smai_query_context_required', 'Metric, project and purpose context are invalid.', ['status' => 400]);
         }
         if (!(new RateLimiter($this->db))->consume('metric-query', (string) $actorUserId, 500, HOUR_IN_SECONDS)) {

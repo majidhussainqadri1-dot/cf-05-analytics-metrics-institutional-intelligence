@@ -94,6 +94,11 @@ final class EventIngestionService
                 return $this->quarantine($event, 'invalid_envelope_metadata', $booleanField, $service, 400);
             }
         }
+        foreach (['actor_ref','object_ref','deletion_key'] as $referenceField) {
+            if (array_key_exists($referenceField, $event) && $event[$referenceField] !== null && $event[$referenceField] !== '' && !is_scalar($event[$referenceField])) {
+                return $this->quarantine($event, 'invalid_envelope_metadata', $referenceField, $service, 400);
+            }
+        }
         foreach (['consent_version' => 64, 'guardian_consent_version' => 64, 'policy_version' => 64, 'trace_id' => 100] as $field => $maximum) {
             if (isset($event[$field]) && (!is_string($event[$field]) || preg_match('/^[A-Za-z0-9_.:-]{1,' . $maximum . '}$/', $event[$field]) !== 1)) {
                 return $this->quarantine($event, 'invalid_envelope_metadata', $field, $service, 400);
@@ -184,7 +189,9 @@ final class EventIngestionService
         $table = $this->db->table('events');
         $now = $this->db->now();
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_event_transaction_failed', 'Event transaction could not start.', ['status' => 500]);
+        }
         try {
             $inserted = $wpdb->query($wpdb->prepare(
                 "INSERT IGNORE INTO `{$table}` (event_id,event_name,event_version,source_module,source_version,source_environment,source_sequence,source_sequence_key,occurred_at,recorded_at,actor_ref,object_ref,deletion_key,purpose,consent_version,guardian_consent_version,region_code,provider_id,policy_version,trace_id,properties_json,payload_hash,is_late,correction_of_event_id,expires_at,created_at) VALUES (%s,%s,%s,%s,%s,%s,NULLIF(%d,0),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%d,%s,%s,%s)",
@@ -221,7 +228,10 @@ final class EventIngestionService
             if ($inserted === 0) {
                 $existing = $wpdb->get_row($wpdb->prepare("SELECT event_id,payload_hash FROM `{$table}` WHERE event_id=%s", $eventId), ARRAY_A);
                 if (is_array($existing) && hash_equals((string) $existing['payload_hash'], $payloadHash)) {
-                    $wpdb->query('COMMIT');
+                    if ($wpdb->query('COMMIT') === false) {
+                        $wpdb->query('ROLLBACK');
+                        return new WP_Error('smai_event_commit_failed', 'Duplicate-event verification could not be committed.', ['status' => 500]);
+                    }
                     return ['event_id' => $eventId, 'status' => 'duplicate_ignored', 'payload_hash' => $payloadHash, 'late' => $isLate, 'out_of_order' => $outOfOrder, 'pipeline_job' => null];
                 }
                 if ($sequenceKey !== null) {
@@ -277,7 +287,11 @@ final class EventIngestionService
             'keys' => array_slice(array_map('strval', array_keys($event)), 0, 30),
             'property_keys' => array_slice(array_map('strval', array_keys(is_array($event['properties'] ?? null) ? $event['properties'] : [])), 0, 30),
         ];
-        $stored = $this->db->wpdb()->insert($this->db->table('quarantine'), [
+        $wpdb = $this->db->wpdb();
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_quarantine_evidence_failed', 'Event was rejected but quarantine evidence transaction could not start.', ['status' => 503, 'reason_code' => $code]);
+        }
+        $stored = $wpdb->insert($this->db->table('quarantine'), [
             'event_id' => isset($event['event_id']) ? substr((string) $event['event_id'], 0, 64) : null,
             'event_name' => isset($event['event_name']) ? substr((string) $event['event_name'], 0, 190) : null,
             'event_version' => isset($event['event_version']) ? substr((string) $event['event_version'], 0, 32) : null,
@@ -291,18 +305,19 @@ final class EventIngestionService
             'created_at' => $now,
             'updated_at' => $now,
         ]);
-        $logged = $this->audit->log(
+        $logged = $stored === 1 && $this->audit->logInOpenTransaction(
             'analytics_event_quarantined',
             'quarantine',
             isset($event['event_id']) ? (string) $event['event_id'] : null,
             'rejected',
-            ['reason_code' => $code, 'service' => $service, 'payload_hash' => $hash, 'quarantine_stored' => $stored === 1],
+            ['reason_code' => $code, 'service' => $service, 'payload_hash' => $hash, 'quarantine_stored' => true],
             isset($event['purpose']) ? (string) $event['purpose'] : null,
             isset($event['trace_id']) ? (string) $event['trace_id'] : null,
             null,
             'service'
         );
-        if ($stored !== 1 || !$logged) {
+        if (!$logged || $wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
             return new WP_Error('smai_quarantine_evidence_failed', 'Event was rejected but quarantine evidence could not be fully persisted.', ['status' => 503, 'reason_code' => $code]);
         }
         return new WP_Error('smai_event_quarantined', 'Event was quarantined.', ['status' => $status, 'reason_code' => $code]);

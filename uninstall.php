@@ -13,7 +13,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 // removed so an uninstalled plugin leaves no executable privilege surface.
 foreach ([
     'smai_runtime_state', 'smai_activation_approved', 'smai_activation_evidence_hash', 'smai_activation_request',
-    'smai_activation_lock', 'smai_schema_upgrade_lock',
+    'smai_activation_lock', 'smai_schema_upgrade_lock', 'smai_schema_migration_error', 'smai_experiment_rebuild_required',
     'smai_minimum_cohort', 'smai_raw_retention_days', 'smai_modeled_retention_days', 'smai_quarantine_retention_days',
     'smai_future_run_retention_days', 'smai_future_scenario_retention_days', 'smai_future_alert_retention_days', 'smai_future_incident_retention_days',
     'smai_export_ttl_hours', 'smai_report_link_ttl_hours', 'smai_max_export_rows', 'smai_worker_enabled', 'smai_allowed_regions', 'smai_provider_exit_state',

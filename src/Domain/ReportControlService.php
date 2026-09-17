@@ -262,6 +262,17 @@ final class ReportControlService
             }
             $dimensions = $metric['dimensions'];
             ksort($dimensions);
+            $activeMetric = (new MetricCatalog($this->db))->active((string) $metric['metric_id'], (string) $metric['metric_version']);
+            if ($activeMetric === null) { return new WP_Error('smai_report_metric_inactive', 'Report metric is not active.', ['status' => 409]); }
+            $allowedDimensions = array_map('strval', (array) (($activeMetric['definition']['dimensions'] ?? [])));
+            foreach ($dimensions as $dimension => $value) {
+                if (!in_array((string) $dimension, $allowedDimensions, true) || (!is_scalar($value) && $value !== null)) {
+                    return new WP_Error('smai_report_dimension_denied', 'Report metric dimension is not approved.', ['status' => 400]);
+                }
+            }
+            if (PrivacyQueryPolicy::violations((array) $activeMetric['definition'], $dimensions) !== []) {
+                return new WP_Error('smai_report_privacy_policy_denied', 'Report metric slice violates the privacy policy.', ['status' => 403]);
+            }
             $ref = 'metric:' . $metric['metric_id'] . '@' . $metric['metric_version'];
             if (!$access->authorize($projectUuid, $actorUserId, $ref, [])) {
                 return new WP_Error('smai_report_access_denied', 'Access project does not authorize a report metric.', ['status' => 403]);

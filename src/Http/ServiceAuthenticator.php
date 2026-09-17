@@ -40,21 +40,21 @@ final class ServiceAuthenticator
             return new WP_Error('smai_ingestion_secret_missing', 'Ingestion secret is not configured.', ['status' => 503]);
         }
 
-        if (!(new RateLimiter($this->db))->consume('service-auth', $service, 1200, 300)) {
-            return new WP_Error('smai_service_rate_limited', 'Service request rate limit exceeded.', ['status' => 429]);
-        }
-
         $body = (string) $request->get_body();
         if (strlen($body) > 1024 * 1024) {
             return new WP_Error('smai_request_too_large', 'Service request exceeds the maximum size.', ['status' => 413]);
         }
         $material = strtoupper((string) $request->get_method()) . "\n"
             . $request->get_route() . "\n"
+            . $service . "\n"
             . $timestamp . "\n"
             . hash('sha256', $body);
         $expected = hash_hmac('sha256', $material, $secret);
         if (!hash_equals($expected, $signature)) {
             return new WP_Error('smai_service_signature_invalid', 'Service signature is invalid.', ['status' => 401]);
+        }
+        if (!(new RateLimiter($this->db))->consume('service-auth', $service, 1200, 300)) {
+            return new WP_Error('smai_service_rate_limited', 'Service request rate limit exceeded.', ['status' => 429]);
         }
 
         $nonceHash = hash('sha256', $service . '|' . $timestamp . '|' . $signature);

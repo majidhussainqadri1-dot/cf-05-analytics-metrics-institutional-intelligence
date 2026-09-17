@@ -48,7 +48,11 @@ final class SnapshotService
         $datasetId=(string)($source['dataset_id']??'');$datasetVersion=(string)($source['dataset_version']??'');
         $dataset=(new DatasetCatalog($this->db))->published($datasetId,$datasetVersion);if($dataset===null){throw new \RuntimeException('Metric source dataset is not published.');}
         $allowed=array_map('strval',(array)($definition['dimensions']??[]));
-        foreach(array_keys($dimensions) as $key){if(!in_array((string)$key,$allowed,true)){throw new \RuntimeException('Unapproved snapshot dimension.');}}
+        foreach($dimensions as $key=>$dimensionValue){
+            if(!in_array((string)$key,$allowed,true)){throw new \RuntimeException('Unapproved snapshot dimension.');}
+            if(!is_scalar($dimensionValue) && $dimensionValue!==null){throw new \RuntimeException('Snapshot dimension value is invalid.');}
+        }
+        if(PrivacyQueryPolicy::violations($definition,$dimensions)!==[]){throw new \RuntimeException('Snapshot dimensions violate the metric privacy policy.');}
         $build=$this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$this->db->table('dataset_builds')}` WHERE dataset_id=%s AND dataset_version=%s AND is_active=1 LIMIT 1",$datasetId,$datasetVersion),ARRAY_A);
         if(!is_array($build)){throw new \RuntimeException('No active dataset build.');}
         $semantics=(string)($definition['historical_semantics']??'current');
@@ -60,12 +64,12 @@ final class SnapshotService
         [$value,$numerator,$denominator]=$this->calculate($calculation,$rows);
         $cohortField=(string)($definition['cohort_field']??'');$cohort=count($rows);
         if($cohortField!==''){$set=[];foreach($rows as $row){$v=$row[$cohortField]??null;if($v!==null&&$v!==''){$set[Json::canonical($v)]=true;}}$cohort=count($set);}
-        $minimum=max((int)$metric['minimum_cohort'],(int)get_option('smai_minimum_cohort',20));
-        $quality=(string)$dataset['quality_status'];$caveats=[];
+        $minimum=PrivacyQueryPolicy::effectiveMinimum($definition,$dimensions,max((int)$metric['minimum_cohort'],(int)get_option('smai_minimum_cohort',20)));
+        $quality=match((string)$dataset['quality_status']){'green'=>'green','amber'=>'warning','red'=>'degraded','warning'=>'warning','degraded'=>'degraded',default=>'unknown'};$caveats=[];
         if($dataThrough===null){$quality='unknown';$caveats[]='No eligible source data was available for the requested window.';}
         $maxFreshness=max(60,(int)($definition['freshness_seconds']??86400));
-        if($dataThrough!==null&&time()-(int)strtotime($dataThrough)>$maxFreshness){$quality='stale';$caveats[]='Data is older than the declared freshness threshold.';}
-        if(!in_array($quality,['green','amber','red','unknown','stale'],true)){$quality='unknown';}
+        if($dataThrough!==null&&time()-(int)strtotime($dataThrough)>$maxFreshness){if($quality==='green'){$quality='warning';}$caveats[]='Data is older than the declared freshness threshold.';}
+        if(!in_array($quality,['green','warning','degraded','unknown'],true)){$quality='unknown';}
         if($cohort<$minimum){$quality='suppressed';$value=$numerator=$denominator=null;$caveats[]='Result suppressed below minimum cohort.';}
         if($dataset['quality_status']!=='green'){$caveats[]='Dataset quality is not green.';}
         $uncertainty=null;if(($calculation['type']??'')==='ratio'&&$numerator!==null&&$denominator!==null&&$denominator>0){$uncertainty=Statistics::proportionInterval((int)round($numerator),(int)round($denominator));}
@@ -85,15 +89,16 @@ final class SnapshotService
             return ['snapshot_id'=>(int)$previous['id'],'snapshot_revision'=>(int)$previous['snapshot_revision'],'snapshot_hash'=>$previous['snapshot_hash'],'quality_status'=>$previous['quality_status'],'cohort_size'=>(int)$previous['cohort_size'],'value'=>$previous['value_decimal']!==null?(float)$previous['value_decimal']:null,'unchanged'=>true];
         }
         $record=array_merge($base,['snapshot_revision'=>$revision,'supersedes_snapshot_id'=>is_array($previous)?(int)$previous['id']:null,'snapshot_hash'=>$candidateHash]);
-        $wpdb->query('START TRANSACTION');
+        if($wpdb->query('START TRANSACTION')===false){throw new \RuntimeException('Snapshot transaction could not start.');}
         try{
             if(is_array($previous)&&$wpdb->update($table,['state'=>'superseded'],['id'=>(int)$previous['id'],'state'=>(string)$previous['state']])===false){throw new \RuntimeException('Previous snapshot could not be superseded.');}
             if($wpdb->insert($table,$record)!==1){throw new \RuntimeException('Metric snapshot could not be stored.');}
-            $snapshotId=(int)$wpdb->insert_id;$wpdb->query('COMMIT');
+            $snapshotId=(int)$wpdb->insert_id;
+            if(!$this->lineage->link('build',(string)$build['build_uuid'],null,'snapshot',(string)$snapshotId,(string)$candidateHash,(string)$dataset['owner_module'],null,defined('SMAI_CODE_SHA')?SMAI_CODE_SHA:null)){throw new \RuntimeException('Snapshot build lineage could not be recorded.');}
+            if(!$this->lineage->link('metric',$metricId,$version,'snapshot',(string)$snapshotId,(string)$candidateHash,(string)$metric['owner_module'])){throw new \RuntimeException('Snapshot metric lineage could not be recorded.');}
+            if(!$this->audit->logInOpenTransaction('metric_snapshot_published','metric_snapshot',(string)$snapshotId,'success',['metric_id'=>$metricId,'metric_version'=>$version,'revision'=>$revision,'quality_status'=>$quality,'cohort_bucket'=>$this->bucket($cohort)],'institutional_measurement',null,(int)($payload['actor_user_id']??0))){throw new \RuntimeException('Snapshot audit evidence could not be recorded.');}
+            if($wpdb->query('COMMIT')===false){throw new \RuntimeException('Snapshot transaction could not be committed.');}
         }catch(\Throwable $e){$wpdb->query('ROLLBACK');throw $e;}
-        $this->lineage->link('build',(string)$build['build_uuid'],null,'snapshot',(string)$snapshotId,(string)$candidateHash,(string)$dataset['owner_module'],null,defined('SMAI_CODE_SHA')?SMAI_CODE_SHA:null);
-        $this->lineage->link('metric',$metricId,$version,'snapshot',(string)$snapshotId,(string)$candidateHash,(string)$metric['owner_module']);
-        $this->audit->log('metric_snapshot_published','metric_snapshot',(string)$snapshotId,'success',['metric_id'=>$metricId,'metric_version'=>$version,'revision'=>$revision,'quality_status'=>$quality,'cohort_bucket'=>$this->bucket($cohort)],'institutional_measurement',null,(int)($payload['actor_user_id']??0));
         return ['snapshot_id'=>$snapshotId,'snapshot_revision'=>$revision,'snapshot_hash'=>$candidateHash,'quality_status'=>$quality,'cohort_size'=>$cohort,'value'=>$value,'unchanged'=>false];
     }
 
@@ -112,5 +117,5 @@ final class SnapshotService
     private function dimensionMatch(array $row,array $dimensions):bool{foreach($dimensions as $key=>$value){if(($row[$key]??null)!==$value){return false;}}return true;}
     private function coverage(int $cohort,int $minimum,string $quality):float{if($quality==='suppressed'){return 0.0;}return min(1.0,$cohort/max(1,$minimum));}
     private function bucket(int $count):string{return match(true){$count<20=>'<20',$count<100=>'20-99',$count<1000=>'100-999',default=>'1000+'};}
-    private function date(string $value):string{$timestamp=strtotime($value);if($timestamp===false){throw new \InvalidArgumentException('Invalid date.');}return gmdate('Y-m-d H:i:s',$timestamp);}
+    private function date(string $value):string{if(strlen($value)>35||preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/',$value)!==1){throw new \InvalidArgumentException('Invalid date.');}$timestamp=strtotime($value);if($timestamp===false){throw new \InvalidArgumentException('Invalid date.');}return gmdate('Y-m-d H:i:s',$timestamp);}
 }

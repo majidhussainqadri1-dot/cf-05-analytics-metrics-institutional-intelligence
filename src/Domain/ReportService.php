@@ -46,6 +46,17 @@ final class ReportService
                 return new WP_Error('smai_invalid_report_metric', 'Report metric is invalid.', ['status' => 400]);
             }
             ksort($metric['dimensions']);
+            $activeMetric = (new MetricCatalog($this->db))->active((string) $metric['metric_id'], (string) $metric['metric_version']);
+            if ($activeMetric === null) { return new WP_Error('smai_report_metric_inactive', 'Report metric is not active.', ['status' => 409]); }
+            $allowedDimensions = array_map('strval', (array) (($activeMetric['definition']['dimensions'] ?? [])));
+            foreach ($metric['dimensions'] as $dimension => $value) {
+                if (!in_array((string) $dimension, $allowedDimensions, true) || (!is_scalar($value) && $value !== null)) {
+                    return new WP_Error('smai_report_dimension_denied', 'Report metric dimension is not approved.', ['status' => 400]);
+                }
+            }
+            if (PrivacyQueryPolicy::violations((array) $activeMetric['definition'], $metric['dimensions']) !== []) {
+                return new WP_Error('smai_report_privacy_policy_denied', 'Report metric slice violates the privacy policy.', ['status' => 403]);
+            }
             $datasetRef = 'metric:' . $metric['metric_id'] . '@' . $metric['metric_version'];
             if (!$access->authorize($projectUuid, $actorUserId, $datasetRef, [])) {
                 return new WP_Error('smai_report_access_denied', 'Access project does not authorize a report metric.', ['status' => 403]);
@@ -305,13 +316,16 @@ final class ReportService
     private function latestSnapshot(string $metricId, string $version, array $dimensions): ?array
     {
         ksort($dimensions);
+        $metric = (new MetricCatalog($this->db))->active($metricId, $version);
+        if ($metric === null || PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) !== []) { return null; }
+        $minimum = PrivacyQueryPolicy::effectiveMinimum((array) $metric['definition'], $dimensions, max((int) $metric['minimum_cohort'], (int) get_option('smai_minimum_cohort', 20)));
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
-            "SELECT * FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND dimensions_hash=%s AND state='published' AND quality_status<>'suppressed' ORDER BY window_end DESC,snapshot_revision DESC LIMIT 1",
+            "SELECT * FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND dimensions_hash=%s AND state='published' AND quality_status NOT IN ('suppressed','invalidated') ORDER BY window_end DESC,snapshot_revision DESC LIMIT 1",
             $metricId,
             $version,
             hash('sha256', Json::canonical($dimensions))
         ), ARRAY_A);
-        if (!is_array($row)) {
+        if (!is_array($row) || (int) $row['cohort_size'] < $minimum) {
             return null;
         }
         return [

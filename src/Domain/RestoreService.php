@@ -33,7 +33,8 @@ final class RestoreService
                 return new WP_Error('smai_incomplete_restore_evidence', 'Restore evidence is incomplete.', ['status' => 400, 'field' => $required]);
             }
         }
-        if (strtotime((string) $evidence['backup_created_at']) === false) {
+        $backupCreatedAt = (string) $evidence['backup_created_at'];
+        if (strlen($backupCreatedAt) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $backupCreatedAt) !== 1 || strtotime($backupCreatedAt) === false) {
             return new WP_Error('smai_invalid_restore_timestamp', 'Backup evidence timestamp is invalid.', ['status' => 400]);
         }
         $uuid = Uuid::v4();

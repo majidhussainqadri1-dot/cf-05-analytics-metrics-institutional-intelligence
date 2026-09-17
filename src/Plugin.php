@@ -44,7 +44,9 @@ final class Plugin
         );
         \Sabri\AnalyticsIntelligence\Infrastructure\Activator::registerSchedule();
 
-        $this->upgradeIfNeeded();
+        if (!$this->upgradeIfNeeded()) {
+            return;
+        }
         $database = new Database($GLOBALS['wpdb']);
         $health = new HealthService($database);
 
@@ -74,26 +76,29 @@ final class Plugin
         });
     }
 
-    private function upgradeIfNeeded(): void
+    private function upgradeIfNeeded(): bool
     {
-        if ((string) get_option('smai_schema_version', '') === SMAI_SCHEMA_VERSION) {
-            return;
+        if ((string) get_option('smai_schema_version', '') === SMAI_SCHEMA_VERSION && get_option('smai_schema_migration_error', null) === null) {
+            return true;
         }
         $lock = 'smai_schema_upgrade_lock';
         if (!add_option($lock, ['started_at' => time()], '', false)) {
             $current = get_option($lock);
             if (!is_array($current) || time() - (int) ($current['started_at'] ?? 0) < 600) {
-                return;
+                return false;
             }
             delete_option($lock);
             if (!add_option($lock, ['started_at' => time()], '', false)) {
-                return;
+                return false;
             }
         }
         try {
             SchemaMigrator::migrate();
+        } catch (\Throwable $error) {
+            return false;
         } finally {
             delete_option($lock);
         }
+        return (string) get_option('smai_schema_version', '') === SMAI_SCHEMA_VERSION && get_option('smai_schema_migration_error', null) === null;
     }
 }

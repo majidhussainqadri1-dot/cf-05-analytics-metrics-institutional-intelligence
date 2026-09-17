@@ -230,28 +230,36 @@ final class ExportService
     {
         $metric = (new MetricCatalog($this->db))->active((string) $definition['metric_id'], (string) $definition['metric_version']);
         if ($metric === null) { return []; }
-        $minimum = PrivacyQueryPolicy::effectiveMinimum((array) $metric['definition'], [], (int) get_option('smai_minimum_cohort', 20));
+        $metricDefinition = (array) $metric['definition'];
+        $baseMinimum = max((int) $metric['minimum_cohort'], (int) get_option('smai_minimum_cohort', 20));
         $table = $this->db->table('metric_snapshots');
-        $where = ['s.metric_id=%s', 's.metric_version=%s', "s.state='published'", "s.quality_status NOT IN ('suppressed','invalidated')", 's.cohort_size>=%d'];
-        $args = [(string) $definition['metric_id'], (string) $definition['metric_version'], $minimum];
+        $where = ['s.metric_id=%s', 's.metric_version=%s', "s.state='published'", "s.quality_status NOT IN ('suppressed','invalidated')"];
+        $args = [(string) $definition['metric_id'], (string) $definition['metric_version']];
         if (!empty($definition['window_start'])) { $where[] = 's.window_start>=%s'; $args[] = (string) $definition['window_start']; }
         if (!empty($definition['window_end'])) { $where[] = 's.window_end<=%s'; $args[] = (string) $definition['window_end']; }
-        $args[] = max(1, min(10000, $limit));
+        $scanLimit = max(1, min(10000, $limit * 5));
+        $args[] = $scanLimit;
         $sql = "SELECT s.metric_id,s.metric_version,s.window_start,s.window_end,s.dimensions_json AS dimensions,s.value_decimal AS value,s.numerator_decimal AS numerator,s.denominator_decimal AS denominator,s.cohort_size,s.quality_status,s.data_through,s.caveats_json AS caveats FROM `{$table}` s INNER JOIN (SELECT metric_id,metric_version,window_start,window_end,dimensions_hash,MAX(snapshot_revision) AS revision FROM `{$table}` WHERE state='published' GROUP BY metric_id,metric_version,window_start,window_end,dimensions_hash) latest ON latest.metric_id=s.metric_id AND latest.metric_version=s.metric_version AND latest.window_start=s.window_start AND latest.window_end=s.window_end AND latest.dimensions_hash=s.dimensions_hash AND latest.revision=s.snapshot_revision WHERE " . implode(' AND ', $where) . ' ORDER BY s.window_end DESC LIMIT %d';
         $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare($sql, ...$args), ARRAY_A);
         if (!is_array($rows)) { return []; }
-        foreach ($rows as &$row) {
-            $row['dimensions'] = Json::object((string) $row['dimensions']);
+        $safe = [];
+        foreach ($rows as $row) {
+            $dimensions = Json::object((string) $row['dimensions']);
+            if (PrivacyQueryPolicy::violations($metricDefinition, $dimensions) !== []) { continue; }
+            $minimum = PrivacyQueryPolicy::effectiveMinimum($metricDefinition, $dimensions, $baseMinimum);
+            if ((int) $row['cohort_size'] < $minimum) { continue; }
+            $row['dimensions'] = $dimensions;
             $row['caveats'] = Json::list((string) $row['caveats']);
+            $safe[] = $row;
+            if (count($safe) >= $limit) { break; }
         }
-        unset($row);
-        return $rows;
+        return $safe;
     }
 
     private function optionalDate(mixed $value): ?string
     {
         if ($value === null || $value === '') { return null; }
-        if (!is_string($value) || preg_match('/^\d{4}-\d{2}-\d{2}T/', $value) !== 1) { return null; }
+        if (!is_string($value) || strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $value) !== 1) { return null; }
         $timestamp = strtotime($value);
         return $timestamp === false ? null : gmdate('Y-m-d H:i:s', $timestamp);
     }

@@ -83,7 +83,7 @@ final class BackfillService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_backfill_store_failed', 'Backfill plan could not be stored.', ['status' => 500]);
         }
-        if (!$this->audit->log('backfill_planned', 'backfill', $uuid, 'success', ['dataset_ref' => $datasetId . '@' . $version, 'window_start' => $startDate, 'window_end' => $endDate], 'data_rebuild', null, $actorUserId)) {
+        if (!$this->audit->logInOpenTransaction('backfill_planned', 'backfill', $uuid, 'success', ['dataset_ref' => $datasetId . '@' . $version, 'window_start' => $startDate, 'window_end' => $endDate], 'data_rebuild', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_audit_failed', 'Backfill plan was not committed because audit evidence failed.', ['status' => 503]);
         }
@@ -128,7 +128,7 @@ final class BackfillService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_backfill_conflict', 'Backfill changed concurrently.', ['status' => 409]);
         }
-        if (!$this->audit->log('backfill_dry_run', 'backfill', $uuid, 'success', $estimate, 'data_rebuild', null, $actorUserId)) {
+        if (!$this->audit->logInOpenTransaction('backfill_dry_run', 'backfill', $uuid, 'success', $estimate, 'data_rebuild', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_audit_failed', 'Dry-run result was not committed because audit evidence failed.', ['status' => 503]);
         }
@@ -170,7 +170,7 @@ final class BackfillService
             $wpdb->query('ROLLBACK');
             return $job;
         }
-        if (!$this->audit->log('backfill_approved', 'backfill', $uuid, 'success', ['job_uuid' => $job['job_uuid'] ?? null], 'data_rebuild', null, $actorUserId)) {
+        if (!$this->audit->logInOpenTransaction('backfill_approved', 'backfill', $uuid, 'success', ['job_uuid' => $job['job_uuid'] ?? null], 'data_rebuild', null, $actorUserId)) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_audit_failed', 'Backfill approval was not committed because audit evidence failed.', ['status' => 503]);
         }
@@ -234,12 +234,13 @@ final class BackfillService
                 "INSERT IGNORE INTO `{$rowTable}` (build_uuid,dataset_id,dataset_version,source_event_id,source_object_ref,deletion_key,effective_from,effective_to,is_current,row_json,row_hash,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,NULL,1,%s,%s,%s)",
                 $buildUuid, $row['dataset_id'], $row['dataset_version'], $event['event_id'], $event['object_ref'], $event['deletion_key'], $event['occurred_at'], $rowJson, $rowHash, $this->db->now()
             ));
+            if ($ok === false) { throw new \RuntimeException('Backfill dataset row write failed.'); }
             if ($ok === 1) {$inserted++;}
-            $this->lineage->link('event', (string) $event['event_id'], (string) $event['event_version'], 'build', $buildUuid, (string) $row['dataset_version'], (string) $dataset['owner_module'], null, defined('SMAI_CODE_SHA') ? SMAI_CODE_SHA : null);
+            if (!$this->lineage->link('event', (string) $event['event_id'], (string) $event['event_version'], 'build', $buildUuid, (string) $row['dataset_version'], (string) $dataset['owner_module'], null, defined('SMAI_CODE_SHA') ? SMAI_CODE_SHA : null)) { throw new \RuntimeException('Backfill lineage evidence could not be recorded.'); }
         }
         $count = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$rowTable}` WHERE build_uuid=%s", $buildUuid));
         $checkpoint = ['cursor_id' => $lastId, 'processed' => $count, 'updated_at' => gmdate('c')];
-        $this->db->wpdb()->update($this->db->table('dataset_builds'), ['row_count' => $count, 'checkpoint_json' => Json::encode($checkpoint), 'updated_at' => $this->db->now()], ['build_uuid' => $buildUuid, 'state' => 'building']);
+        if ($this->db->wpdb()->update($this->db->table('dataset_builds'), ['row_count' => $count, 'checkpoint_json' => Json::encode($checkpoint), 'updated_at' => $this->db->now()], ['build_uuid' => $buildUuid, 'state' => 'building']) !== 1) { throw new \RuntimeException('Backfill checkpoint could not be persisted.'); }
         if (count($events) === 1000) {
             $next = (new JobQueue($this->db))->enqueue('backfill.run', ['backfill_uuid' => $uuid, 'cursor_id' => $lastId, 'actor_user_id' => (int) ($payload['actor_user_id'] ?? 0)], 'backfill|' . $uuid . '|cursor|' . $lastId);
             if (is_wp_error($next)) {throw new \RuntimeException('Backfill continuation could not be queued.');}
@@ -259,8 +260,12 @@ final class BackfillService
             'same_window' => is_array($active) && (string) $active['source_start'] === (string) $row['date_start'] && (string) $active['source_end'] === (string) $row['date_end'],
             'source_window' => ['start' => $row['date_start'], 'end' => $row['date_end']],
         ];
-        $this->db->wpdb()->update($buildTable, ['state' => 'compared', 'row_count' => $count, 'build_hash' => $buildHash, 'checkpoint_json' => Json::encode($checkpoint), 'comparison_json' => Json::encode($comparison), 'updated_at' => $this->db->now()], ['build_uuid' => $buildUuid, 'state' => 'building']);
-        $this->db->wpdb()->update($this->db->table('backfills'), ['state' => 'compared', 'previous_build_uuid' => $comparison['active_build_uuid'], 'comparison_json' => Json::encode($comparison), 'row_version' => (int) $row['row_version'] + 1, 'updated_at' => $this->db->now()], ['id' => (int) $row['id'], 'state' => 'shadow_build']);
+        if ($this->db->wpdb()->query('START TRANSACTION') === false) { throw new \RuntimeException('Backfill comparison transaction could not start.'); }
+        try {
+            if ($this->db->wpdb()->update($buildTable, ['state' => 'compared', 'row_count' => $count, 'build_hash' => $buildHash, 'checkpoint_json' => Json::encode($checkpoint), 'comparison_json' => Json::encode($comparison), 'updated_at' => $this->db->now()], ['build_uuid' => $buildUuid, 'state' => 'building']) !== 1) { throw new \RuntimeException('Backfill build comparison could not be persisted.'); }
+            if ($this->db->wpdb()->update($this->db->table('backfills'), ['state' => 'compared', 'previous_build_uuid' => $comparison['active_build_uuid'], 'comparison_json' => Json::encode($comparison), 'row_version' => (int) $row['row_version'] + 1, 'updated_at' => $this->db->now()], ['id' => (int) $row['id'], 'state' => 'shadow_build']) !== 1) { throw new \RuntimeException('Backfill comparison state could not be persisted.'); }
+            if ($this->db->wpdb()->query('COMMIT') === false) { throw new \RuntimeException('Backfill comparison could not be committed.'); }
+        } catch (\Throwable $error) { $this->db->wpdb()->query('ROLLBACK'); throw $error; }
         return ['backfill_uuid' => $uuid, 'build_uuid' => $buildUuid, 'state' => 'compared', 'batch_inserted' => $inserted, 'processed' => $count, 'comparison' => $comparison];
     }
 
@@ -291,12 +296,12 @@ final class BackfillService
             $wpdb->query($wpdb->prepare("UPDATE `{$buildTable}` SET is_active=0,state=IF(state='active','superseded',state),updated_at=%s WHERE dataset_id=%s AND dataset_version=%s AND is_active=1", $this->db->now(), $row['dataset_id'], $row['dataset_version']));
             if ($wpdb->update($buildTable, ['is_active' => 1, 'state' => 'active', 'activated_at' => $this->db->now(), 'updated_at' => $this->db->now()], ['build_uuid' => $row['build_uuid'], 'state' => 'compared']) !== 1) {throw new \RuntimeException('Shadow build activation failed.');}
             if ($wpdb->update($this->db->table('backfills'), ['state' => 'activated', 'previous_build_uuid' => is_string($previous) ? $previous : null, 'activated_by' => $actorUserId, 'activated_at' => $this->db->now(), 'row_version' => (int) $locked['row_version'] + 1, 'updated_at' => $this->db->now()], ['id' => (int) $row['id'], 'state' => 'compared', 'row_version' => (int) $locked['row_version']]) !== 1) {throw new \RuntimeException('Backfill activation record failed.');}
-            $wpdb->query('COMMIT');
+            if (!$this->audit->logInOpenTransaction('backfill_activated', 'backfill', $uuid, 'success', ['build_uuid' => $row['build_uuid']], 'data_rebuild', null, $actorUserId)) { throw new \RuntimeException('Backfill activation audit evidence failed.'); }
+            if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Backfill activation commit failed.'); }
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_backfill_activation_failed', 'Backfill activation failed safely.', ['status' => 409]);
         }
-        $this->audit->log('backfill_activated', 'backfill', $uuid, 'success', ['build_uuid' => $row['build_uuid']], 'data_rebuild', null, $actorUserId);
         return ['backfill_uuid' => $uuid, 'build_uuid' => $row['build_uuid'], 'state' => 'activated'];
     }
 
@@ -318,12 +323,12 @@ final class BackfillService
             if ($wpdb->update($buildTable, ['is_active' => 0, 'state' => 'rolled_back', 'updated_at' => $this->db->now()], ['build_uuid' => $row['build_uuid'], 'is_active' => 1]) !== 1) {throw new \RuntimeException('Current build could not be fenced.');}
             if ($wpdb->update($buildTable, ['is_active' => 1, 'state' => 'active', 'updated_at' => $this->db->now()], ['build_uuid' => $row['previous_build_uuid'], 'is_active' => 0]) !== 1) {throw new \RuntimeException('Previous build could not be restored.');}
             if ($wpdb->update($this->db->table('backfills'), ['state' => 'rolled_back', 'rolled_back_at' => $this->db->now(), 'row_version' => (int) $locked['row_version'] + 1, 'updated_at' => $this->db->now()], ['id' => (int) $row['id'], 'state' => 'activated', 'row_version' => (int) $locked['row_version']]) !== 1) {throw new \RuntimeException('Rollback state could not be stored.');}
-            $wpdb->query('COMMIT');
+            if (!$this->audit->logInOpenTransaction('backfill_rolled_back', 'backfill', $uuid, 'success', ['restored_build_uuid' => $row['previous_build_uuid']], 'data_rebuild', null, $actorUserId)) { throw new \RuntimeException('Backfill rollback audit evidence failed.'); }
+            if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Backfill rollback commit failed.'); }
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_backfill_rollback_failed', 'Backfill rollback failed safely.', ['status' => 409]);
         }
-        $this->audit->log('backfill_rolled_back', 'backfill', $uuid, 'success', ['restored_build_uuid' => $row['previous_build_uuid']], 'data_rebuild', null, $actorUserId);
         return ['backfill_uuid' => $uuid, 'state' => 'rolled_back', 'active_build_uuid' => $row['previous_build_uuid']];
     }
 
@@ -388,6 +393,7 @@ final class BackfillService
 
     private function normalizeDate(string $value): ?string
     {
+        if (strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $value) !== 1) { return null; }
         $timestamp = strtotime($value);
         return $timestamp === false ? null : gmdate('Y-m-d H:i:s', $timestamp);
     }
