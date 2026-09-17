@@ -239,35 +239,24 @@ final class EventIngestionService
             if (is_wp_error($job)) {
                 throw new \RuntimeException('Pipeline job could not be recorded atomically.');
             }
-            $wpdb->query('COMMIT');
+            if (!$this->audit->logInOpenTransaction(
+                'analytics_event_ingested', 'analytics_event', $eventId, 'accepted',
+                ['event_name'=>$event['event_name'],'event_version'=>$event['event_version'],'source_module'=>$event['source_module'],'source_version'=>$event['source_version'],'service'=>$service,'payload_hash'=>$payloadHash,'is_late'=>$isLate],
+                (string)$event['purpose'], isset($event['trace_id']) ? (string)$event['trace_id'] : null, null, 'service'
+            )) {
+                throw new \RuntimeException('Event audit evidence could not be recorded atomically.');
+            }
+            if ($wpdb->query('COMMIT') === false) {
+                throw new \RuntimeException('Event transaction could not be committed.');
+            }
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
-            return new WP_Error('smai_event_store_failed', $error->getMessage(), ['status' => 500]);
+            return new WP_Error('smai_event_store_failed', 'Event, pipeline and audit evidence were not committed.', ['status' => 500]);
         }
-
-        $logged = $this->audit->log(
-            'analytics_event_ingested',
-            'analytics_event',
-            $eventId,
-            'accepted',
-            [
-                'event_name' => $event['event_name'],
-                'event_version' => $event['event_version'],
-                'source_module' => $event['source_module'],
-                'source_version' => $event['source_version'],
-                'service' => $service,
-                'payload_hash' => $payloadHash,
-                'is_late' => $isLate,
-            ],
-            (string) $event['purpose'],
-            isset($event['trace_id']) ? (string) $event['trace_id'] : null,
-            null,
-            'service'
-        );
 
         return [
             'event_id' => $eventId,
-            'status' => $logged ? 'accepted' : 'accepted_audit_degraded',
+            'status' => 'accepted',
             'payload_hash' => $payloadHash,
             'late' => $isLate,
             'out_of_order' => $outOfOrder,

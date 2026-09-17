@@ -46,28 +46,42 @@ final class EventSchemaRegistry
             return new WP_Error('smai_contract_immutable', 'An existing event contract version cannot be silently changed.', ['status' => 409]);
         }
         $now = $this->db->now();
-        $ok = $this->db->wpdb()->insert($table, [
-            'event_name' => $normalized['event_name'],
-            'event_version' => $normalized['event_version'],
-            'owner_module' => $normalized['owner_module'],
-            'state' => 'proposed',
-            'purpose' => $normalized['purpose'],
-            'privacy_class' => $normalized['privacy_class'],
-            'retention_days' => (int) $normalized['retention_days'],
-            'deletion_key_field' => $normalized['deletion_key_field'],
-            'schema_json' => $json,
-            'schema_hash' => $hash,
-            'row_version' => 1,
-            'created_by' => $actorUserId,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-        if ($ok !== 1) {
-            return new WP_Error('smai_schema_store_failed', 'Event schema could not be stored.', ['status' => 500]);
+        $wpdb = $this->db->wpdb();
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_schema_transaction_failed', 'Event schema transaction could not start.', ['status' => 500]);
         }
-        $id = (int) $this->db->wpdb()->insert_id;
-        $this->audit->log('event_schema_registered', 'event_schema', (string) $id, 'success', ['event_name' => $normalized['event_name'], 'event_version' => $normalized['event_version'], 'schema_hash' => $hash], 'analytics_governance', null, $actorUserId);
-        return ['id' => $id, 'status' => 'proposed', 'row_version' => 1, 'schema_hash' => $hash];
+        try {
+            $ok = $wpdb->insert($table, [
+                'event_name' => $normalized['event_name'],
+                'event_version' => $normalized['event_version'],
+                'owner_module' => $normalized['owner_module'],
+                'state' => 'proposed',
+                'purpose' => $normalized['purpose'],
+                'privacy_class' => $normalized['privacy_class'],
+                'retention_days' => (int) $normalized['retention_days'],
+                'deletion_key_field' => $normalized['deletion_key_field'],
+                'schema_json' => $json,
+                'schema_hash' => $hash,
+                'row_version' => 1,
+                'created_by' => $actorUserId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            if ($ok !== 1) {
+                throw new \RuntimeException('Event schema could not be stored.');
+            }
+            $id = (int) $wpdb->insert_id;
+            if (!$this->audit->logInOpenTransaction('event_schema_registered', 'event_schema', (string) $id, 'success', ['event_name' => $normalized['event_name'], 'event_version' => $normalized['event_version'], 'schema_hash' => $hash], 'analytics_governance', null, $actorUserId)) {
+                throw new \RuntimeException('Event schema audit evidence could not be stored.');
+            }
+            if ($wpdb->query('COMMIT') === false) {
+                throw new \RuntimeException('Event schema transaction could not be committed.');
+            }
+            return ['id' => $id, 'status' => 'proposed', 'row_version' => 1, 'schema_hash' => $hash];
+        } catch (\Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_schema_store_failed', 'Event schema and audit evidence were not committed.', ['status' => 500]);
+        }
     }
 
     /** @return array<string,mixed>|null */

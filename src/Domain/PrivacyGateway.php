@@ -28,8 +28,14 @@ final class PrivacyGateway
         $properties = [];
         $fields = is_array($schema['fields'] ?? null) ? $schema['fields'] : [];
         $incoming = is_array($payload['properties'] ?? null) ? $payload['properties'] : [];
+        $minorPolicy = (string) ($schema['minor_policy'] ?? 'aggregate_only');
+        $minorAggregateOnly = ($payload['is_minor'] ?? false) === true && $minorPolicy === 'aggregate_only';
         foreach ($incoming as $name => $value) {
             if (!is_string($name) || !isset($fields[$name]) || !is_array($fields[$name])) {
+                $errors[] = 'unknown_field_' . (is_string($name) ? $name : 'non_string');
+                continue;
+            }
+            if ($minorAggregateOnly && (string) ($fields[$name]['type'] ?? '') === 'pseudonymous_ref') {
                 continue;
             }
             $normalized = $this->normalize((string) ($fields[$name]['type'] ?? ''), $value, $fields[$name], $name, $errors);
@@ -37,10 +43,14 @@ final class PrivacyGateway
                 $properties[$name] = $normalized;
             }
         }
+        foreach ($fields as $name => $definition) {
+            if (is_string($name) && is_array($definition) && ($definition['required'] ?? false) === true && !array_key_exists($name, $incoming)) {
+                $errors[] = 'missing_required_' . $name;
+            }
+        }
         if (($schema['requires_consent'] ?? false) === true && ($payload['consent_granted'] ?? false) !== true) {
             $errors[] = 'consent_required';
         }
-        $minorPolicy = (string) ($schema['minor_policy'] ?? 'aggregate_only');
         if (($payload['is_minor'] ?? false) === true && $minorPolicy === 'deny') {
             $errors[] = 'minor_event_denied';
         }
@@ -51,8 +61,8 @@ final class PrivacyGateway
             'accepted' => $errors === [],
             'properties' => $properties,
             'errors' => array_values(array_unique($errors)),
-            'actor_ref' => $this->pseudonymizeNullable($payload['actor_ref'] ?? null, 'actor'),
-            'object_ref' => $this->pseudonymizeNullable($payload['object_ref'] ?? null, 'object'),
+            'actor_ref' => $minorAggregateOnly ? null : $this->pseudonymizeNullable($payload['actor_ref'] ?? null, 'actor'),
+            'object_ref' => $minorAggregateOnly ? null : $this->pseudonymizeNullable($payload['object_ref'] ?? null, 'object'),
             'deletion_key' => $this->pseudonymizeNullable($payload['deletion_key'] ?? null, 'deletion'),
         ];
     }
