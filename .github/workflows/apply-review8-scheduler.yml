@@ -1,0 +1,33 @@
+name: Apply CF-05 Review 8 Scheduler
+on:
+  push:
+    branches: [codex/cf-05-foundation-0.1.0]
+    paths: ['.codex/review8-scheduler.ready']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Apply review 8 scheduler fixes
+        run: python3 scripts/apply-review8-scheduler.py
+      - name: Remove one-shot files
+        run: rm -f .codex/review8-scheduler.ready scripts/apply-review8-scheduler.py .github/workflows/apply-review8-scheduler.yml
+      - name: Full governed QA
+        run: bash scripts/qa.sh
+      - name: Deterministic package verification
+        run: bash scripts/verify-deterministic-build.sh
+      - name: Commit review 8 fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'review 8: make scheduled Future evidence idempotent'
+          git push origin HEAD:codex/cf-05-foundation-0.1.0
