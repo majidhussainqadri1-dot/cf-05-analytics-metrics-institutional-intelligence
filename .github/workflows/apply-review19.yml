@@ -1,0 +1,24 @@
+name: Apply CF-05 Review 19
+on:
+  push:
+    branches: [codex/cf-05-foundation-0.1.0]
+    paths: ['.codex/review19.ready']
+permissions: {contents: write}
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: shivammathur/setup-php@v2
+        with: {php-version: '8.3', coverage: none}
+      - run: python3 scripts/apply-review19.py
+      - run: rm -f .codex/review19.ready scripts/apply-review19.py .github/workflows/apply-review19.yml && rmdir .codex 2>/dev/null || true
+      - run: bash scripts/qa.sh
+      - run: bash scripts/verify-deterministic-build.sh
+      - run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'review 19: close infrastructure runtime defects'
+          git push origin HEAD:codex/cf-05-foundation-0.1.0
