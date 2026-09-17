@@ -52,11 +52,17 @@ final class JobQueue
     /** @return array<string,mixed>|null */
     public function claim(string $workerId, int $leaseSeconds = 120): ?array
     {
+        $workerId = trim($workerId);
+        if ($workerId === '' || strlen($workerId) > 100 || preg_match('/^[A-Za-z0-9][A-Za-z0-9:._-]{0,99}$/', $workerId) !== 1) {
+            return null;
+        }
         $wpdb = $this->db->wpdb();
         $table = $this->db->table('jobs');
         $now = gmdate('Y-m-d H:i:s');
         $leaseUntil = gmdate('Y-m-d H:i:s', time() + max(30, min(900, $leaseSeconds)));
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return null;
+        }
         try {
             $row = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM `{$table}` WHERE ((state IN ('queued','retrying') AND next_run_at<=%s) OR (state='running' AND lease_until<%s)) ORDER BY next_run_at,id LIMIT 1 FOR UPDATE",
@@ -64,7 +70,9 @@ final class JobQueue
                 $now
             ), ARRAY_A);
             if (!is_array($row)) {
-                $wpdb->query('COMMIT');
+                if ($wpdb->query('COMMIT') === false) {
+                    $wpdb->query('ROLLBACK');
+                }
                 return null;
             }
             $where = ['id' => (int) $row['id'], 'state' => (string) $row['state']];
@@ -83,7 +91,10 @@ final class JobQueue
                 $wpdb->query('ROLLBACK');
                 return null;
             }
-            $wpdb->query('COMMIT');
+            if ($wpdb->query('COMMIT') === false) {
+                $wpdb->query('ROLLBACK');
+                return null;
+            }
             $row['state'] = 'running';
             $row['lease_owner'] = $workerId;
             $row['lease_until'] = $leaseUntil;

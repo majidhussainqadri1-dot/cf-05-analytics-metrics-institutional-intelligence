@@ -24,7 +24,7 @@ final class RateLimiter
         $table = $this->db->table('rate_limits');
         $sql = $this->db->wpdb()->prepare(
             "INSERT INTO `{$table}` (limit_key,bucket_start,count_value,expires_at) VALUES (%s,%s,1,%s)
-             ON DUPLICATE KEY UPDATE count_value=IF(count_value<%d,count_value+1,count_value),expires_at=VALUES(expires_at)",
+             ON DUPLICATE KEY UPDATE count_value=IF(count_value<=%d,count_value+1,count_value),expires_at=VALUES(expires_at)",
             $key,
             $bucket,
             $expires,

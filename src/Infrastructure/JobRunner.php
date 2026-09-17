@@ -44,7 +44,9 @@ final class JobRunner
             $processed++;
             try {
                 $result = $this->dispatch((string) $job['job_type'], (array) $job['payload']);
-                $this->queue->complete((string) $job['job_uuid'], $worker, $result);
+                if (!$this->queue->complete((string) $job['job_uuid'], $worker, $result)) {
+                    $this->queue->fail((string) $job['job_uuid'], $worker, 'job_completion_persist_failed', 'The governed worker could not persist successful completion.');
+                }
             } catch (\Throwable $error) {
                 $this->queue->fail(
                     (string) $job['job_uuid'],

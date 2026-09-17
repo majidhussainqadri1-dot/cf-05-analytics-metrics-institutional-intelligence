@@ -15,6 +15,7 @@ final class RuntimeActivationService
     /** @return array<string,mixed>|WP_Error */
     public function propose(string $state,string $evidenceHash,string $reason,int $actorUserId):array|WP_Error
     {
+        if($actorUserId<1||!user_can($actorUserId,'smai_activate_runtime'))return new WP_Error('smai_activation_forbidden','Runtime activation operation is not authorized.',['status'=>403]);
         $evidenceHash=strtolower(trim($evidenceHash));
         $reason=Text::truncate(trim(wp_strip_all_tags($reason)),500);
         if($actorUserId<1||!in_array($state,[RuntimeGate::CATALOG_ONLY,RuntimeGate::STAGING_ACTIVE,RuntimeGate::PRODUCTION_ACTIVE],true)||preg_match('/^[a-f0-9]{64}$/',$evidenceHash)!==1||strlen($reason)<12){
@@ -40,6 +41,7 @@ final class RuntimeActivationService
     /** @return array<string,mixed>|WP_Error */
     public function approve(string $requestHash,int $actorUserId):array|WP_Error
     {
+        if($actorUserId<1||!user_can($actorUserId,'smai_activate_runtime'))return new WP_Error('smai_activation_forbidden','Runtime activation operation is not authorized.',['status'=>403]);
         $requestHash=strtolower(trim($requestHash));
         if($actorUserId<1||preg_match('/^[a-f0-9]{64}$/',$requestHash)!==1)return new WP_Error('smai_activation_request_stale','Activation request is unavailable or stale.',['status'=>409]);
         if(!$this->begin())return new WP_Error('smai_activation_transaction_failed','Runtime activation transaction could not start.',['status'=>500]);
@@ -72,6 +74,7 @@ final class RuntimeActivationService
     /** @return array<string,mixed>|WP_Error */
     public function disable(string $reason,int $actorUserId,bool $foundation=false):array|WP_Error
     {
+        if($actorUserId<1||!user_can($actorUserId,'smai_activate_runtime'))return new WP_Error('smai_activation_forbidden','Runtime activation operation is not authorized.',['status'=>403]);
         $reason=Text::truncate(trim(wp_strip_all_tags($reason)),500);
         if($actorUserId<1||strlen($reason)<8)return new WP_Error('smai_disable_reason_required','A meaningful runtime-disable reason is required.',['status'=>400]);
         $target=$foundation?RuntimeGate::FOUNDATION_DISABLED:RuntimeGate::SAFE_MODE;
