@@ -47,7 +47,7 @@ final class FutureFeatureRegistry
             ['CF05-FUT-035','AI Narrative Review Workflow','ai_intelligence','NEXT','critical','smai_manage_reports','AI-assisted draft, mandatory human review and publication.'],
             ['CF05-FUT-036','Proactive Intelligence Alerts','ai_intelligence','NEXT','elevated','smai_manage_future_intelligence','Governed threshold/anomaly/SLO alerts.'],
             ['CF05-FUT-037','Scheduled Intelligence Briefs','ai_intelligence','NEXT','elevated','smai_manage_reports','Scheduled aggregate institutional briefs.'],
-            ['CF05-FUT-038','Analytics Transparency Center','ai_intelligence','NEXT','standard','smai_view_transparency','Public/staff disclosure of approved aggregate analytics usage.'],
+            ['CF05-FUT-038','Analytics Transparency Center','ai_intelligence','NEXT','standard','smai_manage_future_intelligence','Public/staff disclosure of approved aggregate analytics usage.'],
             ['CF05-FUT-039','Synthetic Data & Simulation Lab','ai_intelligence','SCALE','elevated','smai_run_future_intelligence','Synthetic aggregate fixtures without real personal data.'],
             ['CF05-FUT-040','Analytics Disaster-Recovery Simulator','ai_intelligence','SCALE','critical','smai_restore','Read-only recovery/replay rehearsal against restore evidence.'],
         ];

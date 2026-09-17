@@ -20,6 +20,7 @@ python3 scripts/pipeline-quality-invariants-check.py
 python3 scripts/reporting-governance-invariants-check.py
 python3 scripts/experiment-governance-invariants-check.py
 python3 scripts/deletion-retention-restore-invariants-check.py
+python3 scripts/future40-authorization-invariants-check.py
 python3 scripts/security-static-check.py
 python3 scripts/secret-scan.py
 printf 'CF-05 source QA passed.

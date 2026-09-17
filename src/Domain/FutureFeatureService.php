@@ -40,6 +40,7 @@ final class FutureFeatureService
         if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
         $definition = FutureFeatureRegistry::get($featureId);
         if ($definition === null) return new WP_Error('smai_future_unknown', 'Unknown future feature.', ['status' => 404]);
+        if (!user_can($actorUserId, 'smai_manage_future_intelligence')) return new WP_Error('smai_future_forbidden','Future feature configuration is not authorized.',['status'=>403]);
         $violations = (new SensitiveValueDetector())->violations($config);
         if ($violations !== []) return new WP_Error('smai_future_sensitive_input', 'Sensitive or restricted input is not allowed.', ['status' => 400, 'violations' => $violations]);
         $wpdb = $this->db->wpdb(); $table = $this->db->table('future_features'); $id = (string) $definition['feature_id'];
@@ -78,6 +79,8 @@ final class FutureFeatureService
         $definition = FutureFeatureRegistry::get($featureId);
         if ($definition === null) return new WP_Error('smai_future_unknown', 'Unknown future feature.', ['status' => 404]);
         $reason=Text::truncate(trim($reason),500);if($reason==='')return new WP_Error('smai_future_reason_required','A governance reason is required.',['status'=>400]);
+        $requiredCapability=in_array($action,['approve','activate'],true)?'smai_approve_future_intelligence':'smai_manage_future_intelligence';
+        if(!user_can($actorUserId,$requiredCapability))return new WP_Error('smai_future_forbidden','Future feature lifecycle transition is not authorized.',['status'=>403]);
         $table=$this->db->table('future_features');$wpdb=$this->db->wpdb();$id=(string)$definition['feature_id'];
         if (!$this->begin()) return new WP_Error('smai_future_transaction_failed', 'Future feature transaction could not start.', ['status' => 500]);
         try {
@@ -110,6 +113,7 @@ final class FutureFeatureService
     {
         if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
         $definition=FutureFeatureRegistry::get($featureId);if($definition===null)return new WP_Error('smai_future_unknown','Unknown future feature.',['status'=>404]);
+        $requiredCapability=(string)($definition['capability']??'');if($requiredCapability===''||!user_can($actorUserId,$requiredCapability))return new WP_Error('smai_future_forbidden','Future feature execution is not authorized.',['status'=>403]);
         $violations=(new SensitiveValueDetector())->violations($input);if($violations!==[])return new WP_Error('smai_future_sensitive_input','Sensitive or restricted input is not allowed.',['status'=>400,'violations'=>$violations]);
         if(!RuntimeGate::schemaReady())return new WP_Error('smai_future_schema_gate','CF-05 schema is not ready for governed Future-40 execution.',['status'=>409]);
         $id=(string)$definition['feature_id'];$wpdb=$this->db->wpdb();
@@ -150,6 +154,9 @@ final class FutureFeatureService
     public function createIncident(array $payload,int $actorUserId):array|WP_Error
     {
         if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
+        if(!user_can($actorUserId,'smai_manage_quality'))return new WP_Error('smai_future_forbidden','Analytics incident creation is not authorized.',['status'=>403]);
+        if(array_diff(array_keys($payload),['summary','severity','evidence'])!==[])return new WP_Error('smai_future_invalid_incident','Analytics incident contains unsupported fields.',['status'=>400]);
+        if(isset($payload['evidence'])&&!is_array($payload['evidence']))return new WP_Error('smai_future_invalid_incident','Analytics incident evidence must be an object.',['status'=>400]);
         $summary=Text::truncate(trim((string)($payload['summary']??'')),255);$severity=strtoupper((string)($payload['severity']??'SEV-4'));
         if($summary===''||!in_array($severity,['SEV-0','SEV-1','SEV-2','SEV-3','SEV-4'],true))return new WP_Error('smai_future_invalid_incident','Valid incident summary and severity are required.',['status'=>400]);
         if((new SensitiveValueDetector())->violations($payload)!==[])return new WP_Error('smai_future_sensitive_input','Sensitive incident payload is not allowed.',['status'=>400]);
@@ -190,6 +197,7 @@ final class FutureFeatureService
             try {
                 $row=$wpdb->get_row($wpdb->prepare('SELECT state,approved_by,requested_by,row_version,config_hash FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s FOR UPDATE',$featureId),ARRAY_A);
                 if(!is_array($row)||(string)$row['state']!=='active'||(int)($row['approved_by']??0)<1||(int)$row['approved_by']===(int)($row['requested_by']??0)){ $this->rollback(); continue; }
+                if(!FutureActivationService::isApproved()||!RuntimeGate::queryEnabled()||!RuntimeGate::schemaReady()){ $this->rollback(); continue; }
                 $configHash=(string)($row['config_hash']??'');$rowVersion=(int)($row['row_version']??0);
                 if($rowVersion<1||preg_match('/^[a-f0-9]{64}$/',$configHash)!==1){ $this->rollback(); continue; }
                 $uuid=$this->scheduledEvidenceUuid($featureId,$bucket,$rowVersion,$configHash);
