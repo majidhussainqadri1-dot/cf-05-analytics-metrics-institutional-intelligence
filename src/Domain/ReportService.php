@@ -335,6 +335,12 @@ final class ReportService
         if (!is_array($row) || (int) $row['cohort_size'] < $minimum) {
             return null;
         }
+        $disclosure = SnapshotDisclosurePolicy::evaluate(
+            (string) $row['quality_status'],
+            $row['data_through'] ?? null,
+            Json::list((string) ($row['caveats_json'] ?? '[]')),
+            (array) $metric['definition']
+        );
         return [
             'metric_id' => $row['metric_id'],
             'metric_version' => $row['metric_version'],
@@ -345,10 +351,11 @@ final class ReportService
             'numerator' => $row['numerator_decimal'] === null ? null : (float) $row['numerator_decimal'],
             'denominator' => $row['denominator_decimal'] === null ? null : (float) $row['denominator_decimal'],
             'cohort_size' => (int) $row['cohort_size'],
-            'quality_status' => $row['quality_status'],
-            'data_through' => $row['data_through'] ? gmdate('c', (int) strtotime((string) $row['data_through'])) : null,
+            'quality_status' => $disclosure['quality_status'],
+            'data_through' => $disclosure['data_through'],
+            'freshness_seconds' => $disclosure['freshness_seconds'],
             'uncertainty' => Json::object((string) ($row['uncertainty_json'] ?? '{}')),
-            'caveats' => Json::list((string) ($row['caveats_json'] ?? '[]')),
+            'caveats' => $disclosure['caveats'],
         ];
     }
 
