@@ -72,7 +72,7 @@ final class RepairService
         ), ARRAY_A);
         $requeuedDeletions = 0;
         foreach (is_array($deletions) ? $deletions : [] as $deletion) {
-            $job = $queue->enqueue('deletion.apply', ['deletion_job_uuid' => (string) $deletion['job_uuid']], 'deletion-repair|' . (string) $deletion['job_uuid'] . '|' . gmdate('Y-m-d-H'));
+            $job = $queue->enqueue('deletion.apply', ['deletion_job_uuid' => (string) $deletion['job_uuid'], 'actor_type' => 'system'], 'deletion-repair|' . (string) $deletion['job_uuid'] . '|' . gmdate('Y-m-d-H'));
             if (!is_wp_error($job)) {
                 $requeuedDeletions++;
             }
@@ -80,6 +80,24 @@ final class RepairService
         $result = $this->check();
         $result['requeued_unprocessed_events'] = $requeued;
         $result['requeued_deletion_jobs'] = $requeuedDeletions;
+        if (!(new AuditLogger($this->db))->log(
+            'analytics_safe_repair_completed',
+            'repair_run',
+            gmdate('Y-m-d-H'),
+            'success',
+            [
+                'recovered_expired_leases' => (int) $recovered,
+                'dead_lettered_exhausted_leases' => (int) $dead,
+                'requeued_unprocessed_events' => $requeued,
+                'requeued_deletion_jobs' => $requeuedDeletions,
+            ],
+            'operational_repair',
+            null,
+            null,
+            'system'
+        )) {
+            throw new \RuntimeException('Safe-repair audit evidence could not be recorded.');
+        }
         return $result;
     }
     private function ensureSchedule(string $hook,int $timestamp,string $recurrence):void
