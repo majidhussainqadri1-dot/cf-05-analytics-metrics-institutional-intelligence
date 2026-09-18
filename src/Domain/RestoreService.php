@@ -25,7 +25,10 @@ final class RestoreService
     /** @param array<string,mixed> $evidence */
     public function record(string $codeSha, array $evidence, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1 || preg_match('/^[a-f0-9]{40,64}$/', $codeSha) !== 1 || (new SensitiveValueDetector())->violations($evidence) !== []) {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_restore')) {
+            return new WP_Error('smai_restore_forbidden', 'Restore-point recording is not authorized.', ['status'=>403]);
+        }
+        if (preg_match('/^[a-f0-9]{40,64}$/', $codeSha) !== 1 || (new SensitiveValueDetector())->violations($evidence) !== []) {
             return new WP_Error('smai_invalid_restore_evidence', 'Restore evidence is invalid or contains sensitive values.', ['status' => 400]);
         }
         foreach (['backup_manifest_hash','backup_archive_hash','backup_created_at'] as $required) {
@@ -72,7 +75,8 @@ final class RestoreService
 
     public function verify(string $uuid, int $actorUserId): array|WP_Error
     {
-        if($actorUserId<1||preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$uuid)!==1){return new WP_Error('smai_invalid_restore_verification','Restore verification identity or actor is invalid.',['status'=>400]);}
+        if($actorUserId<1||!user_can($actorUserId,'smai_restore')){return new WP_Error('smai_restore_forbidden','Restore verification is not authorized.',['status'=>403]);}
+        if(preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$uuid)!==1){return new WP_Error('smai_invalid_restore_verification','Restore verification identity or actor is invalid.',['status'=>400]);}
         $table = $this->db->table('restore_points');
         (new AccessProjectService($this->db))->expireDue();
         $wpdb=$this->db->wpdb();
