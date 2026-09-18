@@ -233,8 +233,11 @@ final class ReportControlService
         }
         $seen = [];
         foreach ($recipients as $recipient) {
-            $id = is_array($recipient) ? (int) ($recipient['user_id'] ?? 0) : 0;
-            if (!is_array($recipient) || (string) ($recipient['type'] ?? '') !== 'user' || $id < 1 || !user_can($id, 'smai_view_insights') || isset($seen[$id])) {
+            $id = is_array($recipient) && array_key_exists('user_id', $recipient) && is_int($recipient['user_id']) ? $recipient['user_id'] : 0;
+            if (!is_array($recipient)
+                || array_diff(array_keys($recipient), ['type','user_id']) !== []
+                || (string) ($recipient['type'] ?? '') !== 'user'
+                || $id < 1 || !user_can($id, 'smai_view_insights') || isset($seen[$id])) {
                 return new WP_Error('smai_invalid_report_recipient', 'Report recipient is invalid or duplicated.', ['status' => 400]);
             }
             $seen[$id] = true;
@@ -252,6 +255,7 @@ final class ReportControlService
         $seen = [];
         foreach ($metrics as $metric) {
             if (!is_array($metric)
+                || array_diff(array_keys($metric), ['metric_id','metric_version','dimensions']) !== []
                 || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) ($metric['metric_id'] ?? '')) !== 1
                 || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', (string) ($metric['metric_version'] ?? '')) !== 1
                 || !is_array($metric['dimensions'] ?? [])) {
