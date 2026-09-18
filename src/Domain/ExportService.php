@@ -140,8 +140,21 @@ final class ExportService
         }
         $table = $this->db->table('exports');
         $export = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE export_uuid=%s", $uuid), ARRAY_A);
-        if (!is_array($export) || (string) $export['state'] !== 'requested' || strtotime((string) $export['expires_at']) <= time()) {
+        if (!is_array($export) || strtotime((string) $export['expires_at']) <= time()) {
             throw new \RuntimeException('Export is unavailable or expired.');
+        }
+        if ((string) $export['state'] === 'ready') {
+            $payloadExists = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+                "SELECT COUNT(*) FROM `{$this->db->table('export_payloads')}` WHERE export_uuid=%s",
+                $uuid
+            )) === 1;
+            if ($payloadExists && is_string($export['file_sha256']) && preg_match('/^[a-f0-9]{64}$/', (string) $export['file_sha256']) === 1) {
+                return ['export_uuid' => $uuid, 'state' => 'ready', 'sha256' => (string) $export['file_sha256'], 'unchanged' => true];
+            }
+            throw new \RuntimeException('Export ready state is incomplete.');
+        }
+        if (!in_array((string) $export['state'], ['requested','building'], true)) {
+            throw new \RuntimeException('Export is unavailable.');
         }
         $definition = Json::object((string) $export['definition_json']);
         $columns = array_map('strval', Json::list((string) $export['columns_json']));
@@ -152,9 +165,11 @@ final class ExportService
         }
 
         $wpdb = $this->db->wpdb();
-        $claimed = $wpdb->update($table, ['state' => 'building', 'updated_at' => $this->db->now()], ['id' => (int) $export['id'], 'state' => 'requested']);
-        if ($claimed !== 1) {
-            throw new \RuntimeException('Export could not be claimed.');
+        if ((string) $export['state'] === 'requested') {
+            $claimed = $wpdb->update($table, ['state' => 'building', 'updated_at' => $this->db->now()], ['id' => (int) $export['id'], 'state' => 'requested']);
+            if ($claimed !== 1) {
+                throw new \RuntimeException('Export could not be claimed.');
+            }
         }
         try {
             $rows = $this->metricRows($definition, (int) $export['row_limit']);
@@ -183,7 +198,17 @@ final class ExportService
             return ['export_uuid' => $uuid, 'state' => 'ready', 'rows' => count($rows), 'sha256' => $sha];
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
-            $wpdb->update($table, ['state' => 'failed', 'token_hash' => null, 'updated_at' => $this->db->now()], ['id' => (int) $export['id'], 'state' => 'building']);
+            $attempt = max(1, (int) ($payload['_job_attempt'] ?? 1));
+            $maxAttempts = max(1, (int) ($payload['_job_max_attempts'] ?? 1));
+            $finalAttempt = $attempt >= $maxAttempts;
+            $changes = [
+                'state' => $finalAttempt ? 'failed' : 'requested',
+                'updated_at' => $this->db->now(),
+            ];
+            if ($finalAttempt) {
+                $changes['token_hash'] = null;
+            }
+            $wpdb->update($table, $changes, ['id' => (int) $export['id'], 'state' => 'building']);
             throw new \RuntimeException('Export build failed safely.');
         }
     }
