@@ -24,6 +24,9 @@ final class CatalogLifecycleService
 
     public function transition(string $objectType, int $objectId, string $targetState, int $expectedRowVersion, string $reason, int $actorUserId, ?string $idempotencyKey = null): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_catalog_forbidden', 'Catalog lifecycle transition is not authorized.', ['status'=>403]);
+        }
         if (!RuntimeGate::catalogEnabled()) {
             return new WP_Error('smai_catalog_disabled', 'Catalog lifecycle mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
         }
@@ -36,7 +39,7 @@ final class CatalogLifecycleService
         if ($tableName === null) {
             return new WP_Error('smai_invalid_catalog_object', 'Unknown catalog object type.', ['status' => 400]);
         }
-        if ($objectId < 1 || $expectedRowVersion < 1 || $actorUserId < 1) {
+        if ($objectId < 1 || $expectedRowVersion < 1) {
             return new WP_Error('smai_invalid_transition_context', 'Transition context is incomplete.', ['status' => 400]);
         }
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
