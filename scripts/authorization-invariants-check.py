@@ -15,6 +15,11 @@ quality=(root/'src/Domain/QualityService.php').read_text(encoding='utf-8')
 backfill=(root/'src/Domain/BackfillService.php').read_text(encoding='utf-8')
 snapshot=(root/'src/Domain/SnapshotService.php').read_text(encoding='utf-8')
 query=(root/'src/Domain/MetricQueryService.php').read_text(encoding='utf-8')
+export=(root/'src/Domain/ExportService.php').read_text(encoding='utf-8')
+export_control=(root/'src/Domain/ExportControlService.php').read_text(encoding='utf-8')
+provider=(root/'src/Domain/ProviderService.php').read_text(encoding='utf-8')
+deletion=(root/'src/Domain/DeletionService.php').read_text(encoding='utf-8')
+restore=(root/'src/Domain/RestoreService.php').read_text(encoding='utf-8')
 errors=[]
 if "if(!$dryRun&&!FutureActivationService::isApproved())" not in future:
     errors.append('active Future-40 execution does not re-check global Future-40 approval')
@@ -38,6 +43,11 @@ if quality.count("user_can($actorUserId, 'smai_manage_quality')") < 2 or "user_c
 if backfill.count("user_can($actorUserId, 'smai_manage_backfills')") < 2 or backfill.count("user_can($actorUserId, 'smai_approve_catalog')") < 2 or "user_can($actorUserId, 'smai_restore')" not in backfill: errors.append('backfill service authorization incomplete')
 if "user_can($actorUserId, 'smai_manage_quality')" not in snapshot: errors.append('snapshot enqueue lacks service-layer quality authorization')
 if "user_can($actorUserId, 'smai_query_metrics')" not in query: errors.append('metric query lacks service-layer query authorization')
+if export.count("user_can($actorUserId, 'smai_export_metrics')") < 2: errors.append('export request/download service authorization incomplete')
+if "user_can($actorUserId, 'smai_export_metrics')" not in export_control or "user_can($actorUserId, 'smai_manage_access')" not in export_control: errors.append('export revocation service authorization incomplete')
+if provider.count("user_can($actorUserId,'smai_manage_providers')") < 2: errors.append('provider service authorization incomplete')
+if "user_can($actorUserId, 'smai_manage_deletions')" not in deletion: errors.append('deletion request lacks service-layer authorization')
+if restore.count("user_can($actorUserId, 'smai_restore')") + restore.count("user_can($actorUserId,'smai_restore')") < 2: errors.append('restore service authorization incomplete')
 if errors:
     print('\n'.join(errors), file=sys.stderr); sys.exit(1)
 print('Authorization invariants check passed.')
