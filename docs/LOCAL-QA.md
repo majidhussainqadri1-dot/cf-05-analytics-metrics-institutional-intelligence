@@ -1,4 +1,4 @@
-# Local QA — 1.0.0-rc.4
+# Local QA — 1.0.0-rc.10
 
 Run:
 
@@ -11,4 +11,4 @@ The suite covers PHP syntax, executable validators/privacy/crypto/transformation
 
 This is source-level evidence, not staging or operational acceptance.
 
-Local deterministic ZIP SHA-256 after REV-46: `0525d499e3dea4cc263e2120c0d710c111f8593425293bd41c9f9c36740af765`.
+Historical REV-46 package evidence: deterministic ZIP SHA-256 `0525d499e3dea4cc263e2120c0d710c111f8593425293bd41c9f9c36740af765`. This checksum belongs only to that historical source state and must never be used as parity evidence for the current `1.0.0-rc.10` candidate. Current package identity must be regenerated and verified from the current exact HEAD.
