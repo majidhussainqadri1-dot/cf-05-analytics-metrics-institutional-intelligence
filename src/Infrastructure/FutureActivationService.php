@@ -22,6 +22,9 @@ final class FutureActivationService
     /** @return array<string,mixed>|WP_Error */
     public function propose(string $evidenceHash, string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_future_intelligence')) {
+            return new WP_Error('smai_future_activation_forbidden', 'Future-40 activation proposal is not authorized.', ['status'=>403]);
+        }
         $evidenceHash = strtolower(trim($evidenceHash));
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
         if ($actorUserId < 1 || preg_match('/^[a-f0-9]{64}$/', $evidenceHash) !== 1 || strlen($reason) < 12
@@ -69,8 +72,11 @@ final class FutureActivationService
     /** @return array<string,mixed>|WP_Error */
     public function approve(string $requestHash, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_future_intelligence')) {
+            return new WP_Error('smai_future_activation_forbidden', 'Future-40 activation approval is not authorized.', ['status'=>403]);
+        }
         $requestHash = strtolower(trim($requestHash));
-        if ($actorUserId < 1 || preg_match('/^[a-f0-9]{64}$/', $requestHash) !== 1) {
+        if (preg_match('/^[a-f0-9]{64}$/', $requestHash) !== 1) {
             return new WP_Error('smai_future_activation_request_stale', 'Future-40 activation request is unavailable or stale.', ['status'=>409]);
         }
         if (!$this->begin()) return new WP_Error('smai_future_transaction_failed', 'Future-40 activation transaction could not start.', ['status'=>500]);
@@ -116,8 +122,11 @@ final class FutureActivationService
     /** @return array<string,mixed>|WP_Error */
     public function disable(string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_future_intelligence')) {
+            return new WP_Error('smai_future_activation_forbidden', 'Future-40 disable operation is not authorized.', ['status'=>403]);
+        }
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
-        if ($actorUserId < 1 || strlen($reason) < 8 || (new SensitiveValueDetector())->violations($reason) !== []) return new WP_Error('smai_future_disable_reason_required', 'A meaningful non-sensitive Future-40 disable reason is required.', ['status'=>400]);
+        if (strlen($reason) < 8 || (new SensitiveValueDetector())->violations($reason) !== []) return new WP_Error('smai_future_disable_reason_required', 'A meaningful non-sensitive Future-40 disable reason is required.', ['status'=>400]);
         if (!$this->begin()) return new WP_Error('smai_future_transaction_failed', 'Future-40 disable transaction could not start.', ['status'=>500]);
         try {
             $previous = (string)($this->readOptionForUpdate(self::OPTION_STATE) ?? 'disabled');
