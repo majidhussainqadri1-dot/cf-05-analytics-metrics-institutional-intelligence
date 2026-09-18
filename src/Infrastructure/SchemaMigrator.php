@@ -11,6 +11,19 @@ final class SchemaMigrator
         global $wpdb;
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
+        $lock = 'smai_schema_upgrade_lock';
+        if (!add_option($lock, ['started_at' => time()], '', false)) {
+            $current = get_option($lock);
+            if (!is_array($current) || time() - (int) ($current['started_at'] ?? 0) < 600) {
+                throw new \RuntimeException('CF-05 schema migration is already in progress.');
+            }
+            delete_option($lock);
+            if (!add_option($lock, ['started_at' => time()], '', false)) {
+                throw new \RuntimeException('CF-05 schema migration lock could not be acquired.');
+            }
+        }
+
+        try {
         $charset = $wpdb->get_charset_collate();
         $p = $wpdb->prefix . 'smai_';
         $sql = [];
@@ -981,6 +994,9 @@ final class SchemaMigrator
                 'failed_at' => gmdate('c'),
             ], false);
             throw $error;
+        }
+        } finally {
+            delete_option($lock);
         }
     }
 }
