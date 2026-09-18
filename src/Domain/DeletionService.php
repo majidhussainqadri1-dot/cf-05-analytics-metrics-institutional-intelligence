@@ -159,7 +159,19 @@ final class DeletionService
             throw new \RuntimeException('Deletion completion transaction could not start.');
         }
         $completed = $wpdb->update($table, ['state' => 'completed', 'result_json' => Json::encode($reconciliation), 'completed_at' => $now, 'next_retry_at' => null, 'updated_at' => $now], ['id' => (int) $job['id'], 'state' => 'running']);
-        $audited = $completed === 1 && $this->audit->logInOpenTransaction('analytics_deletion_completed', 'deletion_job', $uuid, 'success', ['stores' => array_keys($reconciliation)], 'privacy_rights', null, (int) ($payload['actor_user_id'] ?? 0));
+        $completionActorId = (int) ($payload['actor_user_id'] ?? 0);
+        $completionActorType = ($payload['actor_type'] ?? '') === 'system' || $completionActorId < 1 ? 'system' : 'user';
+        $audited = $completed === 1 && $this->audit->logInOpenTransaction(
+            'analytics_deletion_completed',
+            'deletion_job',
+            $uuid,
+            'success',
+            ['stores' => array_keys($reconciliation)],
+            'privacy_rights',
+            null,
+            $completionActorId > 0 ? $completionActorId : null,
+            $completionActorType
+        );
         if (!$audited || $wpdb->query('COMMIT') === false) {
             $wpdb->query('ROLLBACK');
             $this->retry($job, $reconciliation, ['completion_evidence']);
