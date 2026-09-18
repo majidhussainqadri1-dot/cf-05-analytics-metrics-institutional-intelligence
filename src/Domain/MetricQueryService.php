@@ -63,10 +63,16 @@ final class MetricQueryService
             return new WP_Error('smai_query_access_denied', 'Access project does not authorize this metric.', ['status' => 403]);
         }
 
+        if (count($dimensions) > 10 || (new SensitiveValueDetector())->violations($dimensions) !== []) {
+            return new WP_Error('smai_dimension_not_allowed', 'Requested dimensions are invalid or contain prohibited sensitive material.', ['status' => 400]);
+        }
         $allowedDimensions = array_map('strval', (array) ($definition['dimensions'] ?? []));
-        foreach (array_keys($dimensions) as $dimension) {
-            if (!is_string($dimension) || !in_array($dimension, $allowedDimensions, true)) {
-                return new WP_Error('smai_dimension_not_allowed', 'A requested dimension is not approved for this metric.', ['status' => 403]);
+        foreach ($dimensions as $dimension => $value) {
+            if (!is_string($dimension)
+                || !in_array($dimension, $allowedDimensions, true)
+                || (!is_scalar($value) && $value !== null)
+                || (is_float($value) && !is_finite($value))) {
+                return new WP_Error('smai_dimension_not_allowed', 'A requested dimension or value is not approved for this metric.', ['status' => 403]);
             }
         }
         $policyViolations = PrivacyQueryPolicy::violations($definition, $dimensions);
