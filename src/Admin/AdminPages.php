@@ -64,7 +64,7 @@ final class AdminPages
     public function insights(): void
     {
         $this->requireCapability('smai_view_insights');
-        $health = $this->health->report(true);
+        $health = $this->health->report(false);
         $this->open(__('Institutional Insights', 'sabri-analytics-institutional-intelligence'), 'dashicons-chart-area');
         $this->statusNotice($health);
         echo '<div class="smai-grid">';
