@@ -241,7 +241,15 @@ final class AuditVerifier
         $this->ensureSchedule('smai_future_intelligence_tick', time()+20*MINUTE_IN_SECONDS, 'hourly');
 """
     write(p,s[:start]+sched+s[end:])
-    rep(p,"        $this->db->wpdb()->query($this->db->wpdb()->prepare(\n            "UPDATE `{$this->db->table('jobs')}` SET state='retrying',lease_owner=NULL,lease_until=NULL,next_run_at=%s,updated_at=%s WHERE state='running' AND lease_until<%s",\n            $now,\n            $now,\n            $now\n        ));","        $recovered=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('jobs')}` SET state='retrying',lease_owner=NULL,lease_until=NULL,next_run_at=%s,updated_at=%s WHERE state='running' AND lease_until<%s AND attempts < max_attempts",$now,$now,$now));\n        if($recovered===false)throw new \\RuntimeException('Expired job lease repair failed.');\n        $dead=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('jobs')}` SET state='dead_letter',lease_owner=NULL,lease_until=NULL,error_code='lease_exhausted',error_message='Expired running lease exhausted maximum attempts.',updated_at=%s WHERE state='running' AND lease_until<%s AND attempts >= max_attempts",$now,$now));\n        if($dead===false)throw new \\RuntimeException('Exhausted lease fail-closed repair failed.');")
+    rep(p,'''        $this->db->wpdb()->query($this->db->wpdb()->prepare(
+            "UPDATE `{$this->db->table('jobs')}` SET state='retrying',lease_owner=NULL,lease_until=NULL,next_run_at=%s,updated_at=%s WHERE state='running' AND lease_until<%s",
+            $now,
+            $now,
+            $now
+        ));''','''        $recovered=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('jobs')}` SET state='retrying',lease_owner=NULL,lease_until=NULL,next_run_at=%s,updated_at=%s WHERE state='running' AND lease_until<%s AND attempts < max_attempts",$now,$now,$now));
+        if($recovered===false)throw new \\RuntimeException('Expired job lease repair failed.');
+        $dead=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('jobs')}` SET state='dead_letter',lease_owner=NULL,lease_until=NULL,error_code='lease_exhausted',error_message='Expired running lease exhausted maximum attempts.',updated_at=%s WHERE state='running' AND lease_until<%s AND attempts >= max_attempts",$now,$now));
+        if($dead===false)throw new \\RuntimeException('Exhausted lease fail-closed repair failed.');''')
     idx=read(p).rfind("\n}"); s=read(p); helper="""
     private function ensureSchedule(string $hook,int $timestamp,string $recurrence):void
     {
