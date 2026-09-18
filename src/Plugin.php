@@ -81,23 +81,10 @@ final class Plugin
         if ((string) get_option('smai_schema_version', '') === SMAI_SCHEMA_VERSION && get_option('smai_schema_migration_error', null) === null) {
             return true;
         }
-        $lock = 'smai_schema_upgrade_lock';
-        if (!add_option($lock, ['started_at' => time()], '', false)) {
-            $current = get_option($lock);
-            if (!is_array($current) || time() - (int) ($current['started_at'] ?? 0) < 600) {
-                return false;
-            }
-            delete_option($lock);
-            if (!add_option($lock, ['started_at' => time()], '', false)) {
-                return false;
-            }
-        }
         try {
             SchemaMigrator::migrate();
         } catch (\Throwable $error) {
             return false;
-        } finally {
-            delete_option($lock);
         }
         return (string) get_option('smai_schema_version', '') === SMAI_SCHEMA_VERSION && get_option('smai_schema_migration_error', null) === null;
     }
