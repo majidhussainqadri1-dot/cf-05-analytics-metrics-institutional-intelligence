@@ -7,7 +7,7 @@ checks=[('src/Domain/EventIngestionService.php','checkdate('),('src/Infrastructu
 for p,n in checks:
     if n not in t(p): errors.append(f'{p}:missing:{n}')
 plugin=t('sabri-analytics-institutional-intelligence.php')
-for n in ["SMAI_VERSION', '1.0.0-rc.8'","SMAI_SCHEMA_VERSION', '1.4.1'","SMAI_CONTRACT_VERSION', '1.4.0'"]:
+for n in ["SMAI_VERSION', '1.0.0-rc.9'","SMAI_SCHEMA_VERSION', '1.4.1'","SMAI_CONTRACT_VERSION', '1.4.0'"]:
     if n not in plugin: errors.append('release_identity:'+n)
 if errors:
     print('\n'.join(errors),file=sys.stderr);sys.exit(1)
