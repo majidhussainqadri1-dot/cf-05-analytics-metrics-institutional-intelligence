@@ -1,4 +1,6 @@
 ## 1.0.0-rc.10 — 2026-09-18
+- Completed governed sequential review rounds SR-74..SR-83 using audit-first / fix-after-round discipline; hardened contract parity, release identity, Future-40/report/access/catalog/export/provider/deletion/restore service authorization and permanent regression gates.
+- Corrected stale release-facing traceability and pull-request evidence so current candidate identity is not confused with older rc.8/rc.9 source states.
 - Continued governed sequential review after SR-59, including repair authorization, REST typing, Future-40 reason minimization, restore consistency, scheduled-report atomicity, schema locking, retry idempotency and disclosure-contract closure.
 - Corrected release-evidence drift after post-rc.9 source changes and made package review-round evidence derive from preserved sequential review records.
 - Removed tracked Python cache artifacts and hardened repository hygiene against future cache leakage.
