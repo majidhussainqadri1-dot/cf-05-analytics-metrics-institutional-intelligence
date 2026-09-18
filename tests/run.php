@@ -161,6 +161,14 @@ $tests['metric semantics and filter contracts are closed'] = static function ():
     truth(in_array('invalid_numerator_filters_filter', (new MetricDefinitionValidator())->errors($definition), true));
 };
 
+$tests['experiment base dimensions accept empty map but reject non-empty lists'] = static function (): void {
+    $definition = governedExperimentDefinition();
+    same([], (new ExperimentDefinitionValidator())->errors($definition));
+
+    $definition['primary_metrics'][0]['base_dimensions'] = ['locale'];
+    truth(in_array('invalid_metric_contract', (new ExperimentDefinitionValidator())->errors($definition), true));
+};
+
 $tests['experiment variants cannot be duplicated'] = static function (): void {
     $definition = governedExperimentDefinition();
     $definition['name'] = 'Duplicate variant test';
