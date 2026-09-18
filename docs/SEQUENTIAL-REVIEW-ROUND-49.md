@@ -6,7 +6,7 @@ This round followed the required discipline: the audit was completed first, the 
 1. Weak export row-limit coercion remains.
 
 ## Corrections
-- No correction was required.
+- Eliminated the remaining weak export `row_limit` coercion: caller-supplied values must already be positive JSON integers, and the validated integer is now capped against the configured maximum without recasting caller input.
 
 ## Truth boundary
 Repository-source review and automated QA only; this does not establish staging acceptance, deployed parity, live database state, live deployment, or operational verification.
