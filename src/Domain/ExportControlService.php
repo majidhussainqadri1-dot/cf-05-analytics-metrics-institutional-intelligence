@@ -23,8 +23,11 @@ final class ExportControlService
 
     public function revoke(string $uuid, string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || (!user_can($actorUserId, 'smai_export_metrics') && !user_can($actorUserId, 'smai_manage_access'))) {
+            return new WP_Error('smai_export_revoke_denied', 'You are not authorized to revoke this export.', ['status'=>403]);
+        }
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
-        if ($actorUserId < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1 || strlen($reason) < 8
+        if (preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1 || strlen($reason) < 8
             || (new SensitiveValueDetector())->violations($reason) !== []) {
             return new WP_Error('smai_export_revoke_reason_required', 'A meaningful and safe revocation reason is required.', ['status' => 400]);
         }
