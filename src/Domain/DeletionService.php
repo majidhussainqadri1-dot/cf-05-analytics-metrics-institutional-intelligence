@@ -27,9 +27,12 @@ final class DeletionService
     /** @param array<string,mixed> $scope */
     public function request(string $deletionKey, string $sourceModule, string $sourceVersion, array $scope, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_deletions')) {
+            return new WP_Error('smai_deletion_forbidden', 'Deletion request is not authorized.', ['status'=>403]);
+        }
         $normalized = $this->normalizeKey($deletionKey);
         $scope = $this->normalizeScope($scope);
-        if ($actorUserId < 1 || $normalized === null || $scope === []
+        if ($normalized === null || $scope === []
             || preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/', $sourceModule) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $sourceVersion) !== 1
             || (new SensitiveValueDetector())->violations($scope) !== []) {
