@@ -8,6 +8,7 @@ use Sabri\AnalyticsIntelligence\Infrastructure\AuditLogger;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\Json;
 use Sabri\AnalyticsIntelligence\Infrastructure\JobQueue;
+use Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate;
 use Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector;
 use Sabri\AnalyticsIntelligence\Infrastructure\Uuid;
 use WP_Error;
@@ -26,6 +27,9 @@ final class QualityService
     /** @param array<string,mixed> $rule */
     public function register(array $rule, int $actorUserId): array|WP_Error
     {
+        if (!RuntimeGate::catalogEnabled()) {
+            return new WP_Error('smai_catalog_disabled', 'Quality-rule catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
+        }
         foreach (['rule_id','rule_version','dataset_ref','rule_type','severity','config'] as $key) {
             if (!array_key_exists($key, $rule)) {return new WP_Error('smai_invalid_quality_rule', 'Quality rule is incomplete.', ['status' => 400, 'field' => $key]);}
         }
@@ -70,6 +74,9 @@ final class QualityService
 
     public function activate(string $ruleId, string $version, int $expectedVersion, int $actorUserId): array|WP_Error
     {
+        if (!RuntimeGate::catalogEnabled()) {
+            return new WP_Error('smai_catalog_disabled', 'Quality-rule catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
+        }
         $table = $this->db->table('quality_rules');
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE rule_id=%s AND rule_version=%s", $ruleId, $version), ARRAY_A);
         if (!is_array($row) || (string) $row['state'] !== 'draft' || (int) $row['row_version'] !== $expectedVersion) {
