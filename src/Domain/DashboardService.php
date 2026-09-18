@@ -264,19 +264,27 @@ final class DashboardService
             $suppressed = is_array($row) && ($policyViolations !== [] || (string) $row['quality_status'] === 'suppressed' || (int) $row['cohort_size'] < $minimum);
             $invalidated = is_array($row) && (string) $row['quality_status'] === 'invalidated';
             if ($invalidated) { $row = null; $suppressed = false; }
+            $disclosure = is_array($row) && is_array($metric)
+                ? SnapshotDisclosurePolicy::evaluate(
+                    (string) $row['quality_status'],
+                    $row['data_through'] ?? null,
+                    Json::list((string) ($row['caveats_json'] ?? '[]')),
+                    (array) $metric['definition']
+                )
+                : null;
             $out['widgets'][] = [
                 'key' => $widget['widget_key'],
                 'label' => Text::truncate(wp_strip_all_tags((string) ($config['label'] ?? $widget['widget_key'])), 190),
                 'metric_id' => $widget['metric_id'],
                 'metric_version' => $widget['metric_version'],
-                'status' => is_array($row) ? $row['quality_status'] : 'unavailable',
+                'status' => $suppressed ? 'suppressed' : (is_array($disclosure) ? $disclosure['quality_status'] : 'unavailable'),
                 'value' => is_array($row) && !$suppressed && $row['value_decimal'] !== null ? (float) $row['value_decimal'] : null,
                 'window_start' => is_array($row) ? $row['window_start'] : null,
                 'window_end' => is_array($row) ? $row['window_end'] : null,
-                'data_through' => is_array($row) ? $row['data_through'] : null,
+                'data_through' => is_array($disclosure) ? $disclosure['data_through'] : null,
                 'cohort_size' => is_array($row) && !$suppressed ? (int) $row['cohort_size'] : null,
                 'uncertainty' => is_array($row) && !$suppressed ? Json::object((string) ($row['uncertainty_json'] ?? '{}')) : [],
-                'caveats' => $suppressed ? ['Suppressed by the current privacy policy.'] : (is_array($row) ? Json::list((string) ($row['caveats_json'] ?? '[]')) : ['No approved snapshot is available.']),
+                'caveats' => $suppressed ? ['Suppressed by the current privacy policy.'] : (is_array($disclosure) ? $disclosure['caveats'] : ['No approved snapshot is available.']),
             ];
         }
         if (!$this->audit->log('dashboard_viewed', 'dashboard', $dashboardId . '@' . $version, 'success', ['widget_count' => count($out['widgets'])], 'institutional_reporting', null, $actorUserId)) {
