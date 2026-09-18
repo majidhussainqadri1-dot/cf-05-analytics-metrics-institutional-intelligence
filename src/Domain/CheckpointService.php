@@ -44,11 +44,11 @@ final class CheckpointService
         }
         $watermark = null;
         if ($watermarkAt !== null) {
-            $timestamp = strtotime($watermarkAt);
-            if ($timestamp === false) {
+            $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $watermarkAt, new \DateTimeZone('UTC'));
+            if ($parsed === false || $parsed->format('Y-m-d H:i:s') !== $watermarkAt) {
                 return false;
             }
-            $watermark = gmdate('Y-m-d H:i:s', $timestamp);
+            $watermark = $parsed->format('Y-m-d H:i:s');
         }
 
         $wpdb = $this->db->wpdb();
