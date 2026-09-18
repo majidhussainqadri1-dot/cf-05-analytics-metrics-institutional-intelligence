@@ -21,7 +21,9 @@ final class ProviderService
     /** @param array<string,mixed> $definition */
     public function register(array $definition,int $actorUserId):array|WP_Error
     {
-        foreach(['provider_id','provider_version','region_code','capabilities','security','retention','exit'] as $key){if(!array_key_exists($key,$definition)){return new WP_Error('smai_invalid_provider','Provider definition is incomplete.',['status'=>400,'field'=>$key]);}}
+        $allowedKeys=['provider_id','provider_version','region_code','capabilities','security','retention','exit'];
+        if(array_diff(array_keys($definition),$allowedKeys)!==[]){return new WP_Error('smai_invalid_provider','Provider definition contains unsupported fields.',['status'=>400]);}
+        foreach($allowedKeys as $key){if(!array_key_exists($key,$definition)){return new WP_Error('smai_invalid_provider','Provider definition is incomplete.',['status'=>400,'field'=>$key]);}}
         if($actorUserId<1||preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/',(string)$definition['provider_id'])!==1||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/',(string)$definition['provider_version'])!==1||preg_match('/^[A-Z]{2}(?:-[A-Z0-9]{2,8})?$/',(string)$definition['region_code'])!==1||!is_array($definition['capabilities'])||!is_array($definition['security'])||!is_array($definition['retention'])||!is_array($definition['exit'])){return new WP_Error('smai_invalid_provider','Provider definition validation failed.',['status'=>400]);}
         if((new SensitiveValueDetector())->violations(['capabilities'=>$definition['capabilities'],'security'=>$definition['security'],'retention'=>$definition['retention'],'exit'=>$definition['exit']])!==[]){return new WP_Error('smai_provider_secrets_prohibited','Provider definitions may contain evidence references, never credentials or sensitive values.',['status'=>400]);}
         $allowedRegions=get_option('smai_allowed_regions',['PK']);if(!is_array($allowedRegions)||!in_array($definition['region_code'],$allowedRegions,true)){return new WP_Error('smai_provider_region_denied','Provider region is not approved.',['status'=>403]);}
@@ -62,7 +64,9 @@ final class ProviderService
         $jobs=(int)$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('jobs')}` WHERE state IN ('queued','running','retrying') AND payload_json LIKE %s",'%'.$this->db->wpdb()->esc_like($providerId).'%'));
         $pendingDeletion=(int)$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('deletion_reconciliations')}` WHERE store_name LIKE %s AND state<>'verified'",'provider:'.$this->db->wpdb()->esc_like($providerId).'@%'));
         $revocation=apply_filters('smai_provider_credential_revocation_evidence',null,$providerId);
-        $revocationVerified=is_array($revocation)&&preg_match('/^[a-f0-9]{64}$/',(string)($revocation['evidence_hash']??''))===1;
-        return['provider_id'=>$providerId,'remaining_datasets'=>$datasets,'active_jobs'=>$jobs,'pending_deletion_reconciliations'=>$pendingDeletion,'ready_to_retire'=>$datasets===0&&$jobs===0&&$pendingDeletion===0&&$revocationVerified,'credential_revocation_evidence'=>$revocation,'generated_at'=>gmdate('c')];
+        $revocationHash=is_array($revocation)?strtolower((string)($revocation['evidence_hash']??'')):'';
+        $revocationVerified=preg_match('/^[a-f0-9]{64}$/',$revocationHash)===1;
+        $safeRevocation=$revocationVerified?['evidence_hash'=>$revocationHash]:null;
+        return['provider_id'=>$providerId,'remaining_datasets'=>$datasets,'active_jobs'=>$jobs,'pending_deletion_reconciliations'=>$pendingDeletion,'ready_to_retire'=>$datasets===0&&$jobs===0&&$pendingDeletion===0&&$revocationVerified,'credential_revocation_evidence'=>$safeRevocation,'generated_at'=>gmdate('c')];
     }
 }
