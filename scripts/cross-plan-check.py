@@ -65,8 +65,8 @@ for marker in ['SSH-PMP-2026-v3.0', 'Consolidated All-Chats Recovered Directive 
 manifest = json.loads((root / 'MANIFEST.json').read_text())
 if manifest.get('contract_version') != '1.4.0':
     errors.append('manifest contract version is not 1.4.0')
-if manifest.get('version') != '1.0.0-rc.8':
-    errors.append('manifest version is not 1.0.0-rc.8')
+if manifest.get('version') != '1.0.0-rc.9':
+    errors.append('manifest version is not 1.0.0-rc.9')
 
 all_php = '\n'.join(path.read_text(errors='replace') for path in root.rglob('*.php'))
 if re.search(r'\b(?:TODO|FIXME|not implemented)\b', all_php, re.I):
