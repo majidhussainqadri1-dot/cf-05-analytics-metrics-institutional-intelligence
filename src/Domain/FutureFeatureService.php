@@ -78,7 +78,8 @@ final class FutureFeatureService
         if ($actorUserId < 1) return new WP_Error('smai_future_actor_required', 'An authenticated actor is required.', ['status'=>403]);
         $definition = FutureFeatureRegistry::get($featureId);
         if ($definition === null) return new WP_Error('smai_future_unknown', 'Unknown future feature.', ['status' => 404]);
-        $reason=Text::truncate(trim($reason),500);if($reason==='')return new WP_Error('smai_future_reason_required','A governance reason is required.',['status'=>400]);
+        $reason=Text::truncate(trim(wp_strip_all_tags($reason)),500);
+        if($reason==='' || (new SensitiveValueDetector())->violations($reason)!==[])return new WP_Error('smai_future_reason_required','A non-sensitive governance reason is required.',['status'=>400]);
         $requiredCapability=in_array($action,['approve','activate'],true)?'smai_approve_future_intelligence':'smai_manage_future_intelligence';
         if(!user_can($actorUserId,$requiredCapability))return new WP_Error('smai_future_forbidden','Future feature lifecycle transition is not authorized.',['status'=>403]);
         $table=$this->db->table('future_features');$wpdb=$this->db->wpdb();$id=(string)$definition['feature_id'];
