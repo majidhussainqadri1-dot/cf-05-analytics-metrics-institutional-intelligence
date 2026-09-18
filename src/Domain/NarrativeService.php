@@ -39,13 +39,15 @@ final class NarrativeService
         bool $aiAssisted,
         int $actorUserId
     ): array|WP_Error {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_reports')) {
+            return new WP_Error('smai_narrative_forbidden', 'Narrative creation is not authorized.', ['status'=>403]);
+        }
         $title = Text::truncate(trim(wp_strip_all_tags($title)), 190);
         $observation = Text::truncate(trim(wp_strip_all_tags($observation)), 5000);
         $inference = Text::truncate(trim(wp_strip_all_tags($inference)), 5000);
         $recommendation = Text::truncate(trim(wp_strip_all_tags($recommendation)), 5000);
 
-        if ($actorUserId < 1
-            || strlen($title) < 3
+        if (strlen($title) < 3
             || strlen($observation) < 20
             || strlen($inference) < 8
             || strlen($recommendation) < 8
@@ -208,7 +210,10 @@ final class NarrativeService
 
     public function publish(string $uuid, int $expectedVersion, int $reviewerUserId): array|WP_Error
     {
-        if (preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1 || $expectedVersion < 1 || $reviewerUserId < 1) {
+        if ($reviewerUserId < 1 || !user_can($reviewerUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_narrative_forbidden', 'Narrative publication is not authorized.', ['status'=>403]);
+        }
+        if (preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1 || $expectedVersion < 1) {
             return new WP_Error('smai_invalid_narrative_publish', 'Narrative publication request is invalid.', ['status' => 400]);
         }
 

@@ -38,8 +38,11 @@ final class ExperimentService
     /** @param array<string,mixed> $definition */
     public function create(array $definition, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_experiments')) {
+            return new WP_Error('smai_experiment_forbidden', 'Experiment creation is not authorized.', ['status'=>403]);
+        }
         $errors = (new ExperimentDefinitionValidator())->errors($definition);
-        if ($actorUserId < 1 || $errors !== []) {
+        if ($errors !== []) {
             return new WP_Error('smai_invalid_experiment', 'Experiment validation failed.', ['status' => 400, 'errors' => $errors]);
         }
         if ((new SensitiveValueDetector())->violations($definition) !== []) {
@@ -86,8 +89,11 @@ final class ExperimentService
 
     public function transition(string $uuid, string $target, int $expectedVersion, string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_experiments')) {
+            return new WP_Error('smai_experiment_forbidden', 'Experiment transition is not authorized.', ['status'=>403]);
+        }
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
-        if ($actorUserId < 1 || $expectedVersion < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1
+        if ($expectedVersion < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1
             || strlen($reason) < 8 || (new SensitiveValueDetector())->violations($reason) !== []) {
             return new WP_Error('smai_invalid_experiment_transition', 'Experiment transition request is invalid.', ['status' => 400]);
         }
@@ -218,7 +224,10 @@ final class ExperimentService
 
     public function analyze(string $uuid, string $analysisVersion, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1 || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $analysisVersion) !== 1) {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_experiments')) {
+            return new WP_Error('smai_experiment_forbidden', 'Experiment analysis is not authorized.', ['status'=>403]);
+        }
+        if (preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1 || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $analysisVersion) !== 1) {
             return new WP_Error('smai_invalid_analysis_version', 'Analysis version must be semantic.', ['status' => 400]);
         }
         $experiment = $this->get($uuid);
@@ -334,7 +343,10 @@ final class ExperimentService
 
     public function publishAnalysis(string $analysisUuid, int $expectedVersion, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1 || $expectedVersion < 1
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_experiment_forbidden', 'Analysis publication is not authorized.', ['status'=>403]);
+        }
+        if ($expectedVersion < 1
             || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $analysisUuid) !== 1) {
             return new WP_Error('smai_invalid_analysis_publish', 'Analysis publication request is invalid.', ['status' => 400]);
         }
@@ -398,6 +410,9 @@ final class ExperimentService
     /** @param array<string,mixed> $record */
     public function recordDecision(string $subjectType, string $subjectRef, array $record, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_experiments')) {
+            return new WP_Error('smai_decision_forbidden', 'Decision recording is not authorized.', ['status'=>403]);
+        }
         $allowed = ['evidence','alternatives','risks','action_owner','decision','review_at'];
         if (array_diff(array_keys($record), $allowed) !== []) {
             return new WP_Error('smai_invalid_decision_record', 'Decision record contains unsupported fields.', ['status' => 400]);
@@ -410,8 +425,7 @@ final class ExperimentService
         $actionOwner = Text::truncate(trim(wp_strip_all_tags((string) $record['action_owner'])), 100);
         $decisionText = Text::truncate(trim(wp_strip_all_tags((string) $record['decision'])), 5000);
         $reviewAtTs=$this->strictTimestamp((string)$record['review_at']);
-        if ($actorUserId < 1
-            || !in_array($subjectType, ['experiment','analysis','metric','report'], true)
+        if (!in_array($subjectType, ['experiment','analysis','metric','report'], true)
             || preg_match('/^[a-zA-Z0-9_.:@-]{3,190}$/', $subjectRef) !== 1
             || strlen($actionOwner) < 2
             || strlen($decisionText) < 10
@@ -454,7 +468,10 @@ final class ExperimentService
     /** @param array<string,mixed> $outcome */
     public function recordOutcome(string $decisionUuid, array $outcome, int $expectedVersion, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1 || $expectedVersion < 1
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_experiments')) {
+            return new WP_Error('smai_decision_forbidden', 'Decision outcome recording is not authorized.', ['status'=>403]);
+        }
+        if ($expectedVersion < 1
             || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $decisionUuid) !== 1
             || $outcome === [] || (new SensitiveValueDetector())->violations($outcome) !== []) {
             return new WP_Error('smai_invalid_decision_outcome', 'Decision outcome is invalid.', ['status' => 400]);

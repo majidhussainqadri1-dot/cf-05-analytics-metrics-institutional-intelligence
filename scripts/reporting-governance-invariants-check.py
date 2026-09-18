@@ -27,5 +27,7 @@ if "user_can($actorUserId, 'smai_approve_catalog')" not in files['ReportService.
 if files['ReportControlService.php'].count("user_can($actorUserId, 'smai_manage_reports')") < 3: e.append('report control manage_reports authorization incomplete')
 if "user_can($actorUserId, 'smai_approve_catalog')" not in files['ReportControlService.php']: e.append('report resume lacks service-layer approval authorization')
 if "user_can($actorUserId, 'smai_manage_access')" not in files['ReportControlService.php']: e.append('report revocation lacks service-layer manage_access authorization')
+if "user_can($actorUserId, 'smai_manage_reports')" not in files['NarrativeService.php']: e.append('narrative creation lacks service-layer manage_reports authorization')
+if "user_can($reviewerUserId, 'smai_approve_catalog')" not in files['NarrativeService.php']: e.append('narrative publication lacks service-layer approval authorization')
 if e: print('\n'.join(e),file=sys.stderr);sys.exit(1)
 print('Reporting governance invariants check passed.')

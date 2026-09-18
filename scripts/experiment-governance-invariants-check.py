@@ -16,5 +16,7 @@ if "applyMultipleTestingPolicy" not in s or "adjusted_p_value" not in s: e.appen
 if "analysisResultStillPublishable" not in s or "snapshotHashStillPublishable" not in s: e.append('analysis publication does not revalidate exact snapshot evidence')
 if "$allowed = ['evidence','alternatives','risks','action_owner','decision','review_at'];" not in s: e.append('decision record contract is not closed')
 if "$reviewAtTs <= time()" not in s: e.append('decision records do not require a future expected review')
+if s.count("user_can($actorUserId, 'smai_manage_experiments')") < 5: e.append('experiment/decision service-layer manage_experiments authorization incomplete')
+if "user_can($actorUserId, 'smai_approve_catalog')" not in s: e.append('analysis publication lacks service-layer approval authorization')
 if e: print('\n'.join(e),file=sys.stderr);sys.exit(1)
 print('Experiment governance invariants check passed.')
