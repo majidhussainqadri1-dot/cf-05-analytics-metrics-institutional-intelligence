@@ -130,7 +130,7 @@ final class EventSchemaValidator
             }
             if (in_array($type, ['integer','number'], true)) {
                 foreach (['min','max'] as $bound) {
-                    if (isset($definition[$bound]) && !is_int($definition[$bound]) && !is_float($definition[$bound])) {
+                    if (isset($definition[$bound]) && ((!is_int($definition[$bound]) && !is_float($definition[$bound])) || !is_finite((float) $definition[$bound]))) {
                         $errors[] = 'invalid_' . $bound . '_' . $name;
                     }
                 }

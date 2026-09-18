@@ -65,6 +65,7 @@ final class QueryPrivacyGuard
             'dimension_names' => array_values(array_map('strval', array_keys($dimensions))),
             'dimension_hashes' => $dimensionHashes,
             'dimensions_fingerprint' => hash_hmac('sha256', Json::canonical($dimensions), $privacyKey),
+            'slice_fingerprint' => hash_hmac('sha256', $windowStart . '|' . $windowEnd . '|' . hash_hmac('sha256', Json::canonical($dimensions), $privacyKey), $privacyKey),
             'cohort_size' => $cohortSize,
             'privacy_cost' => $cost,
         ];
@@ -88,17 +89,19 @@ final class QueryPrivacyGuard
         $budget = 0;
         foreach (is_array($rows) ? $rows : [] as $row) {
             $previous = Json::object((string) ($row['response_json'] ?? '{}'));
-            $fingerprint = (string) ($previous['dimensions_fingerprint'] ?? '');
-            if ($fingerprint !== '') {
-                $fingerprints[$fingerprint] = true;
+            $dimensionFingerprint = (string) ($previous['dimensions_fingerprint'] ?? '');
+            $fingerprint = (string) ($previous['slice_fingerprint'] ?? '');
+            if ($fingerprint === '' && $dimensionFingerprint !== '') {
+                $fingerprint = hash_hmac('sha256', (string) ($previous['window_start'] ?? '') . '|' . (string) ($previous['window_end'] ?? '') . '|' . $dimensionFingerprint, $privacyKey);
             }
+            if ($fingerprint !== '') { $fingerprints[$fingerprint] = true; }
             $budget += max(0, (int) ($previous['privacy_cost'] ?? 0));
             if (PrivacyQueryPolicy::differencingRisk($current, $previous, $differencingFloor)) {
                 return $this->deny('smai_differencing_risk', 'Query blocked because it could isolate a small cohort by differencing recent slices.', $metricId, $metricVersion, $projectUuid, $actorUserId, $purpose, ['minimum_difference' => $differencingFloor]);
             }
         }
 
-        $exactRepeated = isset($fingerprints[$current['dimensions_fingerprint']]);
+        $exactRepeated = isset($fingerprints[$current['slice_fingerprint']]);
         if (!$exactRepeated && count($fingerprints) >= $maxSlices) {
             return $this->deny('smai_slice_budget_exceeded', 'Too many distinct metric slices were requested in the current privacy window.', $metricId, $metricVersion, $projectUuid, $actorUserId, $purpose, ['max_distinct_slices' => $maxSlices]);
         }

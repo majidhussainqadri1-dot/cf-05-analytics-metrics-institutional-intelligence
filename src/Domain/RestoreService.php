@@ -34,8 +34,8 @@ final class RestoreService
             }
         }
         $backupCreatedAt = (string) $evidence['backup_created_at'];
-        if (strlen($backupCreatedAt) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $backupCreatedAt) !== 1 || strtotime($backupCreatedAt) === false) {
-            return new WP_Error('smai_invalid_restore_timestamp', 'Backup evidence timestamp is invalid.', ['status' => 400]);
+        if (strlen($backupCreatedAt)>35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/',$backupCreatedAt,$m)!==1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1]) || ($backupTs=strtotime($backupCreatedAt))===false || $backupTs>time()+300) {
+            return new WP_Error('smai_invalid_restore_timestamp', 'Backup evidence timestamp is invalid or in the future.', ['status' => 400]);
         }
         $uuid = Uuid::v4();
         $catalogHash = $this->catalogHash();
@@ -67,11 +67,14 @@ final class RestoreService
 
     public function verify(string $uuid, int $actorUserId): array|WP_Error
     {
+        if($actorUserId<1||preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$uuid)!==1){return new WP_Error('smai_invalid_restore_verification','Restore verification identity or actor is invalid.',['status'=>400]);}
         $table = $this->db->table('restore_points');
         $point = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE restore_uuid=%s", $uuid), ARRAY_A);
         if (!is_array($point)) {
             return new WP_Error('smai_restore_point_not_found', 'Restore point was not found.', ['status' => 404]);
         }
+        if ((string)$point['state']==='verified') { return new WP_Error('smai_restore_already_verified','Verified restore evidence is immutable.',['status'=>409]); }
+        if (!in_array((string)$point['state'],['recorded','failed'],true)) { return new WP_Error('smai_restore_state_invalid','Restore point state does not allow verification.',['status'=>409]); }
         if ((int) $point['recorded_by'] === $actorUserId) {
             return new WP_Error('smai_separation_of_duties', 'Restore verification requires an independent actor.', ['status' => 403]);
         }
@@ -89,7 +92,7 @@ final class RestoreService
         ];
         $verified = !in_array(false, $checks, true);
         $wpdb=$this->db->wpdb();if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_restore_transaction_failed','Restore verification transaction could not start.',['status'=>500]);}
-        $updated=$wpdb->update($table, ['state' => $verified ? 'verified' : 'failed', 'verified_by' => $actorUserId, 'verified_at' => $this->db->now()], ['id' => (int) $point['id']]);
+        $updated=$wpdb->update($table, ['state' => $verified ? 'verified' : 'failed', 'verified_by' => $actorUserId, 'verified_at' => $this->db->now()], ['id' => (int) $point['id'], 'state' => (string)$point['state']]);
         if($updated!==1 || !$this->audit->logInOpenTransaction('warehouse_restore_verified', 'restore_point', $uuid, $verified ? 'success' : 'failed', $checks, 'disaster_recovery', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_restore_audit_failed','Restore verification evidence could not be committed.',['status'=>503]); }
         if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_restore_commit_failed','Restore verification could not be committed.',['status'=>500]);}
         do_action('smai_restore_verification_completed', ['restore_uuid' => $uuid, 'verified' => $verified, 'checks' => $checks]);
@@ -142,11 +145,13 @@ final class RestoreService
 
     private function verifyAccessFloor(int $floor): bool
     {
-        if ($floor < 1) {return true;}
-        $now = $this->db->now();
-        $staleProjects = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('access_projects')}` WHERE id<=%d AND state='active' AND expires_at<=%s", $floor, $now));
-        $staleExports = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('exports')}` e INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=e.project_uuid WHERE p.id<=%d AND p.state<>'active' AND e.state IN ('requested','building','ready')", $floor));
-        return $staleProjects === 0 && $staleExports === 0;
+        if ($floor < 1) {return true;} $wpdb=$this->db->wpdb();$now=$this->db->now();
+        $staleProjects=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('access_projects')}` WHERE id<=%d AND state='active' AND expires_at<=%s",$floor,$now));
+        $staleExports=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('exports')}` e INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=e.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND e.state IN ('requested','building','ready')",$floor,$now));
+        $staleReports=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('reports')}` r INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND r.state='active'",$floor,$now));
+        $staleDashboards=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('dashboard_definitions')}` d INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=d.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND d.state='active'",$floor,$now));
+        $staleDeliveries=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('report_deliveries')}` d INNER JOIN `{$this->db->table('reports')}` r ON r.report_uuid=d.report_uuid INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND ((p.state<>'active' OR p.expires_at<=%s) OR r.state<>'active' OR (r.expires_at IS NOT NULL AND r.expires_at<=%s)) AND d.state IN ('ready','sent')",$floor,$now,$now));
+        return $staleProjects===0&&$staleExports===0&&$staleReports===0&&$staleDashboards===0&&$staleDeliveries===0;
     }
 
     private function verifyProviders(string $uuid): bool

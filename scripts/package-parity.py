@@ -2,7 +2,7 @@
 from __future__ import annotations
 import hashlib,json,pathlib,sys,zipfile
 root=pathlib.Path(__file__).resolve().parents[1]
-slug='sabri-analytics-institutional-intelligence'; version='1.0.0-rc.7'
+slug='sabri-analytics-institutional-intelligence'; version='1.0.0-rc.8'
 archive=root/'build'/'dist'/f'CF-05-{slug}-{version}.zip'
 manifest_path=root/'build'/'dist'/f'CF-05-{version}-package-manifest.json'
 if not archive.is_file() or not manifest_path.is_file():

@@ -22,7 +22,8 @@ final class JobQueue
             return new WP_Error('smai_invalid_job', 'Job type or idempotency key is invalid.', ['status' => 400]);
         }
         if ($runAt !== null) {
-            if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $runAt) !== 1 || strtotime($runAt . ' UTC') === false) {
+            $scheduled = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $runAt, new \DateTimeZone('UTC'));
+            if ($scheduled === false || $scheduled->format('Y-m-d H:i:s') !== $runAt) {
                 return new WP_Error('smai_invalid_job_schedule', 'Job run time is invalid.', ['status' => 400]);
             }
         }
@@ -121,25 +122,23 @@ final class JobQueue
     /** @param array<string,mixed> $result */
     public function complete(string $jobUuid, string $workerId, array $result = []): bool
     {
-        $table = $this->db->table('jobs');
-        return $this->db->wpdb()->update($table, [
-            'state' => 'completed',
-            'result_json' => Json::encode($result),
-            'lease_owner' => null,
-            'lease_until' => null,
-            'completed_at' => gmdate('Y-m-d H:i:s'),
-            'updated_at' => gmdate('Y-m-d H:i:s'),
-        ], ['job_uuid' => $jobUuid, 'state' => 'running', 'lease_owner' => $workerId]) === 1;
+        $wpdb = $this->db->wpdb(); $table = $this->db->table('jobs'); $now = gmdate('Y-m-d H:i:s');
+        return $wpdb->query($wpdb->prepare(
+            "UPDATE `{$table}` SET state='completed',result_json=%s,lease_owner=NULL,lease_until=NULL,completed_at=%s,updated_at=%s WHERE job_uuid=%s AND state='running' AND lease_owner=%s AND lease_until>=%s",
+            Json::encode($result), $now, $now, $jobUuid, $workerId, $now
+        )) === 1;
     }
 
     public function fail(string $jobUuid, string $workerId, string $code, string $message): bool
     {
         $wpdb = $this->db->wpdb();
         $table = $this->db->table('jobs');
+        $now = gmdate('Y-m-d H:i:s');
         $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT attempts,max_attempts FROM `{$table}` WHERE job_uuid=%s AND state='running' AND lease_owner=%s",
+            "SELECT attempts,max_attempts FROM `{$table}` WHERE job_uuid=%s AND state='running' AND lease_owner=%s AND lease_until>=%s",
             $jobUuid,
-            $workerId
+            $workerId,
+            $now
         ), ARRAY_A);
         if (!is_array($row)) {
             return false;
@@ -149,14 +148,10 @@ final class JobQueue
         $dead = $attempts >= $max;
         $delays = [60, 300, 1800, 7200, 43200];
         $delay = $delays[min(max(0, $attempts - 1), count($delays) - 1)];
-        return $wpdb->update($table, [
-            'state' => $dead ? 'dead_letter' : 'retrying',
-            'error_code' => Text::truncate($code, 100),
-            'error_message' => Text::truncate($message, 500),
-            'next_run_at' => gmdate('Y-m-d H:i:s', time() + $delay),
-            'lease_owner' => null,
-            'lease_until' => null,
-            'updated_at' => gmdate('Y-m-d H:i:s'),
-        ], ['job_uuid' => $jobUuid, 'state' => 'running', 'lease_owner' => $workerId]) === 1;
+        return $wpdb->query($wpdb->prepare(
+            "UPDATE `{$table}` SET state=%s,error_code=%s,error_message=%s,next_run_at=%s,lease_owner=NULL,lease_until=NULL,updated_at=%s WHERE job_uuid=%s AND state='running' AND lease_owner=%s AND lease_until>=%s",
+            $dead ? 'dead_letter' : 'retrying', Text::truncate($code, 100), Text::truncate($message, 500),
+            gmdate('Y-m-d H:i:s', time() + $delay), $now, $jobUuid, $workerId, $now
+        )) === 1;
     }
 }

@@ -40,7 +40,7 @@ final class ExportControlService
             return ['export_uuid' => $uuid, 'state' => 'revoked', 'unchanged' => true];
         }
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) { return new WP_Error('smai_export_revoke_transaction_failed', 'Export revocation transaction could not start.', ['status' => 500]); }
         $now = $this->db->now();
         $updated = $wpdb->update($table, [
             'state' => 'revoked', 'revoked_at' => $now, 'expires_at' => $now, 'token_hash' => null, 'updated_at' => $now,
@@ -52,7 +52,7 @@ final class ExportControlService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_export_revoke_conflict', 'Export revocation and audit evidence could not be committed.', ['status' => 409]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_export_revoke_commit_failed', 'Export revocation could not be committed.', ['status' => 500]); }
         return ['export_uuid' => $uuid, 'state' => 'revoked', 'revoked_at' => gmdate('c', (int) strtotime($now)), 'unchanged' => false];
     }
 }

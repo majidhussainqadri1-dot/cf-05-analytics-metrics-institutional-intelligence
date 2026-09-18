@@ -115,7 +115,7 @@ final class PipelineService
         $wpdb = $this->db->wpdb();
         $table = $this->db->table('dataset_builds');
         $datasetTable = $this->db->table('datasets');
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) { throw new \RuntimeException('Active build transaction could not start.'); }
         try {
             $lock = $wpdb->get_var($wpdb->prepare(
                 "SELECT id FROM `{$datasetTable}` WHERE dataset_id=%s AND dataset_version=%s FOR UPDATE",
@@ -131,7 +131,7 @@ final class PipelineService
                 $version
             ), ARRAY_A);
             if (is_array($build)) {
-                $wpdb->query('COMMIT');
+                if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Active build reuse could not be committed.'); }
                 return $build;
             }
             $uuid = Uuid::v4();
@@ -150,7 +150,7 @@ final class PipelineService
             ]) !== 1) {
                 throw new \RuntimeException('Active dataset build could not be created.');
             }
-            $wpdb->query('COMMIT');
+            if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Active build creation could not be committed.'); }
             return ['build_uuid' => $uuid, 'dataset_id' => $datasetId, 'dataset_version' => $version, 'state' => 'active', 'is_active' => 1];
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');

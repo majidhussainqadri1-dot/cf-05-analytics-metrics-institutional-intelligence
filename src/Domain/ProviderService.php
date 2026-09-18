@@ -36,11 +36,12 @@ final class ProviderService
     /** @param array<string,mixed> $evidence */
     public function transition(string $providerId,string $version,string $target,int $expectedVersion,int $actorUserId,array $evidence=[]):array|WP_Error
     {
+        if($actorUserId<1||$expectedVersion<1||preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/',$providerId)!==1||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/',$version)!==1||preg_match('/^[a-z_]{3,32}$/',$target)!==1){return new WP_Error('smai_invalid_provider_transition','Provider transition identity or actor is invalid.',['status'=>400]);}
         $table=$this->db->table('providers');$row=$this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE provider_id=%s AND provider_version=%s",$providerId,$version),ARRAY_A);
         if(!is_array($row)||(int)$row['row_version']!==$expectedVersion){return new WP_Error('smai_provider_stale','Provider is unavailable or stale.',['status'=>409]);}
         $from=(string)$row['state'];if(!in_array($target,self::TRANSITIONS[$from]??[],true)){return new WP_Error('smai_invalid_provider_transition','Provider transition is not allowed.',['status'=>409]);}
         if(in_array($target,['security_review','approved'],true)&&(int)$row['created_by']===$actorUserId){return new WP_Error('smai_separation_of_duties','Independent provider review is required.',['status'=>403]);}
-        if($target==='active'&&(int)($row['approved_by']??0)===$actorUserId){return new WP_Error('smai_separation_of_duties','Provider activation requires an executor distinct from the approver.',['status'=>403]);}
+        if($target==='active'&&((int)($row['approved_by']??0)<1||(int)$row['approved_by']===(int)$row['created_by']||(int)$row['approved_by']===$actorUserId)){return new WP_Error('smai_separation_of_duties','Provider activation requires valid persisted independent approval and an executor distinct from the approver.',['status'=>403]);}
         if((new SensitiveValueDetector())->violations($evidence)!==[]){return new WP_Error('smai_provider_evidence_sensitive','Provider transition evidence contains prohibited values.',['status'=>400]);}
         if(in_array($target,['approved','active','purge_pending','retired'],true)&&preg_match('/^[a-f0-9]{64}$/',(string)($evidence['evidence_hash']??''))!==1){return new WP_Error('smai_provider_transition_evidence_required','A verified evidence hash is required for this transition.',['status'=>400]);}
         if($target==='retired'){
@@ -61,6 +62,7 @@ final class ProviderService
         $jobs=(int)$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('jobs')}` WHERE state IN ('queued','running','retrying') AND payload_json LIKE %s",'%'.$this->db->wpdb()->esc_like($providerId).'%'));
         $pendingDeletion=(int)$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('deletion_reconciliations')}` WHERE store_name LIKE %s AND state<>'verified'",'provider:'.$this->db->wpdb()->esc_like($providerId).'@%'));
         $revocation=apply_filters('smai_provider_credential_revocation_evidence',null,$providerId);
-        return['provider_id'=>$providerId,'remaining_datasets'=>$datasets,'active_jobs'=>$jobs,'pending_deletion_reconciliations'=>$pendingDeletion,'ready_to_retire'=>$datasets===0&&$jobs===0&&$pendingDeletion===0,'credential_revocation_evidence'=>$revocation,'generated_at'=>gmdate('c')];
+        $revocationVerified=is_array($revocation)&&preg_match('/^[a-f0-9]{64}$/',(string)($revocation['evidence_hash']??''))===1;
+        return['provider_id'=>$providerId,'remaining_datasets'=>$datasets,'active_jobs'=>$jobs,'pending_deletion_reconciliations'=>$pendingDeletion,'ready_to_retire'=>$datasets===0&&$jobs===0&&$pendingDeletion===0&&$revocationVerified,'credential_revocation_evidence'=>$revocation,'generated_at'=>gmdate('c')];
     }
 }

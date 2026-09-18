@@ -67,7 +67,7 @@ final class ReportControlService
             if ($changes['expires_at'] === null || $changes['expires_at'] === '') {
                 $expiresAt = null;
             } else {
-                $timestamp = strtotime((string) $changes['expires_at']);
+                $timestamp = $this->strictTimestamp((string) $changes['expires_at']);
                 $project = (new AccessProjectService($this->db))->get((string) $report['project_uuid']);
                 if ($timestamp === false || $timestamp <= time() || !is_array($project) || $timestamp > strtotime((string) $project['expires_at'])) {
                     return new WP_Error('smai_invalid_report_expiry', 'Report expiry is invalid or exceeds project expiry.', ['status' => 400]);
@@ -76,7 +76,8 @@ final class ReportControlService
             }
         }
 
-        $updated = $this->db->wpdb()->update($this->db->table('reports'), [
+        $wpdb=$this->db->wpdb(); if($wpdb->query('START TRANSACTION')===false)return new WP_Error('smai_report_control_transaction_failed','Report update transaction could not start.',['status'=>500]);
+        $updated = $wpdb->update($this->db->table('reports'), [
             'name' => $name,
             'definition_json' => Json::canonical($definition),
             'schedule_rrule' => $schedule,
@@ -86,10 +87,8 @@ final class ReportControlService
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'row_version' => $expectedVersion, 'state' => (string) $report['state']]);
-        if ($updated !== 1) {
-            return new WP_Error('smai_report_update_conflict', 'Report changed concurrently.', ['status' => 409]);
-        }
-        $this->audit->log('report_updated', 'report', $uuid, 'success', ['requires_reapproval' => true], 'institutional_reporting', null, $actorUserId);
+        if ($updated !== 1 || !$this->audit->logInOpenTransaction('report_updated','report',$uuid,'success',['requires_reapproval'=>true],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_update_conflict', 'Report update and audit evidence could not be committed.', ['status' => 409]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_control_commit_failed','Report update could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => 'draft', 'row_version' => $expectedVersion + 1, 'requires_reapproval' => true];
     }
 
@@ -117,16 +116,15 @@ final class ReportControlService
         }
         $schedule = $report['schedule_rrule'] === null ? null : (string) $report['schedule_rrule'];
         $next = $schedule === null ? null : gmdate('Y-m-d H:i:s', $this->nextTimestamp($schedule, time()));
-        $updated = $this->db->wpdb()->update($this->db->table('reports'), [
+        $wpdb=$this->db->wpdb(); if($wpdb->query('START TRANSACTION')===false)return new WP_Error('smai_report_control_transaction_failed','Report resume transaction could not start.',['status'=>500]);
+        $updated = $wpdb->update($this->db->table('reports'), [
             'state' => 'active',
             'next_run_at' => $next,
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'state' => 'paused', 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {
-            return new WP_Error('smai_report_resume_conflict', 'Report changed concurrently.', ['status' => 409]);
-        }
-        $this->audit->log('report_resumed', 'report', $uuid, 'success', ['reason' => $reason], 'institutional_reporting', null, $actorUserId);
+        if ($updated !== 1 || !$this->audit->logInOpenTransaction('report_resumed','report',$uuid,'success',['reason'=>$reason],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_resume_conflict', 'Report resume and audit evidence could not be committed.', ['status' => 409]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_control_commit_failed','Report resume could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => 'active', 'row_version' => $expectedVersion + 1, 'next_run_at' => $next];
     }
 
@@ -146,18 +144,15 @@ final class ReportControlService
         if (is_wp_error($reason)) {
             return $reason;
         }
-        $now = $this->db->now();
-        $updated = $this->db->wpdb()->update($this->db->table('reports'), [
+        $now = $this->db->now(); $wpdb=$this->db->wpdb(); if($wpdb->query('START TRANSACTION')===false)return new WP_Error('smai_report_control_transaction_failed','Report revocation transaction could not start.',['status'=>500]);
+        $updated = $wpdb->update($this->db->table('reports'), [
             'state' => 'revoked',
             'next_run_at' => null,
             'row_version' => $expectedVersion + 1,
             'updated_at' => $now,
         ], ['id' => (int) $report['id'], 'row_version' => $expectedVersion, 'state' => (string) $report['state']]);
-        if ($updated !== 1) {
-            return new WP_Error('smai_report_revoke_conflict', 'Report changed concurrently.', ['status' => 409]);
-        }
-        if (!$this->revokeDeliveries($uuid, null, $now)) { return new WP_Error('smai_report_delivery_revoke_failed','Report delivery revocation failed.',['status'=>503]); }
-        $this->audit->log('report_revoked', 'report', $uuid, 'success', ['reason' => $reason], 'institutional_reporting', null, $actorUserId);
+        if ($updated !== 1 || !$this->revokeDeliveries($uuid,null,$now) || !$this->audit->logInOpenTransaction('report_revoked','report',$uuid,'success',['reason'=>$reason],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_revoke_conflict', 'Report revocation, delivery revocation and audit evidence could not be committed.', ['status' => 409]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_control_commit_failed','Report revocation could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => 'revoked', 'row_version' => $expectedVersion + 1, 'unchanged' => false];
     }
 
@@ -183,19 +178,17 @@ final class ReportControlService
         }
         $definition['recipients'] = $remaining;
         $newState = $remaining === [] && (string) $report['state'] === 'active' ? 'paused' : (string) $report['state'];
-        $updated = $this->db->wpdb()->update($this->db->table('reports'), [
+        $wpdb=$this->db->wpdb(); if($wpdb->query('START TRANSACTION')===false)return new WP_Error('smai_report_control_transaction_failed','Report unsubscribe transaction could not start.',['status'=>500]);
+        $updated = $wpdb->update($this->db->table('reports'), [
             'definition_json' => Json::canonical($definition),
             'state' => $newState,
             'next_run_at' => $newState === 'paused' ? null : $report['next_run_at'],
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {
-            return new WP_Error('smai_report_unsubscribe_conflict', 'Report changed concurrently.', ['status' => 409]);
-        }
         $now = $this->db->now();
-        if (!$this->revokeDeliveries($uuid, $this->recipientHash($actorUserId), $now)) { return new WP_Error('smai_report_delivery_revoke_failed','Report delivery revocation failed.',['status'=>503]); }
-        $this->audit->log('report_unsubscribed', 'report', $uuid, 'success', ['recipient_user_id' => $actorUserId], 'institutional_reporting', null, $actorUserId);
+        if ($updated !== 1 || !$this->revokeDeliveries($uuid,$this->recipientHash($actorUserId),$now) || !$this->audit->logInOpenTransaction('report_unsubscribed','report',$uuid,'success',['recipient_user_id'=>$actorUserId],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_unsubscribe_conflict', 'Report unsubscribe, delivery revocation and audit evidence could not be committed.', ['status' => 409]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_control_commit_failed','Report unsubscribe could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => $newState, 'row_version' => $expectedVersion + 1, 'subscribed' => false];
     }
 
@@ -215,16 +208,15 @@ final class ReportControlService
         if (is_wp_error($reason)) {
             return $reason;
         }
-        $updated = $this->db->wpdb()->update($this->db->table('reports'), [
+        $wpdb=$this->db->wpdb(); if($wpdb->query('START TRANSACTION')===false)return new WP_Error('smai_report_control_transaction_failed','Report transition transaction could not start.',['status'=>500]);
+        $updated = $wpdb->update($this->db->table('reports'), [
             'state' => $to,
             'next_run_at' => null,
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'state' => $from, 'row_version' => $expectedVersion]);
-        if ($updated !== 1) {
-            return new WP_Error('smai_report_transition_conflict', 'Report changed concurrently.', ['status' => 409]);
-        }
-        $this->audit->log('report_' . $to, 'report', $uuid, 'success', ['reason' => $reason], 'institutional_reporting', null, $actorUserId);
+        if ($updated !== 1 || !$this->audit->logInOpenTransaction('report_'.$to,'report',$uuid,'success',['reason'=>$reason],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_transition_conflict', 'Report transition and audit evidence could not be committed.', ['status' => 409]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_control_commit_failed','Report transition could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => $to, 'row_version' => $expectedVersion + 1];
     }
 
@@ -318,7 +310,8 @@ final class ReportControlService
     private function reason(string $reason): string|WP_Error
     {
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
-        return strlen($reason) >= 8 ? $reason : new WP_Error('smai_reason_required', 'A meaningful reason is required.', ['status' => 400]);
+        if (strlen($reason) < 8 || (new \Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector())->violations($reason) !== []) { return new WP_Error('smai_reason_required', 'A meaningful and non-sensitive reason is required.', ['status' => 400]); }
+        return $reason;
     }
 
     private function nextTimestamp(string $schedule, int $from): int
@@ -331,4 +324,10 @@ final class ReportControlService
             default => $from + DAY_IN_SECONDS,
         };
     }
+    private function strictTimestamp(string $value): ?int
+    {
+        if (strlen($value)>35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/',$value,$m)!==1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1])) return null;
+        $timestamp=strtotime($value); return $timestamp===false?null:$timestamp;
+    }
+
 }

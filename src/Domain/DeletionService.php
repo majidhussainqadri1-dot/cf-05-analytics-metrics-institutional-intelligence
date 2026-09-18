@@ -227,15 +227,20 @@ final class DeletionService
     /** @param array<int,string> $metricRefs */
     private function revokeExports(array $metricRefs, string $now): int
     {
-        if ($metricRefs === []) { return 0; }
-        $rows = $this->db->wpdb()->get_results("SELECT id,export_uuid,definition_json FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') ORDER BY id LIMIT 10000", ARRAY_A);
-        $count = 0;
-        foreach (is_array($rows) ? $rows : [] as $row) {
-            $definition = Json::object((string) $row['definition_json']);
-            $ref = (string) ($definition['metric_id'] ?? '') . '@' . (string) ($definition['metric_version'] ?? '');
-            if (!in_array($ref, $metricRefs, true)) { continue; }
-            if ($this->db->wpdb()->update($this->db->table('exports'), ['state' => 'revoked','token_hash' => null,'revoked_at' => $now,'expires_at' => $now,'updated_at' => $now], ['id' => (int) $row['id']]) === 1) {
-                $this->db->wpdb()->delete($this->db->table('export_payloads'), ['export_uuid' => $row['export_uuid']]); $count++;
+        if ($metricRefs === []) { return 0; } $count=0;
+        while (true) {
+            $rows=$this->db->wpdb()->get_results("SELECT id,export_uuid,definition_json FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') ORDER BY id LIMIT 500",ARRAY_A);
+            if (!is_array($rows) || $rows===[]) break; $matched=0;
+            foreach ($rows as $row) { $definition=Json::object((string)$row['definition_json']);$ref=(string)($definition['metric_id']??'').'@'.(string)($definition['metric_version']??''); if(!in_array($ref,$metricRefs,true)) continue; $matched++;
+                if($this->db->wpdb()->update($this->db->table('exports'),['state'=>'revoked','token_hash'=>null,'revoked_at'=>$now,'expires_at'=>$now,'updated_at'=>$now],['id'=>(int)$row['id']])!==1) throw new \RuntimeException('Deletion export revocation failed.');
+                if($this->db->wpdb()->delete($this->db->table('export_payloads'),['export_uuid'=>$row['export_uuid']])===false) throw new \RuntimeException('Deletion export payload purge failed.'); $count++;
+            }
+            if (count($rows)<500) break;
+            if ($matched===0) {
+                $ids=array_map(static fn(array $row):int=>(int)$row['id'],$rows); $max=max($ids); $remaining=(int)$this->db->wpdb()->get_var("SELECT COUNT(*) FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') AND id>{$max}"); if($remaining===0) break;
+                // Avoid re-reading the same unrelated first page by scanning all remaining candidates in the next fallback query.
+                $all=$this->db->wpdb()->get_results("SELECT id,export_uuid,definition_json FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') AND id>{$max} ORDER BY id",ARRAY_A);
+                foreach(is_array($all)?$all:[] as $row){$definition=Json::object((string)$row['definition_json']);$ref=(string)($definition['metric_id']??'').'@'.(string)($definition['metric_version']??'');if(!in_array($ref,$metricRefs,true))continue;if($this->db->wpdb()->update($this->db->table('exports'),['state'=>'revoked','token_hash'=>null,'revoked_at'=>$now,'expires_at'=>$now,'updated_at'=>$now],['id'=>(int)$row['id']])!==1)throw new \RuntimeException('Deletion export revocation failed.');if($this->db->wpdb()->delete($this->db->table('export_payloads'),['export_uuid'=>$row['export_uuid']])===false)throw new \RuntimeException('Deletion export payload purge failed.');$count++;} break;
             }
         }
         return $count;
@@ -244,19 +249,12 @@ final class DeletionService
     /** @param array<int,string> $metricRefs */
     private function revokeReports(array $metricRefs, string $now): int
     {
-        if ($metricRefs === []) { return 0; }
-        $rows = $this->db->wpdb()->get_results("SELECT id,report_uuid,definition_json FROM `{$this->db->table('reports')}` WHERE state IN ('draft','active','paused') ORDER BY id LIMIT 10000", ARRAY_A);
-        $count = 0;
-        foreach (is_array($rows) ? $rows : [] as $row) {
-            $affected = false;
-            foreach ((array) (Json::object((string) $row['definition_json'])['metrics'] ?? []) as $metric) {
-                if (is_array($metric) && in_array((string) ($metric['metric_id'] ?? '') . '@' . (string) ($metric['metric_version'] ?? ''), $metricRefs, true)) { $affected = true; break; }
-            }
-            if (!$affected) { continue; }
-            if ($this->db->wpdb()->update($this->db->table('reports'), ['state' => 'revoked','next_run_at' => null,'updated_at' => $now], ['id' => (int) $row['id']]) === 1) {
-                $this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('report_deliveries')}` SET state='revoked',token_hash=NULL,bundle_json=NULL,revoked_at=%s,expires_at=%s,updated_at=%s WHERE report_uuid=%s AND state IN ('queued','ready','sent')", $now,$now,$now,$row['report_uuid']));
-                $count++;
-            }
+        if ($metricRefs === []) { return 0; } $count=0;
+        $rows=$this->db->wpdb()->get_results("SELECT id,report_uuid,definition_json FROM `{$this->db->table('reports')}` WHERE state IN ('draft','active','paused') ORDER BY id",ARRAY_A);
+        foreach(is_array($rows)?$rows:[] as $row){$affected=false;foreach((array)(Json::object((string)$row['definition_json'])['metrics']??[]) as $metric){if(is_array($metric)&&in_array((string)($metric['metric_id']??'').'@'.(string)($metric['metric_version']??''),$metricRefs,true)){$affected=true;break;}}if(!$affected)continue;
+            if($this->db->wpdb()->update($this->db->table('reports'),['state'=>'revoked','next_run_at'=>null,'updated_at'=>$now],['id'=>(int)$row['id']])!==1)throw new \RuntimeException('Deletion report revocation failed.');
+            $deliveries=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('report_deliveries')}` SET state='revoked',token_hash=NULL,bundle_json=NULL,revoked_at=%s,expires_at=%s,updated_at=%s WHERE report_uuid=%s AND state IN ('queued','ready','sent')",$now,$now,$now,$row['report_uuid']));
+            if($deliveries===false)throw new \RuntimeException('Deletion report delivery revocation failed.');$count++;
         }
         return $count;
     }

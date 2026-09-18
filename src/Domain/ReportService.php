@@ -83,7 +83,7 @@ final class ReportService
         }
         $expires = null;
         if (!empty($definition['expires_at'])) {
-            $expiry = strtotime((string) $definition['expires_at']);
+            $expiry = $this->strictTimestamp((string) $definition['expires_at']);
             if ($expiry === false || $expiry <= time() || $expiry > strtotime((string) $project['expires_at'])) {
                 return new WP_Error('smai_invalid_report_expiry', 'Report expiry is invalid or exceeds project expiry.', ['status' => 400]);
             }
@@ -137,6 +137,7 @@ final class ReportService
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_report_project_inactive', 'Report access project is inactive.', ['status' => 409]);
         }
+        if (!$this->definitionStillGoverned($report, $project)) { return new WP_Error('smai_report_contract_drift', 'Report activation is blocked because its stored access, metric, privacy or recipient contract is no longer valid.', ['status' => 409]); }
         $schedule = $report['schedule_rrule'] === null ? null : (string) $report['schedule_rrule'];
         $next = $schedule === null ? null : gmdate('Y-m-d H:i:s', $this->nextTimestamp($schedule, time()));
         $wpdb=$this->db->wpdb();
@@ -240,10 +241,9 @@ final class ReportService
         $ttl = max(1, min(168, (int) get_option('smai_report_link_ttl_hours', 24)));
         $deliveries = [];
         foreach ((array) ($definition['recipients'] ?? []) as $recipient) {
-            if (!is_array($recipient) || (int) ($recipient['user_id'] ?? 0) < 1) {
-                continue;
-            }
+            if (!is_array($recipient) || (int) ($recipient['user_id'] ?? 0) < 1) { continue; }
             $userId = (int) $recipient['user_id'];
+            if (!user_can($userId, 'smai_view_insights')) { continue; }
             $runKey = hash_hmac('sha256', $uuid . '|' . $runRef . '|user:' . $userId, $this->privacyKey());
             $existing = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
                 "SELECT delivery_uuid,state,expires_at FROM `{$this->db->table('report_deliveries')}` WHERE run_key=%s",
@@ -256,8 +256,14 @@ final class ReportService
             $token = bin2hex(random_bytes(32));
             $deliveryUuid = Uuid::v4();
             $now = $this->db->now();
-            $expiresAt = gmdate('Y-m-d H:i:s', time() + $ttl * HOUR_IN_SECONDS);
-            $inserted = $this->db->wpdb()->insert($this->db->table('report_deliveries'), [
+            $deliveryExpiry = time() + $ttl * HOUR_IN_SECONDS;
+            if ($report['expires_at'] !== null) { $deliveryExpiry = min($deliveryExpiry, (int) strtotime((string) $report['expires_at'])); }
+            $deliveryExpiry = min($deliveryExpiry, (int) strtotime((string) $project['expires_at']));
+            if ($deliveryExpiry <= time()) { continue; }
+            $expiresAt = gmdate('Y-m-d H:i:s', $deliveryExpiry);
+            $wpdb = $this->db->wpdb();
+            if ($wpdb->query('START TRANSACTION') === false) { throw new \RuntimeException('Report delivery transaction could not start.'); }
+            $inserted = $wpdb->insert($this->db->table('report_deliveries'), [
                 'delivery_uuid' => $deliveryUuid,
                 'report_uuid' => $uuid,
                 'run_key' => $runKey,
@@ -270,9 +276,10 @@ final class ReportService
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
-            if ($inserted !== 1) {
-                throw new \RuntimeException('Report delivery could not be stored.');
+            if ($inserted !== 1 || !$this->audit->logInOpenTransaction('report_delivery_created','report_delivery',$deliveryUuid,'success',['report_uuid'=>$uuid,'run_ref'=>$runRef],'institutional_reporting',null,(int)$report['owner_user_id'])) {
+                $wpdb->query('ROLLBACK'); throw new \RuntimeException('Report delivery and audit evidence could not be stored.');
             }
+            if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); throw new \RuntimeException('Report delivery could not be committed.'); }
             do_action('smai_report_delivery_requested', [
                 'delivery_uuid' => $deliveryUuid,
                 'report_uuid' => $uuid,
@@ -282,7 +289,7 @@ final class ReportService
             ]);
             $deliveries[] = ['delivery_uuid' => $deliveryUuid, 'recipient_user_id' => $userId, 'status' => 'created'];
         }
-        $this->audit->log('scheduled_report_generated', 'report', $uuid, 'success', ['run_ref' => $runRef, 'metrics' => count($bundle['metrics']), 'deliveries' => count($deliveries)], 'institutional_reporting', null, (int) $report['owner_user_id']);
+        if (!$this->audit->log('scheduled_report_generated', 'report', $uuid, 'success', ['run_ref' => $runRef, 'metrics' => count($bundle['metrics']), 'deliveries' => count($deliveries)], 'institutional_reporting', null, (int) $report['owner_user_id'])) { throw new \RuntimeException('Scheduled report summary audit failed.'); }
         return ['report_uuid' => $uuid, 'run_ref' => $runRef, 'deliveries' => $deliveries, 'metric_count' => count($bundle['metrics'])];
     }
 
@@ -299,9 +306,9 @@ final class ReportService
             || !user_can($actorUserId, 'smai_view_insights')) {
             return new WP_Error('smai_report_delivery_unavailable', 'Report delivery is unavailable.', ['status' => 404]);
         }
-        $report = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT project_uuid,state FROM `{$this->db->table('reports')}` WHERE report_uuid=%s", $delivery['report_uuid']), ARRAY_A);
+        $report = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT project_uuid,state,expires_at FROM `{$this->db->table('reports')}` WHERE report_uuid=%s", $delivery['report_uuid']), ARRAY_A);
         $project = is_array($report) ? (new AccessProjectService($this->db))->get((string) $report['project_uuid']) : null;
-        if (!is_array($report) || (string) $report['state'] !== 'active' || !is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
+        if (!is_array($report) || (string) $report['state'] !== 'active' || ($report['expires_at'] !== null && strtotime((string) $report['expires_at']) <= time()) || !is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_report_delivery_revoked', 'Report delivery is no longer authorized.', ['status' => 404]);
         }
         $wpdb=$this->db->wpdb();
@@ -368,4 +375,28 @@ final class ReportService
             default => $from + DAY_IN_SECONDS,
         };
     }
+    /** @param array<string,mixed> $report @param array<string,mixed> $project */
+    private function definitionStillGoverned(array $report, array $project): bool
+    {
+        $definition = Json::object((string) $report['definition_json']); $access = new AccessProjectService($this->db);
+        $recipients = is_array($definition['recipients'] ?? null) ? $definition['recipients'] : [];
+        if ($recipients === []) { return false; }
+        foreach ($recipients as $recipient) { if (!is_array($recipient) || (string)($recipient['type']??'') !== 'user' || (int)($recipient['user_id']??0) < 1 || !user_can((int)$recipient['user_id'],'smai_view_insights')) { return false; } }
+        $metrics = is_array($definition['metrics'] ?? null) ? $definition['metrics'] : [];
+        if ($metrics === []) { return false; }
+        foreach ($metrics as $metricSpec) {
+            if (!is_array($metricSpec)) { return false; }
+            $metricId=(string)($metricSpec['metric_id']??'');$metricVersion=(string)($metricSpec['metric_version']??'');$dimensions=is_array($metricSpec['dimensions']??null)?$metricSpec['dimensions']:[];
+            $metric=(new MetricCatalog($this->db))->active($metricId,$metricVersion);
+            if (!is_array($metric) || PrivacyQueryPolicy::violations((array)$metric['definition'],$dimensions)!==[] || !$access->authorize((string)$report['project_uuid'],(int)$report['owner_user_id'],'metric:'.$metricId.'@'.$metricVersion,[],(string)$project['purpose'])) { return false; }
+        }
+        return true;
+    }
+
+    private function strictTimestamp(string $value): ?int
+    {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $m) !== 1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1])) { return null; }
+        $timestamp=strtotime($value); return $timestamp===false?null:$timestamp;
+    }
+
 }

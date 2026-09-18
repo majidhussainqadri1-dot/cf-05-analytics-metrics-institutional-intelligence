@@ -95,7 +95,9 @@ final class EventIngestionService
             }
         }
         foreach (['actor_ref','object_ref','deletion_key'] as $referenceField) {
-            if (array_key_exists($referenceField, $event) && $event[$referenceField] !== null && $event[$referenceField] !== '' && !is_scalar($event[$referenceField])) {
+            if (!array_key_exists($referenceField, $event) || $event[$referenceField] === null || $event[$referenceField] === '') { continue; }
+            $reference = $event[$referenceField];
+            if ((!is_string($reference) && !is_int($reference)) || (is_string($reference) && strlen($reference) > 190)) {
                 return $this->quarantine($event, 'invalid_envelope_metadata', $referenceField, $service, 400);
             }
         }
@@ -330,7 +332,7 @@ final class EventIngestionService
 
     private function strictTimestamp(string $value): ?int
     {
-        if (strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $value) !== 1) {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
             return null;
         }
         $timestamp = strtotime($value);

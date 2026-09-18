@@ -134,7 +134,7 @@ final class PrivacyGateway
 
     private function strictTimestamp(string $value): ?int
     {
-        if (strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $value) !== 1) {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
             return null;
         }
         $timestamp = strtotime($value);
@@ -143,7 +143,8 @@ final class PrivacyGateway
 
     private function pseudonymizeNullable(mixed $value, string $context): ?string
     {
-        return $value === null || $value === '' || !is_scalar($value) ? null : $this->pseudonymize((string) $value, $context);
+        if ($value === null || $value === '') { return null; }
+        return is_string($value) || is_int($value) ? $this->pseudonymize((string) $value, $context) : null;
     }
 
     private function pseudonymize(string $value, string $context): string

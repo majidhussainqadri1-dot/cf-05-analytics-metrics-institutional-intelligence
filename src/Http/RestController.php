@@ -58,7 +58,7 @@ final class RestController
         $this->route($ns, '/health', WP_REST_Server::READABLE, fn(WP_REST_Request $r) => $this->response($this->health->report(current_user_can('smai_manage_quality'))), 'smai_view_insights');
         $this->route($ns, '/runtime/activation/propose', WP_REST_Server::CREATABLE, fn(WP_REST_Request $r) => $this->mutation('runtime-activation-propose', $r, fn(array $p) => (new RuntimeActivationService($this->db))->propose((string) ($p['target_state'] ?? ''), strtolower((string) ($p['evidence_hash'] ?? '')), (string) ($p['reason'] ?? ''), get_current_user_id()), 201), 'smai_activate_runtime');
         $this->route($ns, '/runtime/activation/approve', WP_REST_Server::CREATABLE, fn(WP_REST_Request $r) => $this->mutation('runtime-activation-approve', $r, fn(array $p) => (new RuntimeActivationService($this->db))->approve(strtolower((string) ($p['request_hash'] ?? '')), get_current_user_id()), 200), 'smai_activate_runtime');
-        $this->route($ns, '/runtime/disable', WP_REST_Server::CREATABLE, fn(WP_REST_Request $r) => $this->mutation('runtime-disable', $r, fn(array $p) => (new RuntimeActivationService($this->db))->disable((string) ($p['reason'] ?? ''), get_current_user_id(), (bool) ($p['foundation_disabled'] ?? false)), 200), 'smai_activate_runtime');
+        $this->route($ns, '/runtime/disable', WP_REST_Server::CREATABLE, [$this, 'disableRuntime'], 'smai_activate_runtime');
 
         $this->route($ns, '/events', WP_REST_Server::CREATABLE, [$this, 'ingestEvent'], true);
         $this->route($ns, '/experiments/assignments', WP_REST_Server::CREATABLE, [$this, 'recordAssignment'], true);
@@ -115,9 +115,20 @@ final class RestController
 
         $this->route($ns, '/dashboards', WP_REST_Server::CREATABLE, fn(WP_REST_Request $r) => $this->mutation('dashboard-register', $r, fn(array $p) => (new DashboardService($this->db))->register($p, get_current_user_id()), 201), 'smai_manage_reports');
         $this->route($ns, '/dashboards/(?P<dashboard>[a-z][a-z0-9_.-]{2,189})/(?P<version>[0-9]+\.[0-9]+\.[0-9]+)/activate', WP_REST_Server::CREATABLE, fn(WP_REST_Request $r) => $this->mutation('dashboard-activate', $r, fn(array $p) => (new DashboardService($this->db))->activate((string) $r['dashboard'], (string) $r['version'], (int) ($p['row_version'] ?? 0), get_current_user_id()), 200), 'smai_approve_catalog');
-        $this->route($ns, '/dashboards/(?P<dashboard>[a-z][a-z0-9_.-]{2,189})/(?P<version>[0-9]+\.[0-9]+\.[0-9]+)', WP_REST_Server::READABLE, fn(WP_REST_Request $r) => $this->response((new DashboardService($this->db))->bundle((string) $r['dashboard'], (string) $r['version'], get_current_user_id())), 'smai_view_insights');
+        $this->route($ns, '/dashboards/(?P<dashboard>[a-z][a-z0-9_.-]{2,189})/(?P<version>[0-9]+\.[0-9]+\.[0-9]+)', WP_REST_Server::READABLE, [$this, 'dashboardBundle'], 'smai_view_insights');
 
         $this->route($ns, '/lineage/(?P<type>[a-z]+)/(?P<ref>[a-zA-Z0-9_.@:-]{1,190})', WP_REST_Server::READABLE, fn(WP_REST_Request $r) => $this->response(['edges' => (new LineageService($this->db))->upstream((string) $r['type'], (string) $r['ref'])]), 'smai_audit');
+    }
+
+    public function disableRuntime(WP_REST_Request $request): WP_REST_Response|WP_Error
+    {
+        return $this->mutation('runtime-disable',$request,function(array $p){if(isset($p['foundation_disabled'])&&!is_bool($p['foundation_disabled']))return new WP_Error('smai_invalid_runtime_disable','foundation_disabled must be a JSON boolean.',['status'=>400]);return (new RuntimeActivationService($this->db))->disable((string)($p['reason']??''),get_current_user_id(),$p['foundation_disabled']??false);},200);
+    }
+
+    public function dashboardBundle(WP_REST_Request $request): WP_REST_Response|WP_Error
+    {
+        $result=(new DashboardService($this->db))->bundle((string)$request['dashboard'],(string)$request['version'],get_current_user_id());
+        return is_wp_error($result)?$result:$this->response($result);
     }
 
     public function ingestEvent(WP_REST_Request $request): WP_REST_Response|WP_Error
@@ -298,13 +309,14 @@ final class RestController
     public function createNarrative(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
         return $this->mutation('narrative-create', $request, function (array $p) {
+            if (isset($p['ai_assisted']) && !is_bool($p['ai_assisted'])) { return new WP_Error('smai_invalid_ai_assisted','ai_assisted must be a JSON boolean.',['status'=>400]); }
             return (new NarrativeService($this->db))->create(
                 (string) ($p['title'] ?? ''),
                 (string) ($p['observation'] ?? ''),
                 (string) ($p['inference'] ?? ''),
                 (string) ($p['recommendation'] ?? ''),
                 is_array($p['citations'] ?? null) ? $p['citations'] : [],
-                (bool) ($p['ai_assisted'] ?? false),
+                array_key_exists('ai_assisted',$p) && is_bool($p['ai_assisted']) ? $p['ai_assisted'] : false,
                 get_current_user_id()
             );
         }, 201);
@@ -446,13 +458,12 @@ final class RestController
     /** @return array<string,mixed>|WP_Error */
     private function payload(WP_REST_Request $request): array|WP_Error
     {
-        $payload = $request->get_json_params();
-        if (!is_array($payload)) {
-            return new WP_Error('smai_invalid_json', 'A JSON object is required.', ['status' => 400]);
-        }
-        if (strlen((string) $request->get_body()) > 1024 * 1024) {
-            return new WP_Error('smai_request_too_large', 'Request exceeds the maximum size.', ['status' => 413]);
-        }
+        $raw=(string)$request->get_body();
+        if(strlen($raw)>1024*1024)return new WP_Error('smai_request_too_large','Request exceeds the maximum size.',['status'=>413]);
+        $decoded=$raw===''?new \stdClass():json_decode($raw);
+        if(!($decoded instanceof \stdClass))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]);
+        $payload=$request->get_json_params();
+        if(!is_array($payload))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]);
         return $payload;
     }
 

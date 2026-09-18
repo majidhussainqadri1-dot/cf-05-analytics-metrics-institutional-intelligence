@@ -67,7 +67,8 @@ final class ExportService
         if (!(new AccessProjectService($this->db))->authorize($projectUuid, $actorUserId, $datasetRef, $columns, $cleanPurpose)) {
             return new WP_Error('smai_export_access_denied', 'Access project does not authorize this export.', ['status' => 403]);
         }
-        $rowLimit = max(1, min((int) get_option('smai_max_export_rows', 10000), (int) ($definition['row_limit'] ?? 1000)));
+        if (array_key_exists('row_limit', $definition) && (!is_int($definition['row_limit']) || $definition['row_limit'] < 1)) { return new WP_Error('smai_invalid_export_definition', 'Export row_limit must be a positive JSON integer.', ['status' => 400]); }
+        $rowLimit = min((int) get_option('smai_max_export_rows', 10000), (int) ($definition['row_limit'] ?? 1000));
         $project = (new AccessProjectService($this->db))->get($projectUuid);
         if (!is_array($project)) {
             return new WP_Error('smai_export_access_denied', 'Access project is unavailable.', ['status' => 403]);
@@ -87,7 +88,7 @@ final class ExportService
         $token = bin2hex(random_bytes(32));
         $now = $this->db->now();
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) { return new WP_Error('smai_export_transaction_failed', 'Export request transaction could not start.', ['status' => 500]); }
         $ok = $wpdb->insert($this->db->table('exports'), [
             'export_uuid' => $uuid,
             'project_uuid' => $projectUuid,
@@ -115,7 +116,7 @@ final class ExportService
             $wpdb->query('ROLLBACK');
             return is_wp_error($job) ? $job : new WP_Error('smai_export_store_failed', 'Export request and audit evidence could not be stored.', ['status' => 503]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_export_commit_failed', 'Export request could not be committed.', ['status' => 500]); }
         return [
             'export_uuid' => $uuid,
             'state' => 'requested',
@@ -158,7 +159,7 @@ final class ExportService
             $csv = CsvSafe::render($rows, $columns);
             $sha = hash('sha256', $csv);
             $encrypted = (new CryptoBox(SMAI_EXPORT_KEY))->encrypt($csv, $uuid);
-            $wpdb->query('START TRANSACTION');
+            if ($wpdb->query('START TRANSACTION') === false) { throw new \RuntimeException('Export build transaction could not start.'); }
             $payloadResult = $wpdb->query($wpdb->prepare(
                 "INSERT INTO `{$this->db->table('export_payloads')}` (export_uuid,encrypted_payload,payload_size,created_at) VALUES (%s,%s,%d,%s)
                  ON DUPLICATE KEY UPDATE encrypted_payload=VALUES(encrypted_payload),payload_size=VALUES(payload_size),created_at=VALUES(created_at)",
@@ -176,7 +177,7 @@ final class ExportService
             ], (string) $export['purpose'], null, (int) $export['requester_user_id'])) {
                 throw new \RuntimeException('Export payload or audit evidence could not be committed.');
             }
-            $wpdb->query('COMMIT');
+            if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Export build could not be committed.'); }
             return ['export_uuid' => $uuid, 'state' => 'ready', 'rows' => count($rows), 'sha256' => $sha];
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
@@ -260,6 +261,7 @@ final class ExportService
     {
         if ($value === null || $value === '') { return null; }
         if (!is_string($value) || strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $value) !== 1) { return null; }
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) { return null; }
         $timestamp = strtotime($value);
         return $timestamp === false ? null : gmdate('Y-m-d H:i:s', $timestamp);
     }

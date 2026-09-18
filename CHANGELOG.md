@@ -1,3 +1,8 @@
+## 1.0.0-rc.8 — 2026-09-18
+- Closed sequential review rounds SR-40..SR-49 across event contracts, jobs/pipeline, privacy accounting, exports, reports, deletion completeness, provider/restore governance and REST safety.
+- Schema remains `1.4.1`; public contract family remains `1.4.0`.
+- Staging/live/operational evidence remains a separate lifecycle gate.
+
 ## 1.0.0-rc.7 — 2026-09-18
 - Closed sequential review rounds SR-30..SR-39 across access, dashboards, narrative evidence, experiments, audit/repair health, public contracts, Future-40 persistence, REST type safety and retention indexing.
 - Raised database schema to `1.4.1`; public contract family remains `1.4.0`.
