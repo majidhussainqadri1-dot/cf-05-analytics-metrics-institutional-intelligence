@@ -329,10 +329,10 @@ final class DashboardService
         sort($caps, SORT_STRING);
         $users = [];
         foreach ((array) ($audience['user_ids'] ?? []) as $userId) {
-            if ((int) $userId < 1 || !user_can((int) $userId, 'smai_view_insights')) {
+            if (!is_int($userId) || $userId < 1 || !user_can($userId, 'smai_view_insights')) {
                 return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience contains an invalid user.', ['status' => 400]);
             }
-            $users[(int) $userId] = (int) $userId;
+            $users[$userId] = $userId;
         }
         if ($caps === [] && $users === []) {
             return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience must specify capabilities or users.', ['status' => 400]);
