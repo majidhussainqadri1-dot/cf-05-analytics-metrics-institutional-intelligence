@@ -75,6 +75,14 @@ final class DeletionService
         $table = $this->db->table('deletion_jobs');
         $wpdb = $this->db->wpdb();
         $job = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$table}` WHERE job_uuid=%s", $uuid), ARRAY_A);
+        if (is_array($job) && (string) $job['state'] === 'completed') {
+            return [
+                'job_uuid' => $uuid,
+                'state' => 'completed',
+                'reconciliation' => Json::object((string) ($job['result_json'] ?? '{}')),
+                'unchanged' => true,
+            ];
+        }
         if (!is_array($job) || !in_array((string) $job['state'], ['requested','retrying','running'], true)) {
             throw new \RuntimeException('Deletion job is unavailable.');
         }
