@@ -15,6 +15,7 @@ This round followed the required discipline: the audit was completed first, the 
 - Serialized publication with locked metric/dataset/build and snapshot-revision reads inside one transaction.
 - Revalidated active metric, published dataset and active build in the publication transaction.
 - Supersede only a prior snapshot whose current state is actually `published`; invalidated evidence remains invalidated.
+- Updated the legacy SR-20..29 static invariant matcher to be whitespace-insensitive after the stronger snapshot code was reformatted; this was a QA-harness compatibility correction, not an additional product defect.
 
 ## Truth boundary
 Repository-source review and automated QA only; this does not establish staging acceptance, deployed parity, live database state, live deployment, or operational verification.
