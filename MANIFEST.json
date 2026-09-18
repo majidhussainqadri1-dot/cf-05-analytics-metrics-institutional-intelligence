@@ -1,12 +1,12 @@
 {
   "module": "CF-05",
   "title": "Analytics, Metrics and Institutional Intelligence",
-  "version": "1.0.0-rc.8",
+  "version": "1.0.0-rc.9",
   "schema_version": "1.4.1",
   "contract_version": "1.4.0",
   "runtime_default": "foundation_disabled",
   "source_completion": {
-    "requirements": "CF05-FR-001..CF05-FR-035 plus three-plan harmonization, 40 fresh review/fix rounds, and CF05-FUT-001..CF05-FUT-040 Future-40 expansion",
+    "requirements": "CF05-FR-001..CF05-FR-035 plus three-plan harmonization, 50 fresh review/fix rounds, and CF05-FUT-001..CF05-FUT-040 Future-40 expansion",
     "implemented": true,
     "known_unresolved_source_defects_at_review": 0,
     "automated_qa_evidence": "exact source SHA must be verified by GitHub Actions; evidence is external to the immutable package manifest",
@@ -18,7 +18,7 @@
   "governing_sources": [
     "SSH-PMP-2026-v3.0",
     "Consolidated All-Chats Recovered Directive Register 2.1",
-    "CF-05 Conditional Complete Master Plan 2026 v1.0"
+    "CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended"
   ],
   "canonical_ownership": [
     "approved analytics event schema registry and privacy-safe ingestion governance",
