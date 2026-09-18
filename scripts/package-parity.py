@@ -24,6 +24,6 @@ for name,data in expected.items():
   print(f'package byte mismatch: {name}',file=sys.stderr);sys.exit(1)
 manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
 sha=hashlib.sha256(archive.read_bytes()).hexdigest()
-if manifest.get('sha256')!=sha or manifest.get('file_count')!=len(expected) or manifest.get('review_rounds_completed')!=40:
+if manifest.get('sha256')!=sha or manifest.get('file_count')!=len(expected) or manifest.get('review_rounds_completed')!=50:
  print('package manifest mismatch',file=sys.stderr);sys.exit(1)
 print(f'Package/source parity passed: {len(expected)} files, {sha}.')
