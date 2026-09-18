@@ -11,5 +11,7 @@ if 'SELECT GET_LOCK' not in q or 'SELECT RELEASE_LOCK' not in q: errors.append('
 if "$stored === false" not in q or 'smai_privacy_evidence_unavailable' not in q: errors.append('privacy evidence persistence can fail open')
 if ": hash('sha256', $dimensionsJson)" in m: errors.append('metric audit fingerprint has unkeyed fallback')
 if "logInOpenTransaction" not in c: errors.append('metric registration audit is not transactional')
+if "count($dimensions) > 10" not in m or "SensitiveValueDetector())->violations($dimensions)" not in m: errors.append('metric domain query dimensions are not independently fail-closed')
+if "is_float($value) && !is_finite($value)" not in m: errors.append('metric domain query accepts non-finite dimension values')
 if errors: print('\n'.join(errors),file=sys.stderr);sys.exit(1)
 print('Metric privacy invariants check passed.')
