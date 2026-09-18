@@ -354,7 +354,7 @@ for n in ["SMAI_VERSION', '1.0.0-rc.7'","SMAI_SCHEMA_VERSION', '1.4.1'","SMAI_CO
     if n not in plugin:errors.append('release_identity:'+n)
 for name in ['dataset-definition.schema.json','event-envelope.schema.json','experiment-definition.schema.json','metric-response.schema.json','module-manifest.schema.json']:
     if '1.4.0' not in t('contracts/'+name):errors.append('contract_id_stale:'+name)
-if errors:print('\n'.join(errors),file=sys.stderr);sys.exit(1)
+if errors:print('\\n'.join(errors),file=sys.stderr);sys.exit(1)
 print('Sequential review 30-39 invariants check passed.')
 """
     write('scripts/review30-39-invariants-check.py',inv);rep('scripts/qa.sh','python3 scripts/review20-29-invariants-check.py\n','python3 scripts/review20-29-invariants-check.py\npython3 scripts/review30-39-invariants-check.py\n')
