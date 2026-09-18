@@ -1,3 +1,9 @@
+## 1.0.0-rc.10 — 2026-09-18
+- Continued governed sequential review after SR-59, including repair authorization, REST typing, Future-40 reason minimization, restore consistency, scheduled-report atomicity, schema locking, retry idempotency and disclosure-contract closure.
+- Corrected release-evidence drift after post-rc.9 source changes and made package review-round evidence derive from preserved sequential review records.
+- Removed tracked Python cache artifacts and hardened repository hygiene against future cache leakage.
+- Schema remains `1.4.1`; public contract family remains `1.4.0`. Staging/live/operational evidence remains separate.
+
 ## 1.0.0-rc.9 — 2026-09-18
 - Closed sequential review rounds SR-50..SR-58 across audit-chain verification, operational repair provenance, atomic quality runs, snapshot concurrency, disclosure freshness, experiment/decision integrity, idempotency expiry and catalog-mode fail-closed controls.
 - Advanced the current governing-source metadata to the CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended.
