@@ -4,7 +4,7 @@
 
 - Sabri Social Homeopathy Platform Definitive Integrated Master Plan v3.0 (`SSH-PMP-2026-v3.0`).
 - Consolidated All-Chats Recovered Directive Register 2.1.
-- CF-05 — Analytics, Metrics and Institutional Intelligence — Conditional Complete Master Plan 2026 v1.0.
+- CF-05 — Analytics, Metrics and Institutional Intelligence — Conditional Complete Master Plan 2026 v1.1 Future40 Amended.
 - Founder instruction to correct all identified defects and complete the approved source scope in one consolidated cycle.
 
 ## Source identity
