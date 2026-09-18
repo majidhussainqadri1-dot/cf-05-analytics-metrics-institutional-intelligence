@@ -68,7 +68,9 @@ final class ExportService
             return new WP_Error('smai_export_access_denied', 'Access project does not authorize this export.', ['status' => 403]);
         }
         if (array_key_exists('row_limit', $definition) && (!is_int($definition['row_limit']) || $definition['row_limit'] < 1)) { return new WP_Error('smai_invalid_export_definition', 'Export row_limit must be a positive JSON integer.', ['status' => 400]); }
-        $rowLimit = min((int) get_option('smai_max_export_rows', 10000), (int) ($definition['row_limit'] ?? 1000));
+        $configuredRowLimit = max(1, min(100000, (int) get_option('smai_max_export_rows', 10000)));
+        $requestedRowLimit = array_key_exists('row_limit', $definition) ? $definition['row_limit'] : min(1000, $configuredRowLimit);
+        $rowLimit = min($configuredRowLimit, $requestedRowLimit);
         $project = (new AccessProjectService($this->db))->get($projectUuid);
         if (!is_array($project)) {
             return new WP_Error('smai_export_access_denied', 'Access project is unavailable.', ['status' => 403]);
