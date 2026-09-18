@@ -115,7 +115,7 @@ final class RestController
 
         $this->route($ns, '/dashboards', WP_REST_Server::CREATABLE, fn(WP_REST_Request $r) => $this->mutation('dashboard-register', $r, fn(array $p) => (new DashboardService($this->db))->register($p, get_current_user_id()), 201), 'smai_manage_reports');
         $this->route($ns, '/dashboards/(?P<dashboard>[a-z][a-z0-9_.-]{2,189})/(?P<version>[0-9]+\.[0-9]+\.[0-9]+)/activate', WP_REST_Server::CREATABLE, fn(WP_REST_Request $r) => $this->mutation('dashboard-activate', $r, fn(array $p) => (new DashboardService($this->db))->activate((string) $r['dashboard'], (string) $r['version'], (int) ($p['row_version'] ?? 0), get_current_user_id()), 200), 'smai_approve_catalog');
-        $this->route($ns, '/dashboards/(?P<dashboard>[a-z][a-z0-9_.-]{2,189})/(?P<version>[0-9]+\.[0-9]+\.[0-9]+)', WP_REST_Server::READABLE, [$this, 'dashboardBundle'], 'smai_view_insights');
+        $this->route($ns, '/dashboards/(?P<dashboard>[a-z][a-z0-9_.-]{2,189})/(?P<version>[0-9]+\.[0-9]+\.[0-9]+)', WP_REST_Server::READABLE, [$this, 'dashboardBundle'], fn() => current_user_can('smai_view_insights') || current_user_can('smai_audit'));
 
         $this->route($ns, '/lineage/(?P<type>[a-z]+)/(?P<ref>[a-zA-Z0-9_.@:-]{1,190})', WP_REST_Server::READABLE, fn(WP_REST_Request $r) => $this->response(['edges' => (new LineageService($this->db))->upstream((string) $r['type'], (string) $r['ref'])]), 'smai_audit');
     }

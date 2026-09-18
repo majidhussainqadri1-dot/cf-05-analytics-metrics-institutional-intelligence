@@ -26,11 +26,14 @@ final class AccessProjectService
     /** @param array<int,string> $datasets @param array<string,array<int,string>> $fields */
     public function request(string $name, string $purpose, array $datasets, array $fields, string $expiresAt, bool $trainingConfirmed, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_access')) {
+            return new WP_Error('smai_access_forbidden', 'Analytics access request is not authorized.', ['status'=>403]);
+        }
         $expiry = $this->strictTimestamp($expiresAt);
         $cleanName = Text::truncate(trim(wp_strip_all_tags($name)), 190);
         $cleanPurpose = Text::truncate(trim(wp_strip_all_tags($purpose)), 2000);
         $detector = new SensitiveValueDetector();
-        if ($actorUserId < 1 || strlen($cleanName) < 3 || strlen($cleanPurpose) < 12
+        if (strlen($cleanName) < 3 || strlen($cleanPurpose) < 12
             || $detector->violations([$cleanName, $cleanPurpose]) !== []
             || $expiry === false || $expiry <= time() || $expiry > time() + 366 * DAY_IN_SECONDS
             || $datasets === [] || count($datasets) > 50 || count($fields) > 50) {
@@ -111,7 +114,10 @@ final class AccessProjectService
 
     public function approve(string $uuid, int $expectedVersion, int $actorUserId): array|WP_Error
     {
-        if (!$this->validUuid($uuid) || $expectedVersion < 1 || $actorUserId < 1) {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_access')) {
+            return new WP_Error('smai_access_forbidden', 'Analytics access approval is not authorized.', ['status'=>403]);
+        }
+        if (!$this->validUuid($uuid) || $expectedVersion < 1) {
             return new WP_Error('smai_invalid_access_request', 'Access approval request is invalid.', ['status' => 400]);
         }
         $project = $this->get($uuid);
@@ -160,8 +166,11 @@ final class AccessProjectService
 
     public function revoke(string $uuid, string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_access')) {
+            return new WP_Error('smai_access_forbidden', 'Analytics access revocation is not authorized.', ['status'=>403]);
+        }
         $cleanReason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
-        if (!$this->validUuid($uuid) || $actorUserId < 1 || strlen($cleanReason) < 8 || (new SensitiveValueDetector())->violations($cleanReason) !== []) {
+        if (!$this->validUuid($uuid) || strlen($cleanReason) < 8 || (new SensitiveValueDetector())->violations($cleanReason) !== []) {
             return new WP_Error('smai_invalid_access_revocation', 'Access revocation request is invalid.', ['status' => 400]);
         }
         $project = $this->get($uuid);

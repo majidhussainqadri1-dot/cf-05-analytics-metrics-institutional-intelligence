@@ -25,6 +25,9 @@ final class DashboardService
     /** @param array<string,mixed> $definition */
     public function register(array $definition, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_reports')) {
+            return new WP_Error('smai_dashboard_forbidden', 'Dashboard registration is not authorized.', ['status'=>403]);
+        }
         $allowedDefinitionKeys = ['dashboard_id','dashboard_version','name','project_uuid','audience','widgets','expires_at'];
         if (array_diff(array_keys($definition), $allowedDefinitionKeys) !== []) {
             return new WP_Error('smai_invalid_dashboard', 'Dashboard definition contains unsupported fields.', ['status' => 400]);
@@ -34,8 +37,7 @@ final class DashboardService
                 return new WP_Error('smai_invalid_dashboard', 'Dashboard definition is incomplete.', ['status' => 400, 'field' => $key]);
             }
         }
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) $definition['dashboard_id']) !== 1
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) $definition['dashboard_id']) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', (string) $definition['dashboard_version']) !== 1
             || strlen(trim((string) $definition['name'])) < 3
             || (new SensitiveValueDetector())->violations((string) $definition['name']) !== []
@@ -173,7 +175,10 @@ final class DashboardService
 
     public function activate(string $dashboardId, string $version, int $expectedVersion, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1 || $expectedVersion < 1
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_dashboard_forbidden', 'Dashboard activation is not authorized.', ['status'=>403]);
+        }
+        if ($expectedVersion < 1
             || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $dashboardId) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1) {
             return new WP_Error('smai_invalid_dashboard_activation', 'Dashboard activation request is invalid.', ['status' => 400]);
@@ -211,8 +216,10 @@ final class DashboardService
     /** @return array<string,mixed>|WP_Error */
     public function bundle(string $dashboardId, string $version, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $dashboardId) !== 1
+        if ($actorUserId < 1 || (!user_can($actorUserId, 'smai_view_insights') && !user_can($actorUserId, 'smai_audit'))) {
+            return new WP_Error('smai_dashboard_access_denied', 'Dashboard access is denied.', ['status'=>403]);
+        }
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $dashboardId) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1) {
             return new WP_Error('smai_invalid_dashboard_query', 'Dashboard query is invalid.', ['status' => 400]);
         }
