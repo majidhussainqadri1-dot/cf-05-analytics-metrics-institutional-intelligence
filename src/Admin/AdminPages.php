@@ -165,7 +165,7 @@ final class AdminPages
         echo '</div>';
         echo '<section class="smai-panel"><h2>' . esc_html__('Safe repair', 'sabri-analytics-institutional-intelligence') . '</h2>';
         echo '<p>' . esc_html__('Safe repair recreates missing schema definitions and releases expired job leases. It does not activate runtime, purge data, alter metrics, or write to companion modules.', 'sabri-analytics-institutional-intelligence') . '</p>';
-        if (current_user_can('smai_manage_quality')) {
+        if (current_user_can('smai_restore')) {
             echo '<form action="' . esc_url(admin_url('admin-post.php')) . '" method="post">';
             wp_nonce_field('smai_safe_repair');
             echo '<input type="hidden" name="action" value="smai_safe_repair">';
@@ -180,7 +180,7 @@ final class AdminPages
 
     public function safeRepair(): void
     {
-        $this->requireCapability('smai_manage_quality');
+        $this->requireCapability('smai_restore');
         check_admin_referer('smai_safe_repair');
         $result = (new RepairService($this->db))->safeRepair();
         $targetPage = current_user_can('smai_audit') ? 'smai-system' : 'smai-quality';
