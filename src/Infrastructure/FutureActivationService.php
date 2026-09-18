@@ -24,7 +24,8 @@ final class FutureActivationService
     {
         $evidenceHash = strtolower(trim($evidenceHash));
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
-        if ($actorUserId < 1 || preg_match('/^[a-f0-9]{64}$/', $evidenceHash) !== 1 || strlen($reason) < 12) {
+        if ($actorUserId < 1 || preg_match('/^[a-f0-9]{64}$/', $evidenceHash) !== 1 || strlen($reason) < 12
+            || (new SensitiveValueDetector())->violations($reason) !== []) {
             return new WP_Error('smai_future_activation_proposal_invalid', 'Future-40 activation proposal requires protected evidence and a meaningful reason.', ['status' => 400]);
         }
         if (!self::protectedEvidenceMatches($evidenceHash)) {
@@ -116,7 +117,7 @@ final class FutureActivationService
     public function disable(string $reason, int $actorUserId): array|WP_Error
     {
         $reason = Text::truncate(trim(wp_strip_all_tags($reason)), 500);
-        if ($actorUserId < 1 || strlen($reason) < 8) return new WP_Error('smai_future_disable_reason_required', 'A meaningful Future-40 disable reason is required.', ['status'=>400]);
+        if ($actorUserId < 1 || strlen($reason) < 8 || (new SensitiveValueDetector())->violations($reason) !== []) return new WP_Error('smai_future_disable_reason_required', 'A meaningful non-sensitive Future-40 disable reason is required.', ['status'=>400]);
         if (!$this->begin()) return new WP_Error('smai_future_transaction_failed', 'Future-40 disable transaction could not start.', ['status'=>500]);
         try {
             $previous = (string)($this->readOptionForUpdate(self::OPTION_STATE) ?? 'disabled');
