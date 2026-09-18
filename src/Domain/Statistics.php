@@ -50,7 +50,7 @@ final class Statistics
         ];
     }
 
-    /** @return array{difference:float,z_score:?float,conclusive:bool,practical:bool} */
+    /** @return array{difference:float,z_score:?float,p_value:?float,conclusive:bool,practical:bool} */
     public static function compareProportions(int $aSuccess, int $aTotal, int $bSuccess, int $bTotal, float $minimumEffect = 0.0): array
     {
         if ($aTotal < 1 || $bTotal < 1) {
@@ -61,11 +61,25 @@ final class Statistics
         $pooled = ($aSuccess + $bSuccess) / ($aTotal + $bTotal);
         $se = sqrt(max(0.0, $pooled * (1 - $pooled) * ((1 / $aTotal) + (1 / $bTotal))));
         $z = $se > 0 ? ($b - $a) / $se : null;
+        $pValue = $z === null ? null : self::twoSidedNormalPValue($z);
         return [
             'difference' => $b - $a,
             'z_score' => $z,
-            'conclusive' => $z !== null && abs($z) >= 1.96,
+            'p_value' => $pValue,
+            'conclusive' => $pValue !== null && $pValue <= 0.05,
             'practical' => abs($b - $a) >= max(0.0, $minimumEffect),
         ];
+    }
+
+    public static function twoSidedNormalPValue(float $z): float
+    {
+        $x = abs($z);
+        // Abramowitz-Stegun normal-tail approximation; sufficient for governed
+        // experiment significance thresholds and deterministic across PHP versions.
+        $t = 1.0 / (1.0 + 0.2316419 * $x);
+        $poly = $t * (0.319381530 + $t * (-0.356563782 + $t * (1.781477937 + $t * (-1.821255978 + $t * 1.330274429))));
+        $phi = 0.3989422804014327 * exp(-0.5 * $x * $x);
+        $tail = max(0.0, min(0.5, $phi * $poly));
+        return max(0.0, min(1.0, 2.0 * $tail));
     }
 }
