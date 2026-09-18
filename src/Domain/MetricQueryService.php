@@ -37,12 +37,14 @@ final class MetricQueryService
         string $purpose,
         string $projectUuid
     ): array|WP_Error {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_query_metrics')) {
+            return new WP_Error('smai_query_forbidden', 'Metric query is not authorized.', ['status'=>403]);
+        }
         if (!RuntimeGate::queryEnabled()) {
             return new WP_Error('smai_query_disabled', 'Metric queries are disabled.', ['status' => 503]);
         }
         $purpose = Text::truncate(trim(wp_strip_all_tags($purpose)), 2000);
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1
             || preg_match('/^[0-9a-f-]{36}$/i', $projectUuid) !== 1
             || strlen($purpose) < 12
