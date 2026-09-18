@@ -15,7 +15,7 @@ composer qa
 bash scripts/verify-deterministic-build.sh
 ```
 
-Forty fresh review/fix rounds are recorded in `docs/REVIEW-ROUNDS-07-46.md`. Source/CI completion does not equal staging, live deployment or operation.
+Governed review/fix evidence through Sequential Review Round 74 is preserved under `docs/`, including the historical `REVIEW-ROUNDS-07-46.md` ledger and later sequential round records. Source/CI completion does not equal staging, live deployment or operation.
 
 ## Future-40 expansion
 
