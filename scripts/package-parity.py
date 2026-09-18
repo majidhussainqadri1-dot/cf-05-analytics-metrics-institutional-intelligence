@@ -2,7 +2,7 @@
 from __future__ import annotations
 import hashlib,json,pathlib,sys,zipfile
 root=pathlib.Path(__file__).resolve().parents[1]
-slug='sabri-analytics-institutional-intelligence'; version='1.0.0-rc.9'
+slug='sabri-analytics-institutional-intelligence'; version='1.0.0-rc.10'
 archive=root/'build'/'dist'/f'CF-05-{slug}-{version}.zip'
 manifest_path=root/'build'/'dist'/f'CF-05-{version}-package-manifest.json'
 if not archive.is_file() or not manifest_path.is_file():
@@ -24,6 +24,8 @@ for name,data in expected.items():
   print(f'package byte mismatch: {name}',file=sys.stderr);sys.exit(1)
 manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
 sha=hashlib.sha256(archive.read_bytes()).hexdigest()
-if manifest.get('sha256')!=sha or manifest.get('file_count')!=len(expected) or manifest.get('review_rounds_completed')!=50:
+review_docs=list((root/'docs').glob('SEQUENTIAL-REVIEW-ROUND-*.md'))
+review_rounds_completed=max([int(p.stem.rsplit('-',1)[-1]) for p in review_docs if p.stem.rsplit('-',1)[-1].isdigit()] or [0])
+if manifest.get('sha256')!=sha or manifest.get('file_count')!=len(expected) or manifest.get('review_rounds_completed')!=review_rounds_completed:
  print('package manifest mismatch',file=sys.stderr);sys.exit(1)
 print(f'Package/source parity passed: {len(expected)} files, {sha}.')
