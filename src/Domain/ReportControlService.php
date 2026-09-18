@@ -267,7 +267,9 @@ final class ReportControlService
             if ($activeMetric === null) { return new WP_Error('smai_report_metric_inactive', 'Report metric is not active.', ['status' => 409]); }
             $allowedDimensions = array_map('strval', (array) (($activeMetric['definition']['dimensions'] ?? [])));
             foreach ($dimensions as $dimension => $value) {
-                if (!in_array((string) $dimension, $allowedDimensions, true) || (!is_scalar($value) && $value !== null)) {
+                if (!in_array((string) $dimension, $allowedDimensions, true)
+                    || (!is_scalar($value) && $value !== null)
+                    || (is_float($value) && !is_finite($value))) {
                     return new WP_Error('smai_report_dimension_denied', 'Report metric dimension is not approved.', ['status' => 400]);
                 }
             }
