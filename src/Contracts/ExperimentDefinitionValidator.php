@@ -53,7 +53,7 @@ final class ExperimentDefinitionValidator
                 || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', (string) ($metric['metric_version'] ?? '')) !== 1
                 || !in_array((string) ($metric['outcome_type'] ?? 'ratio'), ['ratio','number'], true)
                 || !is_array($metric['base_dimensions'] ?? [])
-                || array_is_list($metric['base_dimensions'] ?? [])) {
+                || (($metric['base_dimensions'] ?? []) !== [] && array_is_list($metric['base_dimensions'] ?? []))) {
                 $errors[] = 'invalid_metric_contract'; continue;
             }
             if (isset($metric['minimum_effect']) && (!is_int($metric['minimum_effect']) && !is_float($metric['minimum_effect']) || !is_finite((float) $metric['minimum_effect']) || (float) $metric['minimum_effect'] < 0)) { $errors[] = 'invalid_minimum_effect'; }
