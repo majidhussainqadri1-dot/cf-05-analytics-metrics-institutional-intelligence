@@ -25,12 +25,15 @@ final class DatasetCatalog
     /** @param array<string,mixed> $definition */
     public function register(array $definition, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_catalog')) {
+            return new WP_Error('smai_catalog_forbidden', 'Dataset registration is not authorized.', ['status'=>403]);
+        }
         if (!RuntimeGate::catalogEnabled()) {
             return new WP_Error('smai_catalog_disabled', 'Catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
         }
         $validator = new DatasetDefinitionValidator();
         $errors = $validator->errors($definition);
-        if ($actorUserId < 1 || $errors !== []) {
+        if ($errors !== []) {
             return new WP_Error('smai_invalid_dataset', 'Dataset definition validation failed.', ['status' => 400, 'errors' => $errors]);
         }
         $definition = $validator->normalize($definition);
