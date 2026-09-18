@@ -115,7 +115,7 @@ final class ExperimentService
         if ($wpdb->query('START TRANSACTION')===false) return new WP_Error('smai_experiment_transaction_failed','Experiment transition transaction could not start.',['status'=>500]);
         $updated = $wpdb->update($table, [
             'state' => $target,
-            'approved_by' => in_array($target, ['reviewed','scheduled'], true) ? $actorUserId : $row['approved_by'],
+            'approved_by' => $target === 'reviewed' ? $actorUserId : $row['approved_by'],
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $row['id'], 'state' => $from, 'row_version' => $expectedVersion]);
@@ -177,11 +177,13 @@ final class ExperimentService
             return new WP_Error('smai_assignment_lock_timeout', 'Assignment is being processed concurrently.', ['status' => 409]);
         }
         try {
-            $subjectExisting = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT assignment_event_id,variant_key FROM `{$table}` WHERE experiment_uuid=%s AND subject_ref=%s LIMIT 1", $canonical['experiment_uuid'], $canonical['subject_ref']), ARRAY_A);
+            $subjectExisting = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT assignment_event_id,variant_key,deletion_key FROM `{$table}` WHERE experiment_uuid=%s AND subject_ref=%s LIMIT 1", $canonical['experiment_uuid'], $canonical['subject_ref']), ARRAY_A);
             if (is_array($subjectExisting)) {
-                return hash_equals((string) $subjectExisting['variant_key'], $canonical['variant_key'])
-                    ? ['assignment_event_id' => $subjectExisting['assignment_event_id'], 'status' => 'subject_already_assigned']
-                    : new WP_Error('smai_subject_assignment_collision', 'Subject was already assigned to another variant.', ['status' => 409]);
+                if (!hash_equals((string) $subjectExisting['variant_key'], $canonical['variant_key'])
+                    || !hash_equals((string) $subjectExisting['deletion_key'], $canonical['deletion_key'])) {
+                    return new WP_Error('smai_subject_assignment_collision', 'Subject was already assigned with conflicting governed assignment data.', ['status' => 409]);
+                }
+                return ['assignment_event_id' => $subjectExisting['assignment_event_id'], 'status' => 'subject_already_assigned'];
             }
             $existing = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT fact_hash FROM `{$table}` WHERE assignment_event_id=%s", $canonical['assignment_event_id']), ARRAY_A);
             if (is_array($existing)) {
@@ -325,6 +327,10 @@ final class ExperimentService
 
     public function publishAnalysis(string $analysisUuid, int $expectedVersion, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || $expectedVersion < 1
+            || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $analysisUuid) !== 1) {
+            return new WP_Error('smai_invalid_analysis_publish', 'Analysis publication request is invalid.', ['status' => 400]);
+        }
         $analysisTable = $this->db->table('experiment_analyses');
         $experimentTable = $this->db->table('experiments');
         $wpdb = $this->db->wpdb();
@@ -340,6 +346,9 @@ final class ExperimentService
             $experiment = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$experimentTable}` WHERE experiment_uuid=%s FOR UPDATE", $analysis['experiment_uuid']), ARRAY_A);
             if (!is_array($experiment) || (string) $experiment['state'] !== 'stopped') {
                 throw new \DomainException('experiment_not_stopped');
+            }
+            if (!$this->metricsAvailableForExperiment($experiment)) {
+                throw new \DomainException('experiment_metric_stale');
             }
             $now = $this->db->now();
             if ($wpdb->update($analysisTable, [
@@ -366,6 +375,7 @@ final class ExperimentService
             return match ($error->getMessage()) {
                 'separation_of_duties' => new WP_Error('smai_separation_of_duties', 'Analyst cannot publish their own analysis.', ['status' => 403]),
                 'experiment_not_stopped' => new WP_Error('smai_experiment_not_stopped', 'Formal analysis publication requires a stopped experiment.', ['status' => 409]),
+                'experiment_metric_stale' => new WP_Error('smai_experiment_metric_stale', 'Analysis publication is blocked because a governed metric or guardrail contract is no longer active or privacy-valid.', ['status' => 409]),
                 default => new WP_Error('smai_analysis_stale', 'Analysis is unavailable or stale.', ['status' => 409]),
             };
         } catch (\Throwable $error) {
@@ -382,7 +392,8 @@ final class ExperimentService
                 return new WP_Error('smai_invalid_decision_record', 'Decision record is incomplete.', ['status' => 400]);
             }
         }
-        if (!in_array($subjectType, ['experiment','analysis','metric','report'], true)
+        if ($actorUserId < 1
+            || !in_array($subjectType, ['experiment','analysis','metric','report'], true)
             || preg_match('/^[a-zA-Z0-9_.:@-]{3,190}$/', $subjectRef) !== 1
             || strlen(trim((string) $record['action_owner'])) < 2
             || strlen(trim((string) $record['decision'])) < 10
@@ -391,11 +402,8 @@ final class ExperimentService
         }
         $reviewAtTs=!empty($record['review_at'])?$this->strictTimestamp((string)$record['review_at']):null;
         if (!empty($record['review_at']) && $reviewAtTs===null) return new WP_Error('smai_invalid_review_date','Decision review date is invalid.',['status'=>400]);
-        if ($subjectType === 'analysis') {
-            $analysis = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT state FROM `{$this->db->table('experiment_analyses')}` WHERE analysis_uuid=%s", $subjectRef), ARRAY_A);
-            if (!is_array($analysis) || (string) $analysis['state'] !== 'published') {
-                return new WP_Error('smai_analysis_not_published', 'Decision must reference a published analysis.', ['status' => 409]);
-            }
+        if (!$this->decisionSubjectExists($subjectType, $subjectRef)) {
+            return new WP_Error('smai_decision_subject_unavailable', 'Decision must reference an existing governed subject; analysis subjects must be published.', ['status' => 409]);
         }
         $uuid = Uuid::v4();
         $now = $this->db->now();
@@ -428,7 +436,9 @@ final class ExperimentService
     /** @param array<string,mixed> $outcome */
     public function recordOutcome(string $decisionUuid, array $outcome, int $expectedVersion, int $actorUserId): array|WP_Error
     {
-        if ($outcome === [] || (new SensitiveValueDetector())->violations($outcome) !== []) {
+        if ($actorUserId < 1 || $expectedVersion < 1
+            || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $decisionUuid) !== 1
+            || $outcome === [] || (new SensitiveValueDetector())->violations($outcome) !== []) {
             return new WP_Error('smai_invalid_decision_outcome', 'Decision outcome is invalid.', ['status' => 400]);
         }
         $table = $this->db->table('decision_records');
@@ -451,6 +461,40 @@ final class ExperimentService
         return ['decision_uuid' => $decisionUuid, 'status' => 'outcome_recorded', 'row_version' => $expectedVersion + 1];
     }
 
+
+    private function decisionSubjectExists(string $subjectType, string $subjectRef): bool
+    {
+        $wpdb = $this->db->wpdb();
+        return match ($subjectType) {
+            'experiment' => (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM `{$this->db->table('experiments')}` WHERE experiment_uuid=%s",
+                $subjectRef
+            )) === 1,
+            'analysis' => (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM `{$this->db->table('experiment_analyses')}` WHERE analysis_uuid=%s AND state='published'",
+                $subjectRef
+            )) === 1,
+            'report' => (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM `{$this->db->table('reports')}` WHERE report_uuid=%s",
+                $subjectRef
+            )) === 1,
+            'metric' => $this->metricDecisionSubjectExists($subjectRef),
+            default => false,
+        };
+    }
+
+    private function metricDecisionSubjectExists(string $subjectRef): bool
+    {
+        $bare = str_starts_with($subjectRef, 'metric:') ? substr($subjectRef, 7) : $subjectRef;
+        if (preg_match('/^([a-z][a-z0-9_.-]{2,189})@([0-9]+\\.[0-9]+\\.[0-9]+)$/', $bare, $match) !== 1) {
+            return false;
+        }
+        return (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+            "SELECT COUNT(*) FROM `{$this->db->table('metrics')}` WHERE metric_id=%s AND metric_version=%s",
+            $match[1],
+            $match[2]
+        )) === 1;
+    }
 
     /** @param array<string,mixed> $experiment */
     private function metricsAvailableForExperiment(array $experiment): bool
