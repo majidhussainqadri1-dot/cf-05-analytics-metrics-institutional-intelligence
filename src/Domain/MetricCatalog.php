@@ -8,6 +8,7 @@ use Sabri\AnalyticsIntelligence\Contracts\MetricDefinitionValidator;
 use Sabri\AnalyticsIntelligence\Infrastructure\AuditLogger;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\Json;
+use Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate;
 use WP_Error;
 
 final class MetricCatalog
@@ -26,6 +27,9 @@ final class MetricCatalog
     /** @param array<string,mixed> $definition */
     public function register(array $definition, int $actorUserId): array|WP_Error
     {
+        if (!RuntimeGate::catalogEnabled()) {
+            return new WP_Error('smai_catalog_disabled', 'Catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
+        }
         $errors = $this->validator->errors($definition);
         if ($actorUserId < 1 || $errors !== []) {
             return new WP_Error('smai_invalid_metric', 'Metric definition validation failed.', ['status' => 400, 'errors' => $errors]);
