@@ -31,11 +31,14 @@ final class ExportService
     /** @param array<string,mixed> $definition */
     public function request(string $projectUuid, string $purpose, array $definition, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_export_metrics')) {
+            return new WP_Error('smai_export_forbidden', 'Export request is not authorized.', ['status'=>403]);
+        }
         if (!$this->keyConfigured()) {
             return new WP_Error('smai_export_key_missing', 'Secure export encryption is not configured.', ['status' => 503]);
         }
         $cleanPurpose = Text::truncate(trim(wp_strip_all_tags($purpose)), 190);
-        if ($actorUserId < 1 || !$this->validUuid($projectUuid) || strlen($cleanPurpose) < 8
+        if (!$this->validUuid($projectUuid) || strlen($cleanPurpose) < 8
             || (new SensitiveValueDetector())->violations([$cleanPurpose, $definition]) !== []
             || array_diff(array_keys($definition), ['source_type','metric_id','metric_version','columns','row_limit','window_start','window_end']) !== []) {
             return new WP_Error('smai_invalid_export_definition', 'Export request is invalid.', ['status' => 400]);
@@ -215,10 +218,13 @@ final class ExportService
 
     public function download(string $uuid, string $token, int $actorUserId): string|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_export_metrics')) {
+            return new WP_Error('smai_export_unavailable', 'Export is unavailable.', ['status'=>404]);
+        }
         if (!$this->keyConfigured()) {
             return new WP_Error('smai_export_key_missing', 'Secure export encryption is not configured.', ['status' => 503]);
         }
-        if (!$this->validUuid($uuid) || $actorUserId < 1 || preg_match('/^[0-9a-f]{64}$/i', $token) !== 1) {
+        if (!$this->validUuid($uuid) || preg_match('/^[0-9a-f]{64}$/i', $token) !== 1) {
             return new WP_Error('smai_export_unavailable', 'Export is unavailable.', ['status' => 404]);
         }
         $export = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
