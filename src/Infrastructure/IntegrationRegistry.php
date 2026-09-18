@@ -78,6 +78,13 @@ final class IntegrationRegistry
             'schema_version' => SMAI_SCHEMA_VERSION,
             'contract_version' => SMAI_CONTRACT_VERSION,
             'runtime_state' => RuntimeGate::state(),
+            'activation_approved' => RuntimeGate::activationApproved(),
+            'truth_status' => [
+                'coded' => true,
+                'staging_accepted' => false,
+                'live_deployed' => false,
+                'operational' => false,
+            ],
             'routes' => [
                 '/insights',
                 '/insights/{domain}',
