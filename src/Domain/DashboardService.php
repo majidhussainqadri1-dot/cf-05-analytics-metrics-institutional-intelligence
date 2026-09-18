@@ -81,7 +81,9 @@ final class DashboardService
             }
             $allowedDimensions = array_map('strval', (array) (($metric['definition']['dimensions'] ?? [])));
             foreach (array_keys($dimensions) as $dimension) {
-                if (!in_array((string) $dimension, $allowedDimensions, true) || (!is_scalar($dimensions[$dimension]) && $dimensions[$dimension] !== null)) {
+                if (!in_array((string) $dimension, $allowedDimensions, true)
+                    || (!is_scalar($dimensions[$dimension]) && $dimensions[$dimension] !== null)
+                    || (is_float($dimensions[$dimension]) && !is_finite($dimensions[$dimension]))) {
                     return new WP_Error('smai_dashboard_dimension_denied', 'Dashboard dimension is not approved.', ['status' => 400]);
                 }
             }
@@ -260,7 +262,11 @@ final class DashboardService
                 : null;
             $metric = (new MetricCatalog($this->db))->active($metricId, $metricVersion);
             $policyViolations = is_array($metric) ? PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) : ['metric_unavailable'];
-            $minimum = is_array($metric) ? PrivacyQueryPolicy::effectiveMinimum((array) $metric['definition'], $dimensions, (int) get_option('smai_minimum_cohort', 20)) : PHP_INT_MAX;
+            $minimum = is_array($metric) ? PrivacyQueryPolicy::effectiveMinimum(
+                (array) $metric['definition'],
+                $dimensions,
+                max((int) $metric['minimum_cohort'], (int) get_option('smai_minimum_cohort', 20))
+            ) : PHP_INT_MAX;
             $suppressed = is_array($row) && ($policyViolations !== [] || (string) $row['quality_status'] === 'suppressed' || (int) $row['cohort_size'] < $minimum);
             $invalidated = is_array($row) && (string) $row['quality_status'] === 'invalidated';
             if ($invalidated) { $row = null; $suppressed = false; }
@@ -321,8 +327,14 @@ final class DashboardService
         if (array_diff(array_keys($audience), ['capabilities','user_ids']) !== []) {
             return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience contains unsupported fields.', ['status' => 400]);
         }
+        if (array_key_exists('capabilities', $audience) && !is_array($audience['capabilities'])) {
+            return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience capabilities must be an array.', ['status' => 400]);
+        }
+        if (array_key_exists('user_ids', $audience) && !is_array($audience['user_ids'])) {
+            return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience user_ids must be an array.', ['status' => 400]);
+        }
         $allowedCaps = ['smai_view_insights','smai_audit'];
-        $caps = array_values(array_unique(array_map('strval', (array) ($audience['capabilities'] ?? []))));
+        $caps = array_values(array_unique(array_map('strval', $audience['capabilities'] ?? [])));
         if (array_diff($caps, $allowedCaps) !== []) {
             return new WP_Error('smai_invalid_dashboard_audience', 'Dashboard audience capability is not approved.', ['status' => 400]);
         }
