@@ -332,7 +332,9 @@ def fix38():
       'scripts/build-package.py':[("version='1.0.0-rc.6'","version='1.0.0-rc.7'"),("serialNumber':'urn:uuid:cf05-analytics-1-0-0-rc-6'","serialNumber':'urn:uuid:cf05-analytics-1-0-0-rc-7'"),("'schema_version':'1.4.0'","'schema_version':'1.4.1'")],
       'scripts/package-parity.py':[("version='1.0.0-rc.6'","version='1.0.0-rc.7'")],
       'scripts/verify-deterministic-build.sh':[('1.0.0-rc.6.zip','1.0.0-rc.7.zip'),('/tmp/cf05-first-rc5.zip','/tmp/cf05-first-rc7.zip')],
-      'scripts/architecture-check.py':[("('1.0.0-rc.6','1.4.0','1.4.0')","('1.0.0-rc.7','1.4.1','1.4.0')")]}
+      'scripts/architecture-check.py':[("('1.0.0-rc.6','1.4.0','1.4.0')","('1.0.0-rc.7','1.4.1','1.4.0')")],
+      'scripts/cross-plan-check.py':[("manifest.get('version') != '1.0.0-rc.6'","manifest.get('version') != '1.0.0-rc.7'"),("manifest version is not 1.0.0-rc.6","manifest version is not 1.0.0-rc.7")],
+      'scripts/future40-check.py':[("manifest.get('version')!='1.0.0-rc.6'","manifest.get('version')!='1.0.0-rc.7'"),("manifest_version_not_rc6","manifest_version_not_rc7"),("manifest.get('schema_version')!='1.4.0'","manifest.get('schema_version')!='1.4.1'"),("manifest_schema_not_1_4_0","manifest_schema_not_1_4_1")]}
     for path,pairs in changes.items():
         s=read(path)
         for old,new in pairs:
