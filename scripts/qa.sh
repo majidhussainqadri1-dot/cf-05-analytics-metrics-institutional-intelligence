@@ -10,6 +10,7 @@ python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/cross-plan-check.py
 python3 scripts/schema-contract-check.py
+python3 scripts/public-contract-parity-check.py
 python3 scripts/future40-check.py
 python3 scripts/repository-hygiene-check.py
 python3 scripts/release-governance-check.py
