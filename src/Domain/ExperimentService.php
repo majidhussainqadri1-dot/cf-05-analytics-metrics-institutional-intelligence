@@ -230,10 +230,15 @@ final class ExperimentService
         $counts = $this->variantCounts($uuid);
         $minimum = max(20, (int) ($design['minimum_sample'] ?? 20));
         $minimumPerVariant = max(5, (int) ceil($minimum / max(2, count($variants))));
+        $disclosedCounts = [];
+        foreach ($variants as $variant) {
+            $count = (int) ($counts[$variant] ?? 0);
+            $disclosedCounts[$variant] = $count >= $minimumPerVariant ? $count : null;
+        }
         $result = [
             'experiment_uuid' => $uuid,
             'analysis_version' => $analysisVersion,
-            'assignment_counts' => $counts,
+            'assignment_counts' => $disclosedCounts,
             'metrics' => [],
             'guardrails' => [],
             'predeclared' => [
@@ -262,6 +267,8 @@ final class ExperimentService
                 $result['metrics'][] = $this->analyzeMetric($uuid, $variants, $metricSpec, (float) ($design['minimum_practical_effect'] ?? 0.0));
             }
         }
+        $this->applyMultipleTestingPolicy($result['metrics'], (string) ($design['multiple_testing_policy'] ?? 'single_primary'));
+
         foreach (Json::list((string) $experiment['guardrails_json']) as $guardrailSpec) {
             if (!is_array($guardrailSpec)) {
                 continue;
@@ -278,9 +285,9 @@ final class ExperimentService
             $result['conclusion'] = 'guardrail_breached';
         } elseif ($result['deviations'] !== []) {
             $result['conclusion'] = 'inconclusive_protocol_or_sample';
-        } elseif (is_array($primary) && ($primary['status'] ?? '') === 'compared' && !empty($primary['comparison']['conclusive']) && !empty($primary['comparison']['practical'])) {
+        } elseif (is_array($primary) && $this->hasConclusivePracticalComparison($primary)) {
             $result['conclusion'] = 'evidence_supports_predeclared_effect';
-        } elseif (is_array($primary) && ($primary['status'] ?? '') === 'compared') {
+        } elseif (is_array($primary) && in_array((string) ($primary['status'] ?? ''), ['compared','partially_compared'], true)) {
             $result['conclusion'] = 'inconclusive_no_predeclared_effect';
         } else {
             $result['conclusion'] = 'inconclusive_missing_approved_snapshots';
@@ -350,6 +357,9 @@ final class ExperimentService
             if (!$this->metricsAvailableForExperiment($experiment)) {
                 throw new \DomainException('experiment_metric_stale');
             }
+            if (!$this->analysisResultStillPublishable(Json::object((string) $analysis['result_json']))) {
+                throw new \DomainException('analysis_evidence_stale');
+            }
             $now = $this->db->now();
             if ($wpdb->update($analysisTable, [
                 'state' => 'published',
@@ -376,6 +386,7 @@ final class ExperimentService
                 'separation_of_duties' => new WP_Error('smai_separation_of_duties', 'Analyst cannot publish their own analysis.', ['status' => 403]),
                 'experiment_not_stopped' => new WP_Error('smai_experiment_not_stopped', 'Formal analysis publication requires a stopped experiment.', ['status' => 409]),
                 'experiment_metric_stale' => new WP_Error('smai_experiment_metric_stale', 'Analysis publication is blocked because a governed metric or guardrail contract is no longer active or privacy-valid.', ['status' => 409]),
+                'analysis_evidence_stale' => new WP_Error('smai_analysis_evidence_stale', 'Analysis publication is blocked because cited snapshot evidence is no longer publishable under current privacy or quality rules.', ['status' => 409]),
                 default => new WP_Error('smai_analysis_stale', 'Analysis is unavailable or stale.', ['status' => 409]),
             };
         } catch (\Throwable $error) {
@@ -387,21 +398,28 @@ final class ExperimentService
     /** @param array<string,mixed> $record */
     public function recordDecision(string $subjectType, string $subjectRef, array $record, int $actorUserId): array|WP_Error
     {
-        foreach (['evidence','alternatives','risks','action_owner','decision'] as $key) {
+        $allowed = ['evidence','alternatives','risks','action_owner','decision','review_at'];
+        if (array_diff(array_keys($record), $allowed) !== []) {
+            return new WP_Error('smai_invalid_decision_record', 'Decision record contains unsupported fields.', ['status' => 400]);
+        }
+        foreach ($allowed as $key) {
             if (!array_key_exists($key, $record)) {
                 return new WP_Error('smai_invalid_decision_record', 'Decision record is incomplete.', ['status' => 400]);
             }
         }
+        $actionOwner = Text::truncate(trim(wp_strip_all_tags((string) $record['action_owner'])), 100);
+        $decisionText = Text::truncate(trim(wp_strip_all_tags((string) $record['decision'])), 5000);
+        $reviewAtTs=$this->strictTimestamp((string)$record['review_at']);
         if ($actorUserId < 1
             || !in_array($subjectType, ['experiment','analysis','metric','report'], true)
             || preg_match('/^[a-zA-Z0-9_.:@-]{3,190}$/', $subjectRef) !== 1
-            || strlen(trim((string) $record['action_owner'])) < 2
-            || strlen(trim((string) $record['decision'])) < 10
+            || strlen($actionOwner) < 2
+            || strlen($decisionText) < 10
+            || $reviewAtTs === null
+            || $reviewAtTs <= time()
             || (new SensitiveValueDetector())->violations($record) !== []) {
-            return new WP_Error('smai_invalid_decision_record', 'Decision record validation failed.', ['status' => 400]);
+            return new WP_Error('smai_invalid_decision_record', 'Decision record validation failed; a future review date is required.', ['status' => 400]);
         }
-        $reviewAtTs=!empty($record['review_at'])?$this->strictTimestamp((string)$record['review_at']):null;
-        if (!empty($record['review_at']) && $reviewAtTs===null) return new WP_Error('smai_invalid_review_date','Decision review date is invalid.',['status'=>400]);
         if (!$this->decisionSubjectExists($subjectType, $subjectRef)) {
             return new WP_Error('smai_decision_subject_unavailable', 'Decision must reference an existing governed subject; analysis subjects must be published.', ['status' => 409]);
         }
@@ -416,9 +434,9 @@ final class ExperimentService
             'evidence_json' => Json::canonical($record['evidence']),
             'alternatives_json' => Json::canonical($record['alternatives']),
             'risks_json' => Json::canonical($record['risks']),
-            'action_owner' => Text::truncate(trim(wp_strip_all_tags((string) $record['action_owner'])), 100),
-            'decision_text' => Text::truncate(trim(wp_strip_all_tags((string) $record['decision'])), 5000),
-            'review_at' => $reviewAtTs!==null ? gmdate('Y-m-d H:i:s',$reviewAtTs) : null,
+            'action_owner' => $actionOwner,
+            'decision_text' => $decisionText,
+            'review_at' => gmdate('Y-m-d H:i:s',$reviewAtTs),
             'outcome_json' => null,
             'approver_user_id' => $actorUserId,
             'row_version' => 1,
@@ -527,45 +545,200 @@ final class ExperimentService
             ksort($dimensions);
             $snapshots[$variant] = $this->latestSnapshot($metricId, $version, $dimensions);
         }
-        $result = ['metric_id' => $metricId, 'metric_version' => $version, 'outcome_type' => $outcomeType, 'variants' => $snapshots, 'status' => 'unavailable', 'comparison' => null];
-        if (count($variants) < 2 || !is_array($snapshots[$variants[0]] ?? null) || !is_array($snapshots[$variants[1]] ?? null)) {
+        $result = [
+            'metric_id' => $metricId,
+            'metric_version' => $version,
+            'outcome_type' => $outcomeType,
+            'variants' => $snapshots,
+            'status' => 'unavailable',
+            'comparison' => null,
+            'comparisons' => [],
+        ];
+        if (count($variants) < 2 || !is_array($snapshots[$variants[0]] ?? null)) {
             return $result;
         }
-        $control = $snapshots[$variants[0]];
-        $treatment = $snapshots[$variants[1]];
-        if (($control['quality_status'] ?? '') === 'suppressed' || ($treatment['quality_status'] ?? '') === 'suppressed') {
-            $result['status'] = 'suppressed';
-            return $result;
-        }
+        $controlKey = $variants[0];
+        $control = $snapshots[$controlKey];
         $minimumEffect = isset($metricSpec['minimum_effect']) ? (float) $metricSpec['minimum_effect'] : $defaultMinimumEffect;
-        if ($outcomeType === 'ratio'
-            && is_numeric($control['numerator'] ?? null) && is_numeric($control['denominator'] ?? null)
-            && is_numeric($treatment['numerator'] ?? null) && is_numeric($treatment['denominator'] ?? null)
-            && (float) $control['denominator'] > 0 && (float) $treatment['denominator'] > 0) {
-            $comparison = Statistics::compareProportions((int) round((float) $control['numerator']), (int) round((float) $control['denominator']), (int) round((float) $treatment['numerator']), (int) round((float) $treatment['denominator']), $minimumEffect);
-            $result['status'] = 'compared';
-            $result['comparison'] = array_merge(['control' => $variants[0], 'treatment' => $variants[1]], $comparison);
+        foreach (array_slice($variants, 1) as $treatmentKey) {
+            $treatment = $snapshots[$treatmentKey] ?? null;
+            if (!is_array($treatment)) {
+                continue;
+            }
+            $comparison = null;
+            if ($outcomeType === 'ratio'
+                && is_numeric($control['numerator'] ?? null) && is_numeric($control['denominator'] ?? null)
+                && is_numeric($treatment['numerator'] ?? null) && is_numeric($treatment['denominator'] ?? null)
+                && (float) $control['denominator'] > 0 && (float) $treatment['denominator'] > 0) {
+                $comparison = Statistics::compareProportions(
+                    (int) round((float) $control['numerator']),
+                    (int) round((float) $control['denominator']),
+                    (int) round((float) $treatment['numerator']),
+                    (int) round((float) $treatment['denominator']),
+                    $minimumEffect
+                );
+            } elseif (is_numeric($control['value'] ?? null) && is_numeric($treatment['value'] ?? null)) {
+                $difference = (float) $treatment['value'] - (float) $control['value'];
+                $comparison = [
+                    'difference' => $difference,
+                    'z_score' => null,
+                    'p_value' => null,
+                    'conclusive' => false,
+                    'practical' => abs($difference) >= max(0.0, $minimumEffect),
+                ];
+            }
+            if (is_array($comparison)) {
+                $comparison = ['control' => $controlKey, 'treatment' => $treatmentKey] + $comparison;
+                $result['comparisons'][] = $comparison;
+            }
+        }
+        if ($result['comparisons'] === []) {
             return $result;
         }
-        if (is_numeric($control['value'] ?? null) && is_numeric($treatment['value'] ?? null)) {
-            $difference = (float) $treatment['value'] - (float) $control['value'];
-            $result['status'] = 'descriptive_only';
-            $result['comparison'] = ['control' => $variants[0], 'treatment' => $variants[1], 'difference' => $difference, 'conclusive' => false, 'practical' => abs($difference) >= max(0.0, $minimumEffect)];
-        }
+        $result['comparison'] = $result['comparisons'][0];
+        $result['status'] = count($result['comparisons']) === count($variants) - 1 ? 'compared' : 'partially_compared';
         return $result;
     }
 
     /** @param array<string,mixed> $analysis @param array<string,mixed> $spec */
     private function guardrailBreached(array $analysis, array $spec): bool
     {
-        $comparison = is_array($analysis['comparison'] ?? null) ? $analysis['comparison'] : [];
-        if ($comparison === [] || !isset($comparison['difference'])) {
-            return false;
+        $comparisons = is_array($analysis['comparisons'] ?? null) ? $analysis['comparisons'] : [];
+        if ($comparisons === [] && is_array($analysis['comparison'] ?? null)) {
+            $comparisons = [$analysis['comparison']];
         }
         $threshold = max(0.0, (float) ($spec['threshold'] ?? $spec['minimum_effect'] ?? 0.0));
         $direction = (string) ($spec['harm_direction'] ?? 'increase');
-        $difference = (float) $comparison['difference'];
-        return $direction === 'decrease' ? $difference <= -$threshold : $difference >= $threshold;
+        foreach ($comparisons as $comparison) {
+            if (!is_array($comparison) || !isset($comparison['difference'])) {
+                continue;
+            }
+            $difference = (float) $comparison['difference'];
+            if ($direction === 'decrease' ? $difference <= -$threshold : $difference >= $threshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** @param array<int,array<string,mixed>> $metrics */
+    private function applyMultipleTestingPolicy(array &$metrics, string $policy): void
+    {
+        $refs = [];
+        foreach ($metrics as $metricIndex => $metric) {
+            foreach ((array) ($metric['comparisons'] ?? []) as $comparisonIndex => $comparison) {
+                $p = $comparison['p_value'] ?? null;
+                if (is_float($p) || is_int($p)) {
+                    $refs[] = ['metric' => $metricIndex, 'comparison' => $comparisonIndex, 'p' => max(0.0, min(1.0, (float) $p))];
+                }
+            }
+        }
+        $m = count($refs);
+        if ($m === 0) {
+            return;
+        }
+        $adjusted = [];
+        if ($policy === 'single_primary') {
+            foreach ($refs as $index => $ref) {
+                $adjusted[$index] = $index === 0 ? $ref['p'] : 1.0;
+            }
+        } elseif ($policy === 'bonferroni') {
+            foreach ($refs as $index => $ref) {
+                $adjusted[$index] = min(1.0, $ref['p'] * $m);
+            }
+        } elseif ($policy === 'holm') {
+            $order = array_keys($refs);
+            usort($order, static fn(int $a, int $b): int => $refs[$a]['p'] <=> $refs[$b]['p']);
+            $running = 0.0;
+            foreach ($order as $rank => $index) {
+                $running = max($running, min(1.0, ($m - $rank) * $refs[$index]['p']));
+                $adjusted[$index] = $running;
+            }
+        } elseif ($policy === 'fdr') {
+            $order = array_keys($refs);
+            usort($order, static fn(int $a, int $b): int => $refs[$a]['p'] <=> $refs[$b]['p']);
+            $running = 1.0;
+            for ($rank = $m - 1; $rank >= 0; $rank--) {
+                $index = $order[$rank];
+                $running = min($running, min(1.0, $refs[$index]['p'] * $m / ($rank + 1)));
+                $adjusted[$index] = $running;
+            }
+        } else {
+            foreach ($refs as $index => $ref) {
+                $adjusted[$index] = 1.0;
+            }
+        }
+        foreach ($refs as $index => $ref) {
+            $mi = $ref['metric']; $ci = $ref['comparison'];
+            $metrics[$mi]['comparisons'][$ci]['multiple_testing_policy'] = $policy;
+            $metrics[$mi]['comparisons'][$ci]['adjusted_p_value'] = $adjusted[$index];
+            $metrics[$mi]['comparisons'][$ci]['conclusive'] = $adjusted[$index] <= 0.05;
+        }
+        foreach ($metrics as $metricIndex => $metric) {
+            if (($metrics[$metricIndex]['comparisons'] ?? []) !== []) {
+                $metrics[$metricIndex]['comparison'] = $metrics[$metricIndex]['comparisons'][0];
+            }
+        }
+    }
+
+    /** @param array<string,mixed> $metric */
+    private function hasConclusivePracticalComparison(array $metric): bool
+    {
+        foreach ((array) ($metric['comparisons'] ?? []) as $comparison) {
+            if (is_array($comparison) && !empty($comparison['conclusive']) && !empty($comparison['practical'])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** @param array<string,mixed> $result */
+    private function analysisResultStillPublishable(array $result): bool
+    {
+        foreach (['metrics','guardrails'] as $section) {
+            foreach ((array) ($result[$section] ?? []) as $metricResult) {
+                if (!is_array($metricResult)) {
+                    return false;
+                }
+                $metricId = (string) ($metricResult['metric_id'] ?? '');
+                $version = (string) ($metricResult['metric_version'] ?? '');
+                foreach ((array) ($metricResult['variants'] ?? []) as $snapshot) {
+                    if ($snapshot === null) {
+                        continue;
+                    }
+                    if (!is_array($snapshot) || !$this->snapshotHashStillPublishable($metricId, $version, (string) ($snapshot['snapshot_hash'] ?? ''))) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private function snapshotHashStillPublishable(string $metricId, string $version, string $hash): bool
+    {
+        if (preg_match('/^[a-f0-9]{64}$/', $hash) !== 1) {
+            return false;
+        }
+        $metric = (new MetricCatalog($this->db))->active($metricId, $version);
+        if (!is_array($metric)) {
+            return false;
+        }
+        $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
+            "SELECT quality_status,dimensions_json,cohort_size FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",
+            $metricId, $version, $hash
+        ), ARRAY_A);
+        if (!is_array($row) || in_array((string) $row['quality_status'], ['suppressed','invalidated'], true)) {
+            return false;
+        }
+        $dimensions = Json::object((string) ($row['dimensions_json'] ?? '{}'));
+        $minimum = PrivacyQueryPolicy::effectiveMinimum(
+            (array) $metric['definition'],
+            $dimensions,
+            max((int) $metric['minimum_cohort'], (int) get_option('smai_minimum_cohort', 20))
+        );
+        return PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) === []
+            && (int) $row['cohort_size'] >= $minimum;
     }
 
     /** @param array<string,mixed> $dimensions @return array<string,mixed>|null */
@@ -579,7 +752,10 @@ final class ExperimentService
             hash('sha256', Json::canonical($dimensions))
         ), ARRAY_A);
         if (!is_array($row)) return null;
-        $metric=(new MetricCatalog($this->db))->active($metricId,$version); $minimum=is_array($metric)?PrivacyQueryPolicy::effectiveMinimum((array)$metric['definition'],$dimensions,(int)get_option('smai_minimum_cohort',20)):PHP_INT_MAX;
+        $metric=(new MetricCatalog($this->db))->active($metricId,$version);
+        $minimum=is_array($metric)
+            ? PrivacyQueryPolicy::effectiveMinimum((array)$metric['definition'],$dimensions,max((int)$metric['minimum_cohort'],(int)get_option('smai_minimum_cohort',20)))
+            : PHP_INT_MAX;
         if (!is_array($metric) || PrivacyQueryPolicy::violations((array)$metric['definition'],$dimensions)!==[] || (int)$row['cohort_size']<$minimum) return null;
         return [
             'snapshot_hash' => $row['snapshot_hash'],
