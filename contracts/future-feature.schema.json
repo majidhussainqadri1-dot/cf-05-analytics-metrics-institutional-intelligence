@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sabrihomeopathy.com/contracts/cf05/future-feature.schema.json",
+  "$id": "https://sabrihomeopathy.com/contracts/cf05/future-feature-1.4.0.schema.json",
   "title": "CF-05 Future Feature Contract",
   "type": "object",
   "additionalProperties": false,

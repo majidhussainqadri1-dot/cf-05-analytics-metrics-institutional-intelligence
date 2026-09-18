@@ -1,4 +1,4 @@
-# Implementation Status — 1.0.0-rc.6
+# Implementation Status — 1.0.0-rc.7
 
 | Status | Result |
 |---|---|
@@ -10,7 +10,7 @@
 | Live deployed | No repository evidence; live reality must be verified independently |
 | Operational | No repository evidence; operational reality must be verified independently |
 
-Candidate `1.0.0-rc.6`; schema `1.4.0`; contract `1.4.0`; runtime default `foundation_disabled`.
+Candidate `1.0.0-rc.7`; schema `1.4.1`; contract `1.4.0`; runtime default `foundation_disabled`.
 
 The initial governed Future-40 expansion was introduced by `d3e815d806ebf6cd86955a02ba05362605851d29`; subsequent governed review/fix rounds hardened API mutation safety, activation atomicity, actor boundaries, persistent artifact binding, derivative retention/research expiry, and scheduled-evidence idempotency/provenance. The exact current repository HEAD, not the initial expansion commit, is the source-truth identity for any present-tense verification. The branch continues to contain executable handlers and QA coverage for `CF05-FUT-001..CF05-FUT-040`, 45 governed tables, activation-evidence gates, independent approval controls, aggregate/advisory-only invariants and deterministic packaging.
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://sabrihomeopathy.com/contracts/cf05/event-envelope-1.3.0.json",
+  "$id": "https://sabrihomeopathy.com/contracts/cf05/event-envelope-1.4.0.json",
   "title": "CF-05 Privacy-Safe Analytics Event Envelope",
   "type": "object",
   "additionalProperties": false,

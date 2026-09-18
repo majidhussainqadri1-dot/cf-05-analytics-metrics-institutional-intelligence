@@ -26,7 +26,7 @@ final class AccessProjectService
     /** @param array<int,string> $datasets @param array<string,array<int,string>> $fields */
     public function request(string $name, string $purpose, array $datasets, array $fields, string $expiresAt, bool $trainingConfirmed, int $actorUserId): array|WP_Error
     {
-        $expiry = strtotime($expiresAt);
+        $expiry = $this->strictTimestamp($expiresAt);
         $cleanName = Text::truncate(trim(wp_strip_all_tags($name)), 190);
         $cleanPurpose = Text::truncate(trim(wp_strip_all_tags($purpose)), 2000);
         $detector = new SensitiveValueDetector();
@@ -77,7 +77,9 @@ final class AccessProjectService
         $uuid = Uuid::v4();
         $now = $this->db->now();
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_access_transaction_failed', 'Access request transaction could not start.', ['status' => 500]);
+        }
         $ok = $wpdb->insert($this->db->table('access_projects'), [
             'project_uuid' => $uuid,
             'name' => $cleanName,
@@ -100,7 +102,10 @@ final class AccessProjectService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_access_project_store_failed', 'Access project and its audit evidence could not be stored.', ['status' => 503]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_access_commit_failed', 'Access project could not be committed.', ['status' => 500]);
+        }
         return ['project_uuid' => $uuid, 'state' => 'requested', 'row_version' => 1];
     }
 
@@ -127,7 +132,9 @@ final class AccessProjectService
         }
 
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_access_transaction_failed', 'Access approval transaction could not start.', ['status' => 500]);
+        }
         $now = $this->db->now();
         $updated = $wpdb->update($this->db->table('access_projects'), [
             'state' => 'active',
@@ -144,7 +151,10 @@ final class AccessProjectService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_access_project_conflict', 'Access approval or its audit evidence could not be committed.', ['status' => 409]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_access_commit_failed', 'Access approval could not be committed.', ['status' => 500]);
+        }
         return ['project_uuid' => $uuid, 'state' => 'active', 'row_version' => $expectedVersion + 1];
     }
 
@@ -159,7 +169,9 @@ final class AccessProjectService
             return new WP_Error('smai_access_project_not_active', 'Access project is not active.', ['status' => 409]);
         }
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_access_transaction_failed', 'Access revocation transaction could not start.', ['status' => 500]);
+        }
         $now = $this->db->now();
         $updated = $wpdb->update($this->db->table('access_projects'), [
             'state' => 'revoked',
@@ -172,7 +184,10 @@ final class AccessProjectService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_access_project_conflict', 'Access revocation and dependent revocations could not be committed.', ['status' => 409]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_access_commit_failed', 'Access revocation could not be committed.', ['status' => 500]);
+        }
         return ['project_uuid' => $uuid, 'state' => 'revoked', 'row_version' => (int) $project['row_version'] + 1];
     }
 
@@ -214,7 +229,7 @@ final class AccessProjectService
         $count = 0;
         foreach (is_array($projects) ? $projects : [] as $project) {
             $wpdb = $this->db->wpdb();
-            $wpdb->query('START TRANSACTION');
+            if ($wpdb->query('START TRANSACTION') === false) { continue; }
             $updated = $wpdb->update($table, [
                 'state' => 'closed',
                 'revoked_at' => $now,
@@ -223,7 +238,7 @@ final class AccessProjectService
             ], ['id' => (int) $project['id'], 'state' => (string) $project['state'], 'row_version' => (int) $project['row_version']]);
             if ($updated === 1 && $this->revokeChildren((string) $project['project_uuid'], $now)
                 && $this->audit->logInOpenTransaction('analytics_access_expired', 'access_project', (string) $project['project_uuid'], 'success', [], 'access_governance', null, null, 'system')) {
-                $wpdb->query('COMMIT');
+                if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); continue; }
                 $count++;
             } else {
                 $wpdb->query('ROLLBACK');
@@ -292,6 +307,12 @@ final class AccessProjectService
         return $metric
             ? (new MetricCatalog($this->db))->active($id, $version) !== null
             : (new DatasetCatalog($this->db))->published($id, $version) !== null;
+    }
+
+    private function strictTimestamp(string $value): ?int
+    {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $match) !== 1 || !checkdate((int) $match[2], (int) $match[3], (int) $match[1])) { return null; }
+        $timestamp = strtotime($value); return $timestamp === false ? null : $timestamp;
     }
 
     private function validUuid(string $uuid): bool

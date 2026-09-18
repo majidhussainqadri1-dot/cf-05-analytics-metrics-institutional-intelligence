@@ -1,3 +1,8 @@
+## 1.0.0-rc.7 — 2026-09-18
+- Closed sequential review rounds SR-30..SR-39 across access, dashboards, narrative evidence, experiments, audit/repair health, public contracts, Future-40 persistence, REST type safety and retention indexing.
+- Raised database schema to `1.4.1`; public contract family remains `1.4.0`.
+- Preserved staging/live/operational gates as independent evidence requirements.
+
 # Changelog
 
 ## 1.0.0-rc.6 — 2026-09-16

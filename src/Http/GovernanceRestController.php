@@ -73,6 +73,7 @@ final class GovernanceRestController
     private function payload(WP_REST_Request $request):array|WP_Error
     {
         if(strlen((string)$request->get_body())>1024*1024)return new WP_Error('smai_request_too_large','Request exceeds the maximum size.',['status'=>413]);
+        $raw=trim((string)$request->get_body());$decoded=$raw===''?new \stdClass():json_decode($raw);if(!($decoded instanceof \stdClass))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]);
         $payload=$request->get_json_params();if(!is_array($payload))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]);return $payload;
     }
 

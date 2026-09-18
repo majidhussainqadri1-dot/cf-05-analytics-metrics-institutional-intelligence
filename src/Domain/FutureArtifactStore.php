@@ -67,7 +67,7 @@ final class FutureArtifactStore
     /** @param array<string,mixed> $input @param array<string,mixed> $result @return array<string,mixed>|WP_Error */
     private function persistScenario(array $input, array $result, int $actorUserId): array|WP_Error
     {
-        $name = Text::truncate(trim((string)($input['name'] ?? 'Scenario model')), 190);
+        $name = Text::truncate(trim(wp_strip_all_tags((string)($input['name'] ?? 'Scenario model'))), 190);
         if ($name === '') return new WP_Error('smai_future_scenario_name_required', 'Scenario name is required for active persistence.', ['status'=>400]);
         $uuid = Uuid::v4(); $now = $this->db->now();
         $ok = $this->db->wpdb()->insert($this->db->table('scenario_models'), [
@@ -98,8 +98,9 @@ final class FutureArtifactStore
     /** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
     private function persistResearchWorkspace(array $input, int $actorUserId): array|WP_Error
     {
-        $title=Text::truncate(trim((string)($input['title']??'')),190);$purpose=Text::truncate(trim((string)($input['purpose']??'')),500);$datasets=$input['approved_aggregate_datasets']??[];$expiresOn=trim((string)($input['expires_on']??''));
+        $title=Text::truncate(trim(wp_strip_all_tags((string)($input['title']??''))),190);$purpose=Text::truncate(trim(wp_strip_all_tags((string)($input['purpose']??''))),500);$datasets=$input['approved_aggregate_datasets']??[];$expiresOn=trim((string)($input['expires_on']??''));
         if($title===''||$purpose===''||!is_array($datasets)||$datasets===[])return new WP_Error('smai_future_research_metadata_required','Research workspace requires title, purpose and approved aggregate datasets.',['status'=>400]);
+        $approvedDatasets=[];foreach($datasets as $datasetRef){$datasetRef=trim((string)$datasetRef);if(preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\.[0-9]+\.[0-9]+$/',$datasetRef)!==1)return new WP_Error('smai_future_research_dataset_invalid','Research workspace dataset reference is invalid.',['status'=>400]);[$datasetId,$datasetVersion]=explode('@',$datasetRef,2);if((new DatasetCatalog($this->db))->published($datasetId,$datasetVersion)===null)return new WP_Error('smai_future_research_dataset_unavailable','Research workspace dataset is not currently published.',['status'=>409]);$approvedDatasets[$datasetRef]=true;} $datasets=array_keys($approvedDatasets);sort($datasets,SORT_STRING);
         $tz=new \DateTimeZone('UTC');$expiry=\DateTimeImmutable::createFromFormat('!Y-m-d',$expiresOn,$tz);$today=new \DateTimeImmutable('today',$tz);
         if($expiry===false||$expiry->format('Y-m-d')!==$expiresOn||$expiry<=$today||$expiry>$today->modify('+365 days'))return new WP_Error('smai_future_research_expiry_required','Research workspace expiry must be a valid future date within 365 days.',['status'=>400]);
         $expiresAt=$expiry->format('Y-m-d 23:59:59');$uuid=Uuid::v4();$now=$this->db->now();$ok=$this->db->wpdb()->insert($this->db->table('research_workspaces'),[
@@ -111,8 +112,9 @@ final class FutureArtifactStore
     /** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
     private function persistTransparencyRecord(array $input): array|WP_Error
     {
-        $purpose=Text::truncate(trim((string)($input['purpose']??'')),500);$metrics=$input['metric_ids']??[];$classes=$input['data_classes']??[];$retention=Text::truncate(trim((string)($input['retention_summary']??'')),500);
+        $purpose=Text::truncate(trim(wp_strip_all_tags((string)($input['purpose']??''))),500);$metrics=$input['metric_ids']??[];$classes=$input['data_classes']??[];$retention=Text::truncate(trim(wp_strip_all_tags((string)($input['retention_summary']??''))),500);
         if($purpose===''||!is_array($metrics)||$metrics===[]||!is_array($classes)||$classes===[]||$retention==='')return new WP_Error('smai_future_transparency_metadata_required','Transparency record requires purpose, metrics, data classes and retention summary.',['status'=>400]);
+        $approvedMetrics=[];foreach($metrics as $metricRef){$metricRef=trim((string)$metricRef);if(preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\.[0-9]+\.[0-9]+$/',$metricRef)!==1)return new WP_Error('smai_future_transparency_metric_invalid','Transparency metric reference is invalid.',['status'=>400]);[$metricId,$metricVersion]=explode('@',$metricRef,2);if((new MetricCatalog($this->db))->active($metricId,$metricVersion)===null)return new WP_Error('smai_future_transparency_metric_unavailable','Transparency metric is not currently active.',['status'=>409]);$approvedMetrics[$metricRef]=true;} $metrics=array_keys($approvedMetrics);sort($metrics,SORT_STRING);$classes=array_values(array_unique(array_map('strval',$classes)));sort($classes,SORT_STRING);if(array_diff($classes,['C1','C2','C3'])!==[])return new WP_Error('smai_future_transparency_data_class_invalid','Transparency data class is not governed.',['status'=>400]);
         $uuid=Uuid::v4();$now=$this->db->now();$ok=$this->db->wpdb()->insert($this->db->table('transparency_records'),[
             'record_uuid'=>$uuid,'state'=>'draft','purpose'=>$purpose,'metric_ids_json'=>Json::canonical(array_values(array_map('strval',$metrics))),'data_classes_json'=>Json::canonical(array_values(array_map('strval',$classes))),'retention_summary'=>$retention,'approved_by'=>null,'published_at'=>null,'created_at'=>$now,'updated_at'=>$now,
         ]);

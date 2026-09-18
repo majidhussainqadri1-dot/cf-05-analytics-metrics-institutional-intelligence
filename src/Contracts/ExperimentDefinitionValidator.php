@@ -76,11 +76,12 @@ final class ExperimentDefinitionValidator
             }
             if (abs($allocationTotal - 1.0) > 0.000001) { $errors[] = 'invalid_variant_allocation_total'; }
         }
-        $start = !empty($definition['starts_at']) ? strtotime((string) $definition['starts_at']) : false;
-        $end = !empty($definition['ends_at']) ? strtotime((string) $definition['ends_at']) : false;
-        if (!empty($definition['starts_at']) && $start === false) { $errors[] = 'invalid_starts_at'; }
-        if (!empty($definition['ends_at']) && $end === false) { $errors[] = 'invalid_ends_at'; }
-        if ($start !== false && $end !== false && ($end <= $start || $end - $start > 366 * DAY_IN_SECONDS)) { $errors[] = 'invalid_experiment_window'; }
+        $start = !empty($definition['starts_at']) ? $this->strictTimestamp((string) $definition['starts_at']) : null;
+        $end = !empty($definition['ends_at']) ? $this->strictTimestamp((string) $definition['ends_at']) : null;
+        if (!empty($definition['starts_at']) && $start === null) { $errors[] = 'invalid_starts_at'; }
+        if (!empty($definition['ends_at']) && $end === null) { $errors[] = 'invalid_ends_at'; }
+        if ($start !== null && $end !== null && ($end <= $start || $end - $start > 366 * DAY_IN_SECONDS)) { $errors[] = 'invalid_experiment_window'; }
         return array_values(array_unique($errors));
     }
+    private function strictTimestamp(string $value): ?int { if (strlen($value)>35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/',$value,$m)!==1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1])) return null; $t=strtotime($value); return $t===false?null:$t; }
 }

@@ -225,7 +225,8 @@ final class SchemaMigrator
             PRIMARY KEY (id),
             UNIQUE KEY transition_idempotency (object_type,object_id,idempotency_key),
             KEY object_history (object_type,object_id,id),
-            KEY actor_time (actor_user_id,created_at)
+            KEY actor_time (actor_user_id,created_at),
+            KEY created_at (created_at)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}deletion_jobs (
@@ -818,7 +819,8 @@ final class SchemaMigrator
             PRIMARY KEY (id),
             UNIQUE KEY incident_uuid (incident_uuid),
             KEY severity_state (severity,state),
-            KEY owner_state (owner_user_id,state)
+            KEY owner_state (owner_user_id,state),
+            KEY state_updated (state,updated_at)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}scenario_models (
@@ -834,7 +836,8 @@ final class SchemaMigrator
             updated_at datetime NOT NULL,
             PRIMARY KEY (id),
             UNIQUE KEY scenario_uuid (scenario_uuid),
-            KEY feature_owner (feature_id,owner_user_id)
+            KEY feature_owner (feature_id,owner_user_id),
+            KEY updated_at (updated_at)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}research_workspaces (
@@ -853,7 +856,8 @@ final class SchemaMigrator
             PRIMARY KEY (id),
             UNIQUE KEY workspace_uuid (workspace_uuid),
             KEY owner_state (owner_user_id,state),
-            KEY expires_at (expires_at)
+            KEY expires_at (expires_at),
+            KEY state_updated (state,updated_at)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}intelligence_alerts (
@@ -871,7 +875,8 @@ final class SchemaMigrator
             PRIMARY KEY (id),
             UNIQUE KEY alert_uuid (alert_uuid),
             KEY feature_state (feature_id,state),
-            KEY severity_time (severity,created_at)
+            KEY severity_time (severity,created_at),
+            KEY updated_at (updated_at)
         ) {$charset};";
 
         $sql[] = "CREATE TABLE {$p}transparency_records (

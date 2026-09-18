@@ -53,10 +53,10 @@ final class ExperimentService
         $enhanced = (string) $definition['privacy_class'] === 'C3' || !empty($definition['involves_minors']) || !empty($definition['medical_context']);
         $uuid = Uuid::v4();
         $now = $this->db->now();
-        $startsAt = !empty($definition['starts_at']) ? gmdate('Y-m-d H:i:s', (int) strtotime((string) $definition['starts_at'])) : null;
-        $endsAt = !empty($definition['ends_at']) ? gmdate('Y-m-d H:i:s', (int) strtotime((string) $definition['ends_at'])) : null;
+        $startsAtTs=!empty($definition['starts_at'])?$this->strictTimestamp((string)$definition['starts_at']):null; $endsAtTs=!empty($definition['ends_at'])?$this->strictTimestamp((string)$definition['ends_at']):null;
+        $startsAt=$startsAtTs!==null?gmdate('Y-m-d H:i:s',$startsAtTs):null; $endsAt=$endsAtTs!==null?gmdate('Y-m-d H:i:s',$endsAtTs):null;
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION')===false) return new WP_Error('smai_experiment_transaction_failed','Experiment transaction could not start.',['status'=>500]);
         $ok = $wpdb->insert($this->db->table('experiments'), [
             'experiment_uuid' => $uuid,
             'name' => Text::truncate(trim(wp_strip_all_tags((string) $definition['name'])), 190),
@@ -80,7 +80,7 @@ final class ExperimentService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_experiment_store_failed', 'Experiment could not be stored.', ['status' => 500]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT')===false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_experiment_commit_failed','Experiment could not be committed.',['status'=>500]); }
         return ['experiment_uuid' => $uuid, 'state' => 'proposed', 'row_version' => 1, 'enhanced_review' => $enhanced];
     }
 
@@ -109,11 +109,10 @@ final class ExperimentService
         if ($target === 'scheduled' && ($row['starts_at'] === null || $row['ends_at'] === null || strtotime((string) $row['ends_at']) <= strtotime((string) $row['starts_at']))) {
             return new WP_Error('smai_experiment_window_required', 'A valid experiment window is required before scheduling.', ['status' => 409]);
         }
-        if ($target === 'running' && (($row['starts_at'] !== null && time() < strtotime((string) $row['starts_at'])) || ($row['ends_at'] !== null && time() >= strtotime((string) $row['ends_at'])))) {
-            return new WP_Error('smai_experiment_outside_window', 'Experiment cannot run outside its approved window.', ['status' => 409]);
-        }
+        if ($target === 'running' && (($row['starts_at'] !== null && time() < strtotime((string) $row['starts_at'])) || ($row['ends_at'] !== null && time() >= strtotime((string) $row['ends_at'])))) { return new WP_Error('smai_experiment_outside_window', 'Experiment cannot run outside its approved window.', ['status' => 409]); }
+        if (in_array($target,['scheduled','running'],true) && !$this->metricsAvailableForExperiment($row)) return new WP_Error('smai_experiment_metric_stale','Experiment cannot advance because a governed metric or guardrail contract is no longer active or privacy-valid.',['status'=>409]);
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION')===false) return new WP_Error('smai_experiment_transaction_failed','Experiment transition transaction could not start.',['status'=>500]);
         $updated = $wpdb->update($table, [
             'state' => $target,
             'approved_by' => in_array($target, ['reviewed','scheduled'], true) ? $actorUserId : $row['approved_by'],
@@ -124,7 +123,7 @@ final class ExperimentService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_experiment_conflict', 'Experiment changed concurrently.', ['status' => 409]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT')===false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_experiment_commit_failed','Experiment transition could not be committed.',['status'=>500]); }
         return ['experiment_uuid' => $uuid, 'state' => $target, 'row_version' => $expectedVersion + 1];
     }
 
@@ -147,7 +146,7 @@ final class ExperimentService
         if (!hash_equals((string) $experiment['assignment_owner'], (string) $fact['assignment_owner']) || !hash_equals((string) $experiment['assignment_owner'], $service)) {
             return new WP_Error('smai_assignment_owner_mismatch', 'Assignment owner mismatch.', ['status' => 403]);
         }
-        $occurred = strtotime((string) $fact['occurred_at']);
+        $occurred = $this->strictTimestamp((string) $fact['occurred_at']);
         if (preg_match('/^[a-f0-9]{64}$/', (string) $fact['subject_ref']) !== 1
             || preg_match('/^[a-f0-9]{64}$/', (string) $fact['deletion_key']) !== 1
             || preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/', (string) $fact['assignment_event_id']) !== 1
@@ -191,7 +190,7 @@ final class ExperimentService
                     : new WP_Error('smai_assignment_id_collision', 'Assignment event ID was reused with different content.', ['status' => 409]);
             }
             $wpdb = $this->db->wpdb();
-            $wpdb->query('START TRANSACTION');
+            if ($wpdb->query('START TRANSACTION')===false) return new WP_Error('smai_assignment_transaction_failed','Assignment transaction could not start.',['status'=>500]);
             $inserted = $wpdb->insert($table, [
                 'experiment_uuid' => $canonical['experiment_uuid'],
                 'assignment_event_id' => $canonical['assignment_event_id'],
@@ -208,7 +207,7 @@ final class ExperimentService
                 $wpdb->query('ROLLBACK');
                 return new WP_Error('smai_assignment_store_failed', 'Assignment fact could not be stored.', ['status' => 500]);
             }
-            $wpdb->query('COMMIT');
+            if ($wpdb->query('COMMIT')===false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_assignment_commit_failed','Assignment fact could not be committed.',['status'=>500]); }
             return ['assignment_event_id' => $canonical['assignment_event_id'], 'status' => 'accepted'];
         } finally {
             $this->db->wpdb()->get_var($this->db->wpdb()->prepare('SELECT RELEASE_LOCK(%s)', $lockName));
@@ -297,7 +296,7 @@ final class ExperimentService
         $analysisUuid = Uuid::v4();
         $now = $this->db->now();
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION')===false) return new WP_Error('smai_analysis_transaction_failed','Analysis transaction could not start.',['status'=>500]);
         $ok = $wpdb->insert($table, [
             'analysis_uuid' => $analysisUuid,
             'experiment_uuid' => $uuid,
@@ -329,7 +328,7 @@ final class ExperimentService
         $analysisTable = $this->db->table('experiment_analyses');
         $experimentTable = $this->db->table('experiments');
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION')===false) return new WP_Error('smai_analysis_transaction_failed','Analysis publication transaction could not start.',['status'=>500]);
         try {
             $analysis = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$analysisTable}` WHERE analysis_uuid=%s FOR UPDATE", $analysisUuid), ARRAY_A);
             if (!is_array($analysis) || (string) $analysis['state'] !== 'draft' || (int) $analysis['row_version'] !== $expectedVersion) {
@@ -360,7 +359,7 @@ final class ExperimentService
                 throw new \RuntimeException('experiment_conflict');
             }
             if (!$this->audit->logInOpenTransaction('experiment_analysis_published', 'analysis', $analysisUuid, 'success', ['experiment_uuid' => $analysis['experiment_uuid'], 'analysis_version' => $analysis['analysis_version']], 'experiment_analysis', null, $actorUserId)) { throw new \RuntimeException('audit_failed'); }
-            $wpdb->query('COMMIT');
+            if ($wpdb->query('COMMIT')===false) throw new \RuntimeException('commit_failed');
             return ['analysis_uuid' => $analysisUuid, 'status' => 'published', 'row_version' => $expectedVersion + 1, 'experiment_state' => 'analyzed'];
         } catch (\DomainException $error) {
             $wpdb->query('ROLLBACK');
@@ -390,9 +389,8 @@ final class ExperimentService
             || (new SensitiveValueDetector())->violations($record) !== []) {
             return new WP_Error('smai_invalid_decision_record', 'Decision record validation failed.', ['status' => 400]);
         }
-        if (!empty($record['review_at']) && strtotime((string) $record['review_at']) === false) {
-            return new WP_Error('smai_invalid_review_date', 'Decision review date is invalid.', ['status' => 400]);
-        }
+        $reviewAtTs=!empty($record['review_at'])?$this->strictTimestamp((string)$record['review_at']):null;
+        if (!empty($record['review_at']) && $reviewAtTs===null) return new WP_Error('smai_invalid_review_date','Decision review date is invalid.',['status'=>400]);
         if ($subjectType === 'analysis') {
             $analysis = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT state FROM `{$this->db->table('experiment_analyses')}` WHERE analysis_uuid=%s", $subjectRef), ARRAY_A);
             if (!is_array($analysis) || (string) $analysis['state'] !== 'published') {
@@ -412,7 +410,7 @@ final class ExperimentService
             'risks_json' => Json::canonical($record['risks']),
             'action_owner' => Text::truncate(trim(wp_strip_all_tags((string) $record['action_owner'])), 100),
             'decision_text' => Text::truncate(trim(wp_strip_all_tags((string) $record['decision'])), 5000),
-            'review_at' => !empty($record['review_at']) ? gmdate('Y-m-d H:i:s', (int) strtotime((string) $record['review_at'])) : null,
+            'review_at' => $reviewAtTs!==null ? gmdate('Y-m-d H:i:s',$reviewAtTs) : null,
             'outcome_json' => null,
             'approver_user_id' => $actorUserId,
             'row_version' => 1,
@@ -452,6 +450,16 @@ final class ExperimentService
         if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_decision_commit_failed','Decision outcome could not be committed.',['status'=>500]);}
         return ['decision_uuid' => $decisionUuid, 'status' => 'outcome_recorded', 'row_version' => $expectedVersion + 1];
     }
+
+
+    /** @param array<string,mixed> $experiment */
+    private function metricsAvailableForExperiment(array $experiment): bool
+    {
+        $specs=array_merge(Json::list((string)($experiment['metrics_json']??'[]')),Json::list((string)($experiment['guardrails_json']??'[]')));
+        foreach($specs as $spec){ if(!is_array($spec))return false; $metric=(new MetricCatalog($this->db))->active((string)($spec['metric_id']??''),(string)($spec['metric_version']??'')); $dimensions=is_array($spec['base_dimensions']??null)?$spec['base_dimensions']:[]; if(!is_array($metric)||PrivacyQueryPolicy::violations((array)$metric['definition'],$dimensions)!==[])return false; }
+        return true;
+    }
+    private function strictTimestamp(string $value): ?int { if(strlen($value)>35||preg_match('/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/',$value,$m)!==1||!checkdate((int)$m[2],(int)$m[3],(int)$m[1]))return null; $t=strtotime($value);return $t===false?null:$t; }
 
     /** @return array<string,mixed>|null */
     public function get(string $uuid): ?array
@@ -526,9 +534,9 @@ final class ExperimentService
             $version,
             hash('sha256', Json::canonical($dimensions))
         ), ARRAY_A);
-        if (!is_array($row)) {
-            return null;
-        }
+        if (!is_array($row)) return null;
+        $metric=(new MetricCatalog($this->db))->active($metricId,$version); $minimum=is_array($metric)?PrivacyQueryPolicy::effectiveMinimum((array)$metric['definition'],$dimensions,(int)get_option('smai_minimum_cohort',20)):PHP_INT_MAX;
+        if (!is_array($metric) || PrivacyQueryPolicy::violations((array)$metric['definition'],$dimensions)!==[] || (int)$row['cohort_size']<$minimum) return null;
         return [
             'snapshot_hash' => $row['snapshot_hash'],
             'value' => $row['value_decimal'] === null ? null : (float) $row['value_decimal'],

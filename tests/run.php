@@ -82,6 +82,11 @@ $tests['experiment definition requires governed audience allocation metrics and 
     same([], (new ExperimentDefinitionValidator())->errors($definition));
 };
 
+$tests['experiment timestamps require strict RFC3339'] = static function (): void {
+    $definition=governedExperimentDefinition();$definition['starts_at']='tomorrow';truth(in_array('invalid_starts_at',(new ExperimentDefinitionValidator())->errors($definition),true));
+    $definition['starts_at']='2026-09-20T10:00:00Z';$definition['ends_at']='2026-09-21T10:00:00Z';same([],(new ExperimentDefinitionValidator())->errors($definition));
+};
+
 $tests['lifecycle transitions are closed and independent'] = static function (): void {
     truth(LifecyclePolicy::allowed('event_schema', 'proposed', 'privacy_review'));
     falsity(LifecyclePolicy::allowed('event_schema', 'proposed', 'active'));

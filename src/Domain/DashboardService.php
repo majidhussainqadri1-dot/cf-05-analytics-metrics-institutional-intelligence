@@ -98,7 +98,7 @@ final class DashboardService
         }
         $expiresAt = null;
         if (!empty($definition['expires_at'])) {
-            $expiry = strtotime((string) $definition['expires_at']);
+            $expiry = $this->strictTimestamp((string) $definition['expires_at']);
             if ($expiry === false || $expiry <= time() || $expiry > strtotime((string) $project['expires_at'])) {
                 return new WP_Error('smai_invalid_dashboard_expiry', 'Dashboard expiry is invalid or exceeds project expiry.', ['status' => 400]);
             }
@@ -122,7 +122,7 @@ final class DashboardService
         }
         $wpdb = $this->db->wpdb();
         $now = $this->db->now();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) { return new WP_Error('smai_dashboard_transaction_failed', 'Dashboard transaction could not start.', ['status' => 500]); }
         try {
             $ok = $wpdb->insert($table, [
                 'dashboard_id' => $definition['dashboard_id'],
@@ -161,7 +161,7 @@ final class DashboardService
             if (!$this->audit->logInOpenTransaction('dashboard_registered', 'dashboard', $definition['dashboard_id'] . '@' . $definition['dashboard_version'], 'success', ['project_uuid' => $definition['project_uuid'], 'definition_hash' => $hash], 'institutional_reporting', null, $actorUserId)) {
                 throw new \RuntimeException('Dashboard audit evidence could not be stored.');
             }
-            $wpdb->query('COMMIT');
+            if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Dashboard transaction could not be committed.'); }
             return ['id' => $id, 'state' => 'draft', 'row_version' => 1, 'definition_hash' => $hash];
         } catch (\Throwable $error) {
             $wpdb->query('ROLLBACK');
@@ -188,8 +188,10 @@ final class DashboardService
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_dashboard_project_inactive', 'Dashboard access project is inactive.', ['status' => 409]);
         }
+        $validation = $this->storedWidgetsValidForActivation($row);
+        if (is_wp_error($validation)) { return $validation; }
         $wpdb = $this->db->wpdb();
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) { return new WP_Error('smai_dashboard_transaction_failed', 'Dashboard activation transaction could not start.', ['status' => 500]); }
         $updated = $wpdb->update($table, [
             'state' => 'active',
             'approved_by' => $actorUserId,
@@ -200,7 +202,7 @@ final class DashboardService
             $wpdb->query('ROLLBACK');
             return new WP_Error('smai_dashboard_conflict', 'Dashboard activation or audit evidence could not be committed.', ['status' => 409]);
         }
-        $wpdb->query('COMMIT');
+        if ($wpdb->query('COMMIT') === false) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_dashboard_commit_failed', 'Dashboard activation could not be committed.', ['status' => 500]); }
         return ['dashboard_id' => $dashboardId, 'dashboard_version' => $version, 'state' => 'active', 'row_version' => $expectedVersion + 1];
     }
 
@@ -257,10 +259,11 @@ final class DashboardService
                 ), ARRAY_A)
                 : null;
             $metric = (new MetricCatalog($this->db))->active($metricId, $metricVersion);
+            $policyViolations = is_array($metric) ? PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) : ['metric_unavailable'];
             $minimum = is_array($metric) ? PrivacyQueryPolicy::effectiveMinimum((array) $metric['definition'], $dimensions, (int) get_option('smai_minimum_cohort', 20)) : PHP_INT_MAX;
-            $suppressed = is_array($row) && ((string) $row['quality_status'] === 'suppressed' || (int) $row['cohort_size'] < $minimum);
+            $suppressed = is_array($row) && ($policyViolations !== [] || (string) $row['quality_status'] === 'suppressed' || (int) $row['cohort_size'] < $minimum);
             $invalidated = is_array($row) && (string) $row['quality_status'] === 'invalidated';
-            if ($invalidated) { $row = null; }
+            if ($invalidated) { $row = null; $suppressed = false; }
             $out['widgets'][] = [
                 'key' => $widget['widget_key'],
                 'label' => Text::truncate(wp_strip_all_tags((string) ($config['label'] ?? $widget['widget_key'])), 190),
@@ -272,14 +275,36 @@ final class DashboardService
                 'window_end' => is_array($row) ? $row['window_end'] : null,
                 'data_through' => is_array($row) ? $row['data_through'] : null,
                 'cohort_size' => is_array($row) && !$suppressed ? (int) $row['cohort_size'] : null,
-                'uncertainty' => is_array($row) ? Json::object((string) ($row['uncertainty_json'] ?? '{}')) : [],
-                'caveats' => is_array($row) ? Json::list((string) ($row['caveats_json'] ?? '[]')) : ['No approved snapshot is available.'],
+                'uncertainty' => is_array($row) && !$suppressed ? Json::object((string) ($row['uncertainty_json'] ?? '{}')) : [],
+                'caveats' => $suppressed ? ['Suppressed by the current privacy policy.'] : (is_array($row) ? Json::list((string) ($row['caveats_json'] ?? '[]')) : ['No approved snapshot is available.']),
             ];
         }
         if (!$this->audit->log('dashboard_viewed', 'dashboard', $dashboardId . '@' . $version, 'success', ['widget_count' => count($out['widgets'])], 'institutional_reporting', null, $actorUserId)) {
             return new WP_Error('smai_audit_failed', 'Dashboard was withheld because access audit evidence failed.', ['status' => 503]);
         }
         return $out;
+    }
+
+
+    /** @return true|WP_Error */
+    private function storedWidgetsValidForActivation(array $dashboard): true|WP_Error
+    {
+        $project = (new AccessProjectService($this->db))->get((string) $dashboard['project_uuid']);
+        if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) { return new WP_Error('smai_dashboard_project_inactive', 'Dashboard access project is inactive.', ['status' => 409]); }
+        $widgets = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT * FROM `{$this->db->table('dashboard_widgets')}` WHERE dashboard_id=%s AND dashboard_version=%s ORDER BY position_order,id",(string) $dashboard['dashboard_id'],(string) $dashboard['dashboard_version']), ARRAY_A);
+        $access = new AccessProjectService($this->db);
+        foreach (is_array($widgets) ? $widgets : [] as $widget) {
+            $config = Json::object((string) $widget['config_json']); $dimensions = is_array($config['dimensions'] ?? null) ? $config['dimensions'] : [];
+            $metricId = (string) $widget['metric_id']; $metricVersion = (string) $widget['metric_version']; $metric = (new MetricCatalog($this->db))->active($metricId, $metricVersion);
+            if (!is_array($metric) || !$access->authorize((string) $dashboard['project_uuid'], (int) $dashboard['owner_user_id'], 'metric:' . $metricId . '@' . $metricVersion, [], (string) $project['purpose']) || PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) !== []) { return new WP_Error('smai_dashboard_activation_contract_drift', 'Dashboard activation is blocked because a stored widget no longer satisfies its governed metric/access/privacy contract.', ['status' => 409]); }
+        }
+        return true;
+    }
+
+    private function strictTimestamp(string $value): ?int
+    {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $match) !== 1 || !checkdate((int) $match[2], (int) $match[3], (int) $match[1])) { return null; }
+        $timestamp = strtotime($value); return $timestamp === false ? null : $timestamp;
     }
 
     /** @param array<string,mixed> $audience @return array<string,mixed>|WP_Error */

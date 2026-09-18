@@ -60,7 +60,7 @@ final class FutureRestController
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => function (WP_REST_Request $request): WP_REST_Response|WP_Error {
                 return $this->mutation('future-feature-configure:' . (string)$request['feature_id'], $request, function (array $payload) use ($request) {
-                    return (new FutureFeatureService($this->db))->configure((string)$request['feature_id'], is_array($payload['config']??null)?$payload['config']:[], get_current_user_id(), max(0,(int)($payload['row_version']??0)));
+                    $rowVersion=$this->nonNegativeInt($payload,'row_version');if(is_wp_error($rowVersion))return $rowVersion; return (new FutureFeatureService($this->db))->configure((string)$request['feature_id'],is_array($payload['config']??null)?$payload['config']:[],get_current_user_id(),$rowVersion);
                 });
             },
             'permission_callback' => static fn(): bool => current_user_can('smai_manage_future_intelligence'),
@@ -69,7 +69,7 @@ final class FutureRestController
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => function (WP_REST_Request $request): WP_REST_Response|WP_Error {
                 return $this->mutation('future-feature-transition:' . (string)$request['feature_id'], $request, function (array $payload) use ($request) {
-                    return (new FutureFeatureService($this->db))->transition((string)$request['feature_id'], strtolower((string)($payload['action']??'')), (string)($payload['reason']??''), get_current_user_id(), max(0,(int)($payload['row_version']??0)));
+                    $rowVersion=$this->nonNegativeInt($payload,'row_version');if(is_wp_error($rowVersion))return $rowVersion; return (new FutureFeatureService($this->db))->transition((string)$request['feature_id'],strtolower((string)($payload['action']??'')),(string)($payload['reason']??''),get_current_user_id(),$rowVersion);
                 });
             },
             'permission_callback' => static function (WP_REST_Request $request): bool {
@@ -81,7 +81,7 @@ final class FutureRestController
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => function (WP_REST_Request $request): WP_REST_Response|WP_Error {
                 return $this->mutation('future-feature-run:' . (string)$request['feature_id'], $request, function (array $payload) use ($request) {
-                    return (new FutureFeatureService($this->db))->run((string)$request['feature_id'], is_array($payload['input']??null)?$payload['input']:[], get_current_user_id(), (bool)($payload['dry_run']??false));
+                    if(isset($payload['dry_run'])&&!is_bool($payload['dry_run']))return new WP_Error('smai_future_invalid_dry_run','dry_run must be a JSON boolean.',['status'=>400]); return (new FutureFeatureService($this->db))->run((string)$request['feature_id'],is_array($payload['input']??null)?$payload['input']:[],get_current_user_id(),$payload['dry_run']??false);
                 });
             },
             'permission_callback' => static function (WP_REST_Request $request): bool {
@@ -128,10 +128,12 @@ final class FutureRestController
     private function payload(WP_REST_Request $request): array|WP_Error
     {
         if (strlen((string)$request->get_body()) > 1024 * 1024) return new WP_Error('smai_request_too_large', 'Request exceeds the maximum size.', ['status'=>413]);
-        $payload = $request->get_json_params();
-        if (!is_array($payload)) return new WP_Error('smai_invalid_json', 'A JSON object is required.', ['status'=>400]);
-        return $payload;
+        $raw=trim((string)$request->get_body());$decoded=$raw===''?new \stdClass():json_decode($raw);if(!($decoded instanceof \stdClass))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]);
+        $payload=$request->get_json_params();if(!is_array($payload))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]); return $payload;
     }
+
+    /** @param array<string,mixed> $payload */
+    private function nonNegativeInt(array $payload,string $key):int|WP_Error { if(!array_key_exists($key,$payload)||!is_int($payload[$key])||$payload[$key]<0)return new WP_Error('smai_future_invalid_row_version','row_version must be a non-negative JSON integer.',['status'=>400]);return $payload[$key]; }
 
     private function response(array $result, int $status = 200): WP_REST_Response
     {

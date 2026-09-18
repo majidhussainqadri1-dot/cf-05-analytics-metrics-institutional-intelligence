@@ -105,7 +105,7 @@ final class NarrativeService
                 );
             }
 
-            if ($snapshotHash !== '' && (strlen($snapshotHash) !== 64 || !ctype_xdigit($snapshotHash))) {
+            if ($snapshotHash === '' || strlen($snapshotHash) !== 64 || !ctype_xdigit($snapshotHash)) {
                 return new WP_Error(
                     'smai_invalid_narrative_citation',
                     'Narrative snapshot hash is invalid.',
@@ -124,47 +124,14 @@ final class NarrativeService
             $canonicalStart = '';
             $canonicalEnd = '';
             if ($windowStart !== '') {
-                $startTs = strtotime($windowStart);
-                $endTs = strtotime($windowEnd);
-                if ($startTs === false || $endTs === false || $startTs >= $endTs) {
-                    return new WP_Error(
-                        'smai_invalid_narrative_citation',
-                        'Narrative citation window is invalid.',
-                        ['status' => 400]
-                    );
-                }
-                $canonicalStart = gmdate('Y-m-d H:i:s', $startTs);
-                $canonicalEnd = gmdate('Y-m-d H:i:s', $endTs);
+                $startTs = $this->strictTimestamp($windowStart); $endTs = $this->strictTimestamp($windowEnd);
+                if ($startTs === null || $endTs === null || $startTs >= $endTs) { return new WP_Error('smai_invalid_narrative_citation', 'Narrative citation window is invalid.', ['status' => 400]); }
+                $canonicalStart = gmdate('Y-m-d H:i:s', $startTs); $canonicalEnd = gmdate('Y-m-d H:i:s', $endTs);
             }
-
-            if ($snapshotHash !== '') {
-                $snapshotTable = $this->db->table('metric_snapshots');
-                $snapshotId = $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
-                    "SELECT id FROM `{$snapshotTable}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",
-                    $metricId,
-                    $metricVersion,
-                    $snapshotHash
-                ));
-                if ($snapshotId === null) {
-                    return new WP_Error(
-                        'smai_invalid_narrative_citation',
-                        'Narrative citation snapshot is not published for the referenced metric.',
-                        ['status' => 409]
-                    );
-                }
-            }
-
-            $normalized = [
-                'metric_id' => $metricId,
-                'metric_version' => $metricVersion,
-            ];
-            if ($snapshotHash !== '') {
-                $normalized['snapshot_hash'] = $snapshotHash;
-            }
-            if ($canonicalStart !== '') {
-                $normalized['window_start'] = $canonicalStart;
-                $normalized['window_end'] = $canonicalEnd;
-            }
+            $snapshot = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT id,window_start,window_end,quality_status FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",$metricId,$metricVersion,$snapshotHash), ARRAY_A);
+            if (!is_array($snapshot) || in_array((string) $snapshot['quality_status'], ['suppressed','invalidated'], true)) { return new WP_Error('smai_invalid_narrative_citation', 'Narrative citation snapshot is unavailable for publication.', ['status' => 409]); }
+            if ($canonicalStart !== '' && (!hash_equals((string) $snapshot['window_start'], $canonicalStart) || !hash_equals((string) $snapshot['window_end'], $canonicalEnd))) { return new WP_Error('smai_invalid_narrative_citation', 'Narrative citation window does not match the immutable snapshot.', ['status' => 409]); }
+            $normalized = ['metric_id'=>$metricId,'metric_version'=>$metricVersion,'snapshot_hash'=>$snapshotHash,'window_start'=>(string)$snapshot['window_start'],'window_end'=>(string)$snapshot['window_end']];
 
             $citationKey = hash('sha256', Json::canonical($normalized));
             if (isset($seen[$citationKey])) {
@@ -249,6 +216,7 @@ final class NarrativeService
         if ((int) $row['author_user_id'] === $reviewerUserId) {
             return new WP_Error('smai_separation_of_duties', 'Independent narrative review is required.', ['status' => 403]);
         }
+        if (!$this->citationsAvailable(Json::list((string) $row['citations_json']))) { return new WP_Error('smai_narrative_citation_stale', 'Narrative publication is blocked because cited evidence is no longer publishable.', ['status' => 409]); }
 
         $wpdb=$this->db->wpdb();
         if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_narrative_transaction_failed','Narrative publication transaction could not start.',['status'=>500]);}
@@ -285,4 +253,23 @@ final class NarrativeService
             'row_version' => $expectedVersion + 1,
         ];
     }
+    /** @param array<int,mixed> $citations */
+    private function citationsAvailable(array $citations): bool
+    {
+        if ($citations === []) { return false; }
+        foreach ($citations as $citation) {
+            if (!is_array($citation)) { return false; }
+            $metricId=(string)($citation['metric_id']??''); $metricVersion=(string)($citation['metric_version']??''); $hash=strtolower((string)($citation['snapshot_hash']??''));
+            if ((new MetricCatalog($this->db))->active($metricId,$metricVersion)===null || preg_match('/^[a-f0-9]{64}$/',$hash)!==1) { return false; }
+            $snapshot=$this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT window_start,window_end,quality_status FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",$metricId,$metricVersion,$hash),ARRAY_A);
+            if (!is_array($snapshot) || in_array((string)$snapshot['quality_status'],['suppressed','invalidated'],true) || !hash_equals((string)$snapshot['window_start'],(string)($citation['window_start']??'')) || !hash_equals((string)$snapshot['window_end'],(string)($citation['window_end']??''))) { return false; }
+        }
+        return true;
+    }
+    private function strictTimestamp(string $value): ?int
+    {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/',$value,$m)!==1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1])) { return null; }
+        $t=strtotime($value); return $t===false?null:$t;
+    }
+
 }

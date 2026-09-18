@@ -76,14 +76,14 @@ final class HealthService
             }
         }
 
-        if (is_array($queue) && (int) ($queue['dead'] ?? 0) > 0) {
-            $degradationReasons[] = 'dead_letter_jobs_present';
-        }
+        if (is_array($queue) && (int) ($queue['dead'] ?? 0) > 0) { $healthy = false; $degradationReasons[] = 'dead_letter_jobs_present'; }
         if (is_array($quality) && (int) ($quality['high_critical'] ?? 0) > 0) {
             $healthy = false;
             $degradationReasons[] = 'high_or_critical_quality_issue';
         }
 
+        $auditChain=$this->db->exists('audit_log')&&$this->db->exists('audit_state')?(new AuditVerifier($this->db))->verify(10000):['status'=>'unavailable'];
+        if (($auditChain['status']??'unavailable')!=='verified') { $healthy=false; $degradationReasons[]='audit_chain_unverified'; }
         $degradationReasons = array_values(array_unique($degradationReasons));
 
         return [
@@ -116,7 +116,7 @@ final class HealthService
             'deletion_slo_hours' => $deletionSloHours,
             'overdue_deletion_jobs' => $overdueDeletionJobs,
             'degradation_reasons' => $degradationReasons,
-            'audit_chain' => $this->db->exists('audit_log') ? (new AuditVerifier($this->db))->verify(10000) : ['status' => 'unavailable'],
+            'audit_chain' => $auditChain,
             'tables' => $tables,
             'status' => $healthy ? 'healthy_within_declared_scope' : 'degraded_or_unavailable',
             'production_complete' => false,

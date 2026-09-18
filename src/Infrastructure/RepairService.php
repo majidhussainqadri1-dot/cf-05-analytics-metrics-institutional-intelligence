@@ -31,6 +31,7 @@ final class RepairService
                 'jobs' => wp_next_scheduled('smai_run_jobs') ?: null,
                 'reports' => wp_next_scheduled('smai_schedule_reports') ?: null,
                 'access_expiry' => wp_next_scheduled('smai_access_expiry') ?: null,
+                'future_intelligence' => wp_next_scheduled('smai_future_intelligence_tick') ?: null,
             ],
             'audit' => (new AuditVerifier($this->db))->verify(10000),
             'runtime_state' => RuntimeGate::state(),
@@ -42,25 +43,16 @@ final class RepairService
     public function safeRepair(): array
     {
         SchemaMigrator::migrate();
-        if (!wp_next_scheduled('smai_daily_retention')) {
-            wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', 'smai_daily_retention');
-        }
-        if (!wp_next_scheduled('smai_run_jobs')) {
-            wp_schedule_event(time() + 5 * MINUTE_IN_SECONDS, 'smai_five_minutes', 'smai_run_jobs');
-        }
-        if (!wp_next_scheduled('smai_schedule_reports')) {
-            wp_schedule_event(time() + 10 * MINUTE_IN_SECONDS, 'hourly', 'smai_schedule_reports');
-        }
-        if (!wp_next_scheduled('smai_access_expiry')) {
-            wp_schedule_event(time() + 15 * MINUTE_IN_SECONDS, 'hourly', 'smai_access_expiry');
-        }
+        $this->ensureSchedule('smai_daily_retention', time()+HOUR_IN_SECONDS, 'daily');
+        $this->ensureSchedule('smai_run_jobs', time()+5*MINUTE_IN_SECONDS, 'smai_five_minutes');
+        $this->ensureSchedule('smai_schedule_reports', time()+10*MINUTE_IN_SECONDS, 'hourly');
+        $this->ensureSchedule('smai_access_expiry', time()+15*MINUTE_IN_SECONDS, 'hourly');
+        $this->ensureSchedule('smai_future_intelligence_tick', time()+20*MINUTE_IN_SECONDS, 'hourly');
         $now = $this->db->now();
-        $this->db->wpdb()->query($this->db->wpdb()->prepare(
-            "UPDATE `{$this->db->table('jobs')}` SET state='retrying',lease_owner=NULL,lease_until=NULL,next_run_at=%s,updated_at=%s WHERE state='running' AND lease_until<%s",
-            $now,
-            $now,
-            $now
-        ));
+        $recovered=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('jobs')}` SET state='retrying',lease_owner=NULL,lease_until=NULL,next_run_at=%s,updated_at=%s WHERE state='running' AND lease_until<%s AND attempts < max_attempts",$now,$now,$now));
+        if($recovered===false)throw new \RuntimeException('Expired job lease repair failed.');
+        $dead=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('jobs')}` SET state='dead_letter',lease_owner=NULL,lease_until=NULL,error_code='lease_exhausted',error_message='Expired running lease exhausted maximum attempts.',updated_at=%s WHERE state='running' AND lease_until<%s AND attempts >= max_attempts",$now,$now));
+        if($dead===false)throw new \RuntimeException('Exhausted lease fail-closed repair failed.');
         $eventTable = $this->db->table('events');
         $unprocessed = $this->db->wpdb()->get_col($this->db->wpdb()->prepare(
             "SELECT event_id FROM `{$eventTable}` WHERE processed_at IS NULL AND created_at<%s ORDER BY id LIMIT 500",
@@ -90,4 +82,9 @@ final class RepairService
         $result['requeued_deletion_jobs'] = $requeuedDeletions;
         return $result;
     }
+    private function ensureSchedule(string $hook,int $timestamp,string $recurrence):void
+    {
+        if(wp_next_scheduled($hook))return;$result=wp_schedule_event($timestamp,$recurrence,$hook,[],true);if(is_wp_error($result)||$result===false)throw new \RuntimeException('CF-05 repair could not create schedule: '.$hook);
+    }
+
 }
