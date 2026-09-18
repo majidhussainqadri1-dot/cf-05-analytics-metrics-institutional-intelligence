@@ -1,4 +1,4 @@
-# CF-05 Requirements Traceability — 1.0.0-rc.4
+# CF-05 Requirements Traceability — 1.0.0-rc.9
 
 | Requirement | Primary implementation | Acceptance evidence |
 |---|---|---|
