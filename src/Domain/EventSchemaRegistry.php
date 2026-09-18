@@ -27,11 +27,14 @@ final class EventSchemaRegistry
     /** @param array<string,mixed> $schema */
     public function register(array $schema, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_catalog')) {
+            return new WP_Error('smai_catalog_forbidden', 'Event-schema registration is not authorized.', ['status'=>403]);
+        }
         if (!RuntimeGate::catalogEnabled()) {
             return new WP_Error('smai_catalog_disabled', 'Catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
         }
         $errors = $this->validator->errors($schema);
-        if ($actorUserId < 1 || $errors !== []) {
+        if ($errors !== []) {
             return new WP_Error('smai_invalid_event_schema', 'Event schema validation failed.', ['status' => 400, 'errors' => $errors]);
         }
         $normalized = $this->validator->normalize($schema);
