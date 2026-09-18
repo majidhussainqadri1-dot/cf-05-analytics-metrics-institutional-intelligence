@@ -1,0 +1,48 @@
+name: Apply CF-05 Sequential Reviews 30-39
+
+on:
+  push:
+    branches:
+      - codex/cf-05-foundation-0.1.0
+    paths:
+      - .codex/review30-39.ready
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          ini-file: production
+      - name: Remove one-shot trigger and workflow from QA surface
+        run: |
+          rm -f .codex/review30-39.ready .github/workflows/apply-review30-39.yml
+          rmdir .codex 2>/dev/null || true
+      - name: Run ten sequential review rounds
+        run: python3 scripts/apply-review30-39.py
+      - name: Remove one-shot review runner
+        run: rm -f scripts/apply-review30-39.py
+      - name: Final source QA after one-shot cleanup
+        run: bash scripts/qa.sh
+      - name: Verify deterministic release build
+        run: bash scripts/verify-deterministic-build.sh
+      - name: Commit corrections and review evidence
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+          else
+            git commit -m 'review 30-39: close sequential ten-round defects'
+            git push
+          fi
