@@ -26,10 +26,12 @@ final class SnapshotService
     /** @param array<string,mixed> $dimensions */
     public function enqueue(string $metricId, string $version, string $start, string $end, array $dimensions, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_quality')) {
+            return new WP_Error('smai_snapshot_forbidden', 'Snapshot computation is not authorized.', ['status'=>403]);
+        }
         $startTs = $this->strictTimestamp($start);
         $endTs = $this->strictTimestamp($end);
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
             || preg_match('/^[0-9]+\\.[0-9]+\\.[0-9]+$/', $version) !== 1
             || $startTs === null || $endTs === null || $startTs >= $endTs
             || ($endTs - $startTs) > 366 * DAY_IN_SECONDS) {
