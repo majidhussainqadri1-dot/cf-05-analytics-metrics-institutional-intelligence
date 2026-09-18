@@ -95,9 +95,10 @@ final class NarrativeService
             $windowStart = trim((string) ($citation['window_start'] ?? ''));
             $windowEnd = trim((string) ($citation['window_end'] ?? ''));
 
+            $metric = $metricCatalog->active($metricId, $metricVersion);
             if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
                 || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $metricVersion) !== 1
-                || $metricCatalog->active($metricId, $metricVersion) === null) {
+                || !is_array($metric)) {
                 return new WP_Error(
                     'smai_invalid_narrative_citation',
                     'Narrative citation does not reference an active metric.',
@@ -128,8 +129,15 @@ final class NarrativeService
                 if ($startTs === null || $endTs === null || $startTs >= $endTs) { return new WP_Error('smai_invalid_narrative_citation', 'Narrative citation window is invalid.', ['status' => 400]); }
                 $canonicalStart = gmdate('Y-m-d H:i:s', $startTs); $canonicalEnd = gmdate('Y-m-d H:i:s', $endTs);
             }
-            $snapshot = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT id,window_start,window_end,quality_status FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",$metricId,$metricVersion,$snapshotHash), ARRAY_A);
-            if (!is_array($snapshot) || in_array((string) $snapshot['quality_status'], ['suppressed','invalidated'], true)) { return new WP_Error('smai_invalid_narrative_citation', 'Narrative citation snapshot is unavailable for publication.', ['status' => 409]); }
+            $snapshot = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT id,window_start,window_end,quality_status,dimensions_json,cohort_size FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",$metricId,$metricVersion,$snapshotHash), ARRAY_A);
+            $snapshotDimensions = is_array($snapshot) ? Json::object((string) ($snapshot['dimensions_json'] ?? '{}')) : [];
+            $minimum = is_array($metric) ? PrivacyQueryPolicy::effectiveMinimum((array) $metric['definition'], $snapshotDimensions, max((int) $metric['minimum_cohort'], (int) get_option('smai_minimum_cohort', 20))) : PHP_INT_MAX;
+            if (!is_array($snapshot)
+                || in_array((string) $snapshot['quality_status'], ['suppressed','invalidated'], true)
+                || PrivacyQueryPolicy::violations((array) $metric['definition'], $snapshotDimensions) !== []
+                || (int) $snapshot['cohort_size'] < $minimum) {
+                return new WP_Error('smai_invalid_narrative_citation', 'Narrative citation snapshot is unavailable under the current privacy policy.', ['status' => 409]);
+            }
             if ($canonicalStart !== '' && (!hash_equals((string) $snapshot['window_start'], $canonicalStart) || !hash_equals((string) $snapshot['window_end'], $canonicalEnd))) { return new WP_Error('smai_invalid_narrative_citation', 'Narrative citation window does not match the immutable snapshot.', ['status' => 409]); }
             $normalized = ['metric_id'=>$metricId,'metric_version'=>$metricVersion,'snapshot_hash'=>$snapshotHash,'window_start'=>(string)$snapshot['window_start'],'window_end'=>(string)$snapshot['window_end']];
 
@@ -260,9 +268,17 @@ final class NarrativeService
         foreach ($citations as $citation) {
             if (!is_array($citation)) { return false; }
             $metricId=(string)($citation['metric_id']??''); $metricVersion=(string)($citation['metric_version']??''); $hash=strtolower((string)($citation['snapshot_hash']??''));
-            if ((new MetricCatalog($this->db))->active($metricId,$metricVersion)===null || preg_match('/^[a-f0-9]{64}$/',$hash)!==1) { return false; }
-            $snapshot=$this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT window_start,window_end,quality_status FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",$metricId,$metricVersion,$hash),ARRAY_A);
-            if (!is_array($snapshot) || in_array((string)$snapshot['quality_status'],['suppressed','invalidated'],true) || !hash_equals((string)$snapshot['window_start'],(string)($citation['window_start']??'')) || !hash_equals((string)$snapshot['window_end'],(string)($citation['window_end']??''))) { return false; }
+            $metric=(new MetricCatalog($this->db))->active($metricId,$metricVersion);
+            if (!is_array($metric) || preg_match('/^[a-f0-9]{64}$/',$hash)!==1) { return false; }
+            $snapshot=$this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT window_start,window_end,quality_status,dimensions_json,cohort_size FROM `{$this->db->table('metric_snapshots')}` WHERE metric_id=%s AND metric_version=%s AND snapshot_hash=%s AND state='published' LIMIT 1",$metricId,$metricVersion,$hash),ARRAY_A);
+            if (!is_array($snapshot)) { return false; }
+            $dimensions=Json::object((string)($snapshot['dimensions_json']??'{}'));
+            $minimum=PrivacyQueryPolicy::effectiveMinimum((array)$metric['definition'],$dimensions,max((int)$metric['minimum_cohort'],(int)get_option('smai_minimum_cohort',20)));
+            if (in_array((string)$snapshot['quality_status'],['suppressed','invalidated'],true)
+                || PrivacyQueryPolicy::violations((array)$metric['definition'],$dimensions)!==[]
+                || (int)$snapshot['cohort_size']<$minimum
+                || !hash_equals((string)$snapshot['window_start'],(string)($citation['window_start']??''))
+                || !hash_equals((string)$snapshot['window_end'],(string)($citation['window_end']??''))) { return false; }
         }
         return true;
     }
