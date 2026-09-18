@@ -1,10 +1,10 @@
-# CF-05 Three-Plan Traceability — 1.0.0-rc.5
+# CF-05 Three-Plan Traceability — 1.0.0-rc.9
 
 ## Governing sources
 
 1. **Sabri Social Homeopathy Platform Definitive Integrated Master Plan 2026 v3.0 (`SSH-PMP-2026-v3.0`)** — canonical ownership, evidence-only lifecycle status, staging-first deployment, cross-file integration, security/privacy, accessibility, migration and rollback.
 2. **Consolidated All-Chats Recovered Directive Register 2.1** — Islamic supremacy, anti-surveillance and dignity controls, central green identity, Master-Plan-first workflow, visible evidence, repeated review/fix until zero known defects, comprehensive GitHub review and truthful status separation.
-3. **CF-05 Conditional Complete Master Plan 2026 v1.0 — Analytics, Metrics and Institutional Intelligence** — conditional activation, event governance, derivative warehouse, lineage, quality, metric semantics, privacy-safe queries, reports, experiments, deletion, provider exit and restore. Functional requirement range: `CF05-FR-001` through `CF05-FR-035`.
+3. **CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended — Analytics, Metrics and Institutional Intelligence** — conditional activation, event governance, derivative warehouse, lineage, quality, metric semantics, privacy-safe queries, reports, experiments, deletion, provider exit and restore. Functional requirement range: `CF05-FR-001` through `CF05-FR-035`.
 
 ## Cross-plan implementation map
 
