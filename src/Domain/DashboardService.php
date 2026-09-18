@@ -287,7 +287,7 @@ final class DashboardService
 
 
     /** @return true|WP_Error */
-    private function storedWidgetsValidForActivation(array $dashboard): true|WP_Error
+    private function storedWidgetsValidForActivation(array $dashboard): bool|WP_Error
     {
         $project = (new AccessProjectService($this->db))->get((string) $dashboard['project_uuid']);
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) { return new WP_Error('smai_dashboard_project_inactive', 'Dashboard access project is inactive.', ['status' => 409]); }
