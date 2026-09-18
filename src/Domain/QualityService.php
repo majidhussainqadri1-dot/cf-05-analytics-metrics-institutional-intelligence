@@ -87,14 +87,26 @@ final class QualityService
 
     public function enqueue(string $datasetRef, int $actorUserId, ?string $buildUuid = null): array|WP_Error
     {
-        try {$this->splitRef($datasetRef);} catch (\Throwable $e) {return new WP_Error('smai_invalid_dataset_ref', 'Dataset reference is invalid.', ['status' => 400]);}
-        return (new JobQueue($this->db))->enqueue('quality.run', ['dataset_ref' => $datasetRef, 'build_uuid' => $buildUuid, 'actor_user_id' => $actorUserId], 'quality|' . $datasetRef . '|' . ($buildUuid ?: 'active') . '|' . gmdate('Y-m-d-H'));
+        if ($actorUserId < 1
+            || preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\\.[0-9]+\\.[0-9]+$/', $datasetRef) !== 1
+            || ($buildUuid !== null && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $buildUuid) !== 1)) {
+            return new WP_Error('smai_invalid_quality_job', 'Quality-run request is invalid.', ['status' => 400]);
+        }
+        return (new JobQueue($this->db))->enqueue(
+            'quality.run',
+            ['dataset_ref' => $datasetRef, 'build_uuid' => $buildUuid, 'actor_user_id' => $actorUserId],
+            'quality|' . $datasetRef . '|' . ($buildUuid ?: 'active') . '|' . gmdate('Y-m-d-H')
+        );
     }
 
     /** @param array<string,mixed> $payload @return array<string,mixed> */
     public function runJob(array $payload): array
     {
         $datasetRef = (string) ($payload['dataset_ref'] ?? '');
+        $actorUserId = (int) ($payload['actor_user_id'] ?? 0);
+        if ($actorUserId < 1 || preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\\.[0-9]+\\.[0-9]+$/', $datasetRef) !== 1) {
+            throw new \RuntimeException('Quality job provenance is invalid.');
+        }
         [$datasetId, $version] = $this->splitRef($datasetRef);
         $wpdb = $this->db->wpdb();
         $dataset = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$this->db->table('datasets')}` WHERE dataset_id=%s AND dataset_version=%s", $datasetId, $version), ARRAY_A);
@@ -114,24 +126,58 @@ final class QualityService
             $worst = 'unknown';
             $results[] = ['rule_id' => null, 'status' => 'unknown', 'reason' => 'no_active_quality_rules'];
         }
-        foreach (is_array($rules) ? $rules : [] as $rule) {
-            $config = Json::object((string) $rule['config_json']);
-            [$status,$observed,$threshold,$evidence] = $this->evaluate((string) $rule['rule_type'], $config, $rows, $decoded, $datasetRef, (string) $build['build_uuid']);
-            if ($status !== 'pass') {
-                $worst = in_array((string) $rule['severity'], ['high','critical'], true) ? 'red' : ($worst === 'red' ? 'red' : 'amber');
-                $this->upsertIssue($datasetRef, (string) $rule['rule_id'], (string) $rule['severity'], $evidence, (int) $rule['owner_user_id']);
-            } else {
-                $this->resolveIssue($datasetRef, (string) $rule['rule_id']);
-            }
-            if ($wpdb->insert($this->db->table('quality_results'), [
-                'run_uuid' => $runUuid, 'rule_id' => $rule['rule_id'], 'rule_version' => $rule['rule_version'], 'dataset_ref' => $datasetRef,
-                'build_uuid' => $build['build_uuid'], 'status' => $status, 'observed_decimal' => $observed, 'threshold_decimal' => $threshold,
-                'evidence_json' => Json::encode($evidence), 'created_at' => $this->db->now(),
-            ]) !== 1) {throw new \RuntimeException('Quality result could not be stored.');}
-            $results[] = ['rule_id' => $rule['rule_id'], 'status' => $status, 'severity' => $rule['severity'], 'observed' => $observed, 'threshold' => $threshold];
+
+        if ($wpdb->query('START TRANSACTION') === false) {
+            throw new \RuntimeException('Quality-run transaction could not start.');
         }
-        if ((int) $build['is_active'] === 1) {$wpdb->update($this->db->table('datasets'), ['quality_status' => $worst, 'updated_at' => $this->db->now()], ['id' => (int) $dataset['id']]);}
-        $this->audit->log('dataset_quality_run', 'dataset', $datasetRef, $worst, ['run_uuid' => $runUuid, 'build_uuid' => $build['build_uuid'], 'rules' => count($results)], 'data_quality', null, (int) ($payload['actor_user_id'] ?? 0));
+        try {
+            foreach (is_array($rules) ? $rules : [] as $rule) {
+                $config = Json::object((string) $rule['config_json']);
+                [$status,$observed,$threshold,$evidence] = $this->evaluate((string) $rule['rule_type'], $config, $rows, $decoded, $datasetRef, (string) $build['build_uuid']);
+                if ($status !== 'pass') {
+                    $worst = in_array((string) $rule['severity'], ['high','critical'], true) ? 'red' : ($worst === 'red' ? 'red' : 'amber');
+                    $this->upsertIssue($datasetRef, (string) $rule['rule_id'], (string) $rule['severity'], $evidence, (int) $rule['owner_user_id']);
+                } else {
+                    $this->resolveIssue($datasetRef, (string) $rule['rule_id']);
+                }
+                if ($wpdb->insert($this->db->table('quality_results'), [
+                    'run_uuid' => $runUuid, 'rule_id' => $rule['rule_id'], 'rule_version' => $rule['rule_version'], 'dataset_ref' => $datasetRef,
+                    'build_uuid' => $build['build_uuid'], 'status' => $status, 'observed_decimal' => $observed, 'threshold_decimal' => $threshold,
+                    'evidence_json' => Json::encode($evidence), 'created_at' => $this->db->now(),
+                ]) !== 1) {
+                    throw new \RuntimeException('Quality result could not be stored.');
+                }
+                $results[] = ['rule_id' => $rule['rule_id'], 'status' => $status, 'severity' => $rule['severity'], 'observed' => $observed, 'threshold' => $threshold];
+            }
+            if ((int) $build['is_active'] === 1) {
+                $updated = $wpdb->update(
+                    $this->db->table('datasets'),
+                    ['quality_status' => $worst, 'updated_at' => $this->db->now()],
+                    ['id' => (int) $dataset['id']]
+                );
+                if ($updated === false) {
+                    throw new \RuntimeException('Dataset quality status could not be stored.');
+                }
+            }
+            if (!$this->audit->logInOpenTransaction(
+                'dataset_quality_run',
+                'dataset',
+                $datasetRef,
+                $worst,
+                ['run_uuid' => $runUuid, 'build_uuid' => $build['build_uuid'], 'rules' => count($results)],
+                'data_quality',
+                null,
+                $actorUserId
+            )) {
+                throw new \RuntimeException('Quality-run audit evidence could not be stored.');
+            }
+            if ($wpdb->query('COMMIT') === false) {
+                throw new \RuntimeException('Quality-run transaction could not be committed.');
+            }
+        } catch (\Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            throw $error;
+        }
         return ['run_uuid' => $runUuid, 'dataset_ref' => $datasetRef, 'build_uuid' => $build['build_uuid'], 'quality_status' => $worst, 'results' => $results];
     }
 
@@ -174,8 +220,9 @@ final class QualityService
             $field=(string)($config['field']??'');$baseline=is_array($config['baseline']??null)?$config['baseline']:[];$counts=[];
             foreach($rows as $row){$k=(string)($row[$field]??'__null__');$counts[$k]=($counts[$k]??0)+1;}
             $total=max(1,count($rows));$maxDelta=0.0;
-            foreach($baseline as $k=>$ratio){$observed=($counts[(string)$k]??0)/$total;$maxDelta=max($maxDelta,abs($observed-(float)$ratio));}
-            $limit=(float)($config['max_absolute_delta']??0.1);return[$maxDelta<=$limit?'pass':'fail',$maxDelta,$limit,['field'=>$field,'observed_counts'=>$counts]];
+            $categories=array_values(array_unique(array_merge(array_map('strval',array_keys($baseline)),array_map('strval',array_keys($counts)))));
+            foreach($categories as $k){$observed=($counts[$k]??0)/$total;$expected=(float)($baseline[$k]??0.0);$maxDelta=max($maxDelta,abs($observed-$expected));}
+            $limit=(float)($config['max_absolute_delta']??0.1);return[$maxDelta<=$limit?'pass':'fail',$maxDelta,$limit,['field'=>$field,'observed_counts'=>$counts,'categories_evaluated'=>$categories]];
         }
         $expected=(int)($config['expected_count']??count($rows));$tolerance=max(0,(int)($config['tolerance']??0));$difference=abs(count($rows)-$expected);
         return[$difference<=$tolerance?'pass':'fail',(float)count($rows),(float)$expected,['difference'=>$difference,'tolerance'=>$tolerance,'dataset_ref'=>$datasetRef,'build_uuid'=>$buildUuid]];
@@ -185,6 +232,18 @@ final class QualityService
     private function validateConfig(string $type, array $config): ?WP_Error
     {
         if (in_array($type,['completeness','uniqueness','validity','distribution_drift'],true) && preg_match('/^[a-z][a-z0-9_]{0,63}$/',(string)($config['field']??''))!==1) {return new WP_Error('smai_quality_field_required','Quality rule field is invalid.',['status'=>400]);}
+        if ($type === 'distribution_drift') {
+            $baseline = $config['baseline'] ?? null;
+            $limit = $config['max_absolute_delta'] ?? null;
+            if (!is_array($baseline) || $baseline === [] || count($baseline) > 1000 || !is_numeric($limit) || !is_finite((float) $limit) || (float) $limit < 0.0 || (float) $limit > 1.0) {
+                return new WP_Error('smai_quality_drift_config_invalid', 'Distribution-drift configuration is invalid.', ['status'=>400]);
+            }
+            foreach ($baseline as $category => $ratio) {
+                if (!is_string($category) || $category === '' || strlen($category) > 190 || !is_numeric($ratio) || !is_finite((float) $ratio) || (float) $ratio < 0.0 || (float) $ratio > 1.0) {
+                    return new WP_Error('smai_quality_drift_config_invalid', 'Distribution-drift baseline is invalid.', ['status'=>400]);
+                }
+            }
+        }
         if ($type==='referential_integrity' && (preg_match('/^[a-z][a-z0-9_]{0,63}$/',(string)($config['field']??''))!==1 || preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\.[0-9]+\.[0-9]+$/',(string)($config['target_dataset_ref']??''))!==1 || preg_match('/^[a-z][a-z0-9_]{0,63}$/',(string)($config['target_field']??''))!==1)) {return new WP_Error('smai_quality_reference_invalid','Referential-integrity rule is invalid.',['status'=>400]);}
         return null;
     }
@@ -193,13 +252,17 @@ final class QualityService
     private function upsertIssue(string $datasetRef,string $ruleId,string $severity,array $evidence,int $owner):void
     {
         $table=$this->db->table('quality_issues');$existing=$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT id FROM `{$table}` WHERE dataset_ref=%s AND rule_id=%s AND state='open' LIMIT 1",$datasetRef,$ruleId));
-        if($existing){$this->db->wpdb()->update($table,['severity'=>$severity,'evidence_json'=>Json::encode($evidence),'updated_at'=>$this->db->now()],['id'=>(int)$existing]);return;}
-        $this->db->wpdb()->insert($table,['issue_uuid'=>Uuid::v4(),'dataset_ref'=>$datasetRef,'rule_id'=>$ruleId,'severity'=>$severity,'state'=>'open','summary'=>'Quality rule failed: '.$ruleId,'evidence_json'=>Json::encode($evidence),'owner_user_id'=>$owner?:null,'detected_at'=>$this->db->now(),'updated_at'=>$this->db->now()]);
+        if($existing){
+            if($this->db->wpdb()->update($table,['severity'=>$severity,'evidence_json'=>Json::encode($evidence),'updated_at'=>$this->db->now()],['id'=>(int)$existing])===false){throw new \RuntimeException('Quality issue update failed.');}
+            return;
+        }
+        if($this->db->wpdb()->insert($table,['issue_uuid'=>Uuid::v4(),'dataset_ref'=>$datasetRef,'rule_id'=>$ruleId,'severity'=>$severity,'state'=>'open','summary'=>'Quality rule failed: '.$ruleId,'evidence_json'=>Json::encode($evidence),'owner_user_id'=>$owner?:null,'detected_at'=>$this->db->now(),'updated_at'=>$this->db->now()])!==1){throw new \RuntimeException('Quality issue insert failed.');}
     }
 
     private function resolveIssue(string $datasetRef,string $ruleId):void
     {
-        $this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('quality_issues')}` SET state='resolved',resolved_at=%s,updated_at=%s WHERE dataset_ref=%s AND rule_id=%s AND state='open'",$this->db->now(),$this->db->now(),$datasetRef,$ruleId));
+        $result=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('quality_issues')}` SET state='resolved',resolved_at=%s,updated_at=%s WHERE dataset_ref=%s AND rule_id=%s AND state='open'",$this->db->now(),$this->db->now(),$datasetRef,$ruleId));
+        if($result===false){throw new \RuntimeException('Quality issue resolution failed.');}
     }
 
     /** @return array{0:string,1:string} */
