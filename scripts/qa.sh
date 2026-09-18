@@ -25,6 +25,7 @@ python3 scripts/infrastructure-runtime-invariants-check.py
 python3 scripts/review20-29-invariants-check.py
 python3 scripts/review30-39-invariants-check.py
 python3 scripts/review40-49-invariants-check.py
+python3 scripts/review50-59-invariants-check.py
 python3 scripts/security-static-check.py
 python3 scripts/secret-scan.py
 printf 'CF-05 source QA passed.
