@@ -23,7 +23,10 @@ required=[
  ('jobs','lease_attempts_exhausted'),
  ('plugin','if (!$this->upgradeIfNeeded())'),
 ]
-missing=[f'{name}: {needle}' for name,needle in required if needle not in checks[name]]
+def compact(value: str) -> str:
+    return ''.join(value.split())
+
+missing=[f'{name}: {needle}' for name,needle in required if compact(needle) not in compact(checks[name])]
 if missing:
  print('Review 20-29 invariant regression:\n'+'\n'.join(missing),file=sys.stderr);sys.exit(1)
 print('Review 20-29 permanent invariants check passed.')
