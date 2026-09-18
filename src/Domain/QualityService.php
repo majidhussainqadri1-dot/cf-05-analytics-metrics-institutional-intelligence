@@ -27,6 +27,9 @@ final class QualityService
     /** @param array<string,mixed> $rule */
     public function register(array $rule, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_quality')) {
+            return new WP_Error('smai_quality_forbidden', 'Quality-rule registration is not authorized.', ['status'=>403]);
+        }
         if (!RuntimeGate::catalogEnabled()) {
             return new WP_Error('smai_catalog_disabled', 'Quality-rule catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
         }
@@ -34,8 +37,7 @@ final class QualityService
             if (!array_key_exists($key, $rule)) {return new WP_Error('smai_invalid_quality_rule', 'Quality rule is incomplete.', ['status' => 400, 'field' => $key]);}
         }
         $types = ['freshness','completeness','uniqueness','validity','referential_integrity','distribution_drift','reconciliation'];
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) $rule['rule_id']) !== 1
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) $rule['rule_id']) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', (string) $rule['rule_version']) !== 1
             || preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\.[0-9]+\.[0-9]+$/', (string) $rule['dataset_ref']) !== 1
             || !in_array((string) $rule['rule_type'], $types, true)
@@ -74,6 +76,9 @@ final class QualityService
 
     public function activate(string $ruleId, string $version, int $expectedVersion, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_quality_forbidden', 'Quality-rule activation is not authorized.', ['status'=>403]);
+        }
         if (!RuntimeGate::catalogEnabled()) {
             return new WP_Error('smai_catalog_disabled', 'Quality-rule catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
         }
@@ -94,8 +99,11 @@ final class QualityService
 
     public function enqueue(string $datasetRef, int $actorUserId, ?string $buildUuid = null): array|WP_Error
     {
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\\.[0-9]+\\.[0-9]+$/', $datasetRef) !== 1
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_quality')) {
+            return new WP_Error('smai_quality_forbidden', 'Quality execution is not authorized.', ['status'=>403]);
+        }
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\\.[0-9]+\\.[0-9]+$/', $datasetRef) !== 1
+
             || ($buildUuid !== null && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $buildUuid) !== 1)) {
             return new WP_Error('smai_invalid_quality_job', 'Quality-run request is invalid.', ['status' => 400]);
         }
