@@ -113,13 +113,14 @@ def main() -> int:
         for label, (actual, expected) in expected_pairs.items():
             if actual != expected:
                 failures.append(f'{label} mismatch: {actual!r} != {expected!r}')
-        if f"version='{version}'" not in BUILD:
-            failures.append('build-package.py version differs from plugin version')
-        if f"'schema_version':'{schema_version}'" not in BUILD:
-            failures.append('build-package.py schema version differs from plugin schema version')
-        expected_archive = f'CF-05-sabri-analytics-institutional-intelligence-{version}.zip'
-        if expected_archive not in VERIFY:
-            failures.append('deterministic build verifier targets a different release archive')
+        if "constant('SMAI_VERSION')" not in BUILD:
+            failures.append('build-package.py does not derive plugin version dynamically')
+        if "constant('SMAI_SCHEMA_VERSION')" not in BUILD:
+            failures.append('build-package.py does not derive schema version dynamically')
+        if "constant('SMAI_CONTRACT_VERSION')" not in BUILD:
+            failures.append('build-package.py does not derive contract version dynamically')
+        if "SMAI_VERSION" not in VERIFY or "${version}.zip" not in VERIFY:
+            failures.append('deterministic build verifier does not derive release archive dynamically')
     except AssertionError as error:
         failures.append(str(error))
 

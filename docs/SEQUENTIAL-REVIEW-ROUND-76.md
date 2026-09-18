@@ -18,5 +18,8 @@ The CI workflow, deterministic builder, package-parity verifier, release-governa
 - Made README review-evidence wording round-neutral.
 - Renamed the package-manifest timestamp field to make clear that it is the fixed reproducible archive timestamp, not a release-date claim.
 
+## Post-correction QA
+The first correction commit intentionally removed hard-coded release identity. Exact-head CI then exposed three stale assertions in `schema-contract-check.py` that still required those literals. Those assertions were updated to verify dynamic identity derivation instead; this was a correction-regression repair, not a new review round.
+
 ## Truth boundary
 Deterministic packaging and CI correctness are repository-source evidence only. They do not prove that any ZIP is deployed, that deployed files match this HEAD, or that staging/live DB migration and operational state are verified.
