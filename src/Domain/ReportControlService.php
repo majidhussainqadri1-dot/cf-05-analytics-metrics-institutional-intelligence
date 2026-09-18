@@ -24,6 +24,9 @@ final class ReportControlService
     /** @param array<string,mixed> $changes */
     public function update(string $uuid, int $expectedVersion, array $changes, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_reports')) {
+            return new WP_Error('smai_report_control_forbidden', 'Report update is not authorized.', ['status'=>403]);
+        }
         $allowedChangeKeys = ['recipients','metrics','name','schedule','expires_at'];
         if (array_diff(array_keys($changes), $allowedChangeKeys) !== []) {
             return new WP_Error('smai_invalid_report_update', 'Report update contains unsupported fields.', ['status' => 400]);
@@ -99,11 +102,17 @@ final class ReportControlService
 
     public function pause(string $uuid, int $expectedVersion, string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_reports')) {
+            return new WP_Error('smai_report_control_forbidden', 'Report pause is not authorized.', ['status'=>403]);
+        }
         return $this->transition($uuid, $expectedVersion, 'active', 'paused', $reason, $actorUserId, false);
     }
 
     public function resume(string $uuid, int $expectedVersion, string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_report_control_forbidden', 'Report resume is not authorized.', ['status'=>403]);
+        }
         $report = $this->get($uuid);
         if (!is_array($report) || (string) $report['state'] !== 'paused' || (int) $report['row_version'] !== $expectedVersion) {
             return new WP_Error('smai_report_resume_stale', 'Report is unavailable or stale.', ['status' => 409]);
@@ -135,6 +144,9 @@ final class ReportControlService
 
     public function revoke(string $uuid, int $expectedVersion, string $reason, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || (!user_can($actorUserId, 'smai_manage_reports') && !user_can($actorUserId, 'smai_manage_access'))) {
+            return new WP_Error('smai_report_control_forbidden', 'Report revocation is not authorized.', ['status'=>403]);
+        }
         $report = $this->get($uuid);
         if (!is_array($report) || (int) $report['row_version'] !== $expectedVersion) {
             return new WP_Error('smai_report_revoke_stale', 'Report is unavailable or stale.', ['status' => 409]);

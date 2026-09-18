@@ -27,11 +27,14 @@ final class ReportService
     /** @param array<string,mixed> $definition */
     public function create(string $name, string $projectUuid, array $definition, ?string $schedule, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_reports')) {
+            return new WP_Error('smai_report_forbidden', 'Report creation is not authorized.', ['status'=>403]);
+        }
         $allowedDefinitionKeys = ['metrics','recipients','expires_at'];
         $cleanName = Text::truncate(trim(wp_strip_all_tags($name)), 190);
         $metrics = is_array($definition['metrics'] ?? null) ? array_values($definition['metrics']) : [];
         $recipients = is_array($definition['recipients'] ?? null) ? array_values($definition['recipients']) : [];
-        if ($actorUserId < 1 || strlen($cleanName) < 3 || $metrics === [] || $recipients === [] || count($metrics) > 50 || count($recipients) > 50
+        if (strlen($cleanName) < 3 || $metrics === [] || $recipients === [] || count($metrics) > 50 || count($recipients) > 50
             || array_diff(array_keys($definition), $allowedDefinitionKeys) !== []
             || (new \Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector())->violations([$cleanName, $definition]) !== []) {
             return new WP_Error('smai_invalid_report', 'Report definition is incomplete.', ['status' => 400]);
@@ -138,6 +141,9 @@ final class ReportService
 
     public function activate(string $uuid, int $expectedVersion, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_report_forbidden', 'Report activation is not authorized.', ['status'=>403]);
+        }
         $table = $this->db->table('reports');
         $report = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE report_uuid=%s", $uuid), ARRAY_A);
         if (!is_array($report) || (string) $report['state'] !== 'draft' || (int) $report['row_version'] !== $expectedVersion) {
