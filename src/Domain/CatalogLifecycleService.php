@@ -7,6 +7,7 @@ namespace Sabri\AnalyticsIntelligence\Domain;
 use Sabri\AnalyticsIntelligence\Infrastructure\AuditLogger;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\Json;
+use Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate;
 use Sabri\AnalyticsIntelligence\Infrastructure\Text;
 use WP_Error;
 
@@ -23,6 +24,9 @@ final class CatalogLifecycleService
 
     public function transition(string $objectType, int $objectId, string $targetState, int $expectedRowVersion, string $reason, int $actorUserId, ?string $idempotencyKey = null): array|WP_Error
     {
+        if (!RuntimeGate::catalogEnabled()) {
+            return new WP_Error('smai_catalog_disabled', 'Catalog lifecycle mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
+        }
         $tableName = match ($objectType) {
             'event_schema' => 'event_schemas',
             'metric' => 'metrics',
