@@ -3,7 +3,7 @@ Contributors: majidhussainqadri1-dot
 Tags: analytics, metrics, privacy, governance, institutional intelligence
 Requires at least: 6.0
 Requires PHP: 8.1
-Stable tag: 1.0.0-rc.8
+Stable tag: 1.0.0-rc.9
 License: Proprietary
 
 Conditional, privacy-safe derivative analytics, semantic metrics and institutional decision-support for the Sabri Social Homeopathy Platform.
