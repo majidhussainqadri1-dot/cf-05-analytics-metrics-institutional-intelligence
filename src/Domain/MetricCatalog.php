@@ -27,11 +27,14 @@ final class MetricCatalog
     /** @param array<string,mixed> $definition */
     public function register(array $definition, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_catalog')) {
+            return new WP_Error('smai_catalog_forbidden', 'Metric registration is not authorized.', ['status'=>403]);
+        }
         if (!RuntimeGate::catalogEnabled()) {
             return new WP_Error('smai_catalog_disabled', 'Catalog mutation is disabled until the governed catalog runtime is enabled.', ['status' => 503]);
         }
         $errors = $this->validator->errors($definition);
-        if ($actorUserId < 1 || $errors !== []) {
+        if ($errors !== []) {
             return new WP_Error('smai_invalid_metric', 'Metric definition validation failed.', ['status' => 400, 'errors' => $errors]);
         }
         $normalized = $this->validator->normalize($definition);
