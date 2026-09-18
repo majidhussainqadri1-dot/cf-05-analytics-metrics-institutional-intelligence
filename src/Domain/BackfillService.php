@@ -29,10 +29,12 @@ final class BackfillService
     /** @param array<string,mixed> $definition */
     public function plan(string $datasetId, string $version, string $start, string $end, array $definition, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_backfills')) {
+            return new WP_Error('smai_backfill_forbidden', 'Backfill planning is not authorized.', ['status'=>403]);
+        }
         $startDate = $this->normalizeDate($start);
         $endDate = $this->normalizeDate($end);
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $datasetId) !== 1
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $datasetId) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $version) !== 1
             || $startDate === null || $endDate === null || $startDate >= $endDate) {
             return new WP_Error('smai_invalid_backfill_window', 'Backfill window is invalid.', ['status' => 400]);
@@ -93,7 +95,10 @@ final class BackfillService
 
     public function dryRun(string $uuid, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1) {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_backfills')) {
+            return new WP_Error('smai_backfill_forbidden', 'Backfill dry-run is not authorized.', ['status'=>403]);
+        }
+        if (preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1) {
             return new WP_Error('smai_invalid_backfill_request', 'Backfill request is invalid.', ['status' => 400]);
         }
         $row = $this->backfill($uuid);
@@ -138,7 +143,10 @@ final class BackfillService
 
     public function approveAndQueue(string $uuid, int $expectedVersion, int $actorUserId): array|WP_Error
     {
-        if ($actorUserId < 1 || $expectedVersion < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1) {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_backfill_forbidden', 'Backfill approval is not authorized.', ['status'=>403]);
+        }
+        if ($expectedVersion < 1 || preg_match('/^[0-9a-f-]{36}$/i', $uuid) !== 1) {
             return new WP_Error('smai_invalid_backfill_request', 'Backfill request is invalid.', ['status' => 400]);
         }
         $row = $this->backfill($uuid);
@@ -305,6 +313,9 @@ final class BackfillService
 
     public function activate(string $uuid, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            return new WP_Error('smai_backfill_forbidden', 'Backfill activation is not authorized.', ['status'=>403]);
+        }
         $row = $this->backfill($uuid);
         if ($row === null || (string) $row['state'] !== 'compared' || empty($row['build_uuid'])) {
             return new WP_Error('smai_backfill_not_compared', 'Backfill must be compared before activation.', ['status' => 409]);
@@ -343,6 +354,9 @@ final class BackfillService
 
     public function rollback(string $uuid, int $actorUserId): array|WP_Error
     {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_restore')) {
+            return new WP_Error('smai_backfill_forbidden', 'Backfill rollback is not authorized.', ['status'=>403]);
+        }
         $row = $this->backfill($uuid);
         if ($row === null || (string) $row['state'] !== 'activated' || empty($row['build_uuid']) || empty($row['previous_build_uuid'])) {
             return new WP_Error('smai_backfill_not_rollbackable', 'Backfill has no governed rollback target.', ['status' => 409]);
