@@ -51,6 +51,7 @@ final class Activator
         add_option('smai_raw_retention_days', '30', '', false);
         add_option('smai_modeled_retention_days', '180', '', false);
         add_option('smai_quarantine_retention_days', '14', '', false);
+        add_option('smai_deletion_slo_hours', '24', '', false);
         add_option('smai_future_run_retention_days', '180', '', false);
         add_option('smai_future_scenario_retention_days', '365', '', false);
         add_option('smai_future_alert_retention_days', '180', '', false);
