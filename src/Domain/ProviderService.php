@@ -21,10 +21,11 @@ final class ProviderService
     /** @param array<string,mixed> $definition */
     public function register(array $definition,int $actorUserId):array|WP_Error
     {
+        if($actorUserId<1||!user_can($actorUserId,'smai_manage_providers')){return new WP_Error('smai_provider_forbidden','Provider registration is not authorized.',['status'=>403]);}
         $allowedKeys=['provider_id','provider_version','region_code','capabilities','security','retention','exit'];
         if(array_diff(array_keys($definition),$allowedKeys)!==[]){return new WP_Error('smai_invalid_provider','Provider definition contains unsupported fields.',['status'=>400]);}
         foreach($allowedKeys as $key){if(!array_key_exists($key,$definition)){return new WP_Error('smai_invalid_provider','Provider definition is incomplete.',['status'=>400,'field'=>$key]);}}
-        if($actorUserId<1||preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/',(string)$definition['provider_id'])!==1||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/',(string)$definition['provider_version'])!==1||preg_match('/^[A-Z]{2}(?:-[A-Z0-9]{2,8})?$/',(string)$definition['region_code'])!==1||!is_array($definition['capabilities'])||!is_array($definition['security'])||!is_array($definition['retention'])||!is_array($definition['exit'])){return new WP_Error('smai_invalid_provider','Provider definition validation failed.',['status'=>400]);}
+        if(preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/',(string)$definition['provider_id'])!==1||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/',(string)$definition['provider_version'])!==1||preg_match('/^[A-Z]{2}(?:-[A-Z0-9]{2,8})?$/',(string)$definition['region_code'])!==1||!is_array($definition['capabilities'])||!is_array($definition['security'])||!is_array($definition['retention'])||!is_array($definition['exit'])){return new WP_Error('smai_invalid_provider','Provider definition validation failed.',['status'=>400]);}
         if((new SensitiveValueDetector())->violations(['capabilities'=>$definition['capabilities'],'security'=>$definition['security'],'retention'=>$definition['retention'],'exit'=>$definition['exit']])!==[]){return new WP_Error('smai_provider_secrets_prohibited','Provider definitions may contain evidence references, never credentials or sensitive values.',['status'=>400]);}
         $allowedRegions=get_option('smai_allowed_regions',['PK']);if(!is_array($allowedRegions)||!in_array($definition['region_code'],$allowedRegions,true)){return new WP_Error('smai_provider_region_denied','Provider region is not approved.',['status'=>403]);}
         $canonical=['capabilities'=>$definition['capabilities'],'security'=>$definition['security'],'retention'=>$definition['retention'],'exit'=>$definition['exit']];
@@ -38,7 +39,8 @@ final class ProviderService
     /** @param array<string,mixed> $evidence */
     public function transition(string $providerId,string $version,string $target,int $expectedVersion,int $actorUserId,array $evidence=[]):array|WP_Error
     {
-        if($actorUserId<1||$expectedVersion<1||preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/',$providerId)!==1||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/',$version)!==1||preg_match('/^[a-z_]{3,32}$/',$target)!==1){return new WP_Error('smai_invalid_provider_transition','Provider transition identity or actor is invalid.',['status'=>400]);}
+        if($actorUserId<1||!user_can($actorUserId,'smai_manage_providers')){return new WP_Error('smai_provider_forbidden','Provider transition is not authorized.',['status'=>403]);}
+        if($expectedVersion<1||preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/',$providerId)!==1||preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/',$version)!==1||preg_match('/^[a-z_]{3,32}$/',$target)!==1){return new WP_Error('smai_invalid_provider_transition','Provider transition identity or actor is invalid.',['status'=>400]);}
         $table=$this->db->table('providers');$row=$this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$table}` WHERE provider_id=%s AND provider_version=%s",$providerId,$version),ARRAY_A);
         if(!is_array($row)||(int)$row['row_version']!==$expectedVersion){return new WP_Error('smai_provider_stale','Provider is unavailable or stale.',['status'=>409]);}
         $from=(string)$row['state'];if(!in_array($target,self::TRANSITIONS[$from]??[],true)){return new WP_Error('smai_invalid_provider_transition','Provider transition is not allowed.',['status'=>409]);}
