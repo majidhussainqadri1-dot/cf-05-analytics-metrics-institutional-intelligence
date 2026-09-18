@@ -1,19 +1,115 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sabrihomeopathy.com/contracts/cf05/future-feature-1.4.0.schema.json",
-  "title": "CF-05 Future Feature Contract",
+  "title": "CF-05 Future Feature Registry/List Contract",
   "type": "object",
   "additionalProperties": false,
-  "required": ["feature_id", "title", "category", "phase", "risk", "state", "aggregate_only", "human_governed", "autonomous_decision"],
+  "required": [
+    "feature_id",
+    "title",
+    "category",
+    "phase",
+    "risk",
+    "capability",
+    "purpose",
+    "default_state",
+    "aggregate_only",
+    "human_governed",
+    "autonomous_decision",
+    "state",
+    "configured",
+    "row_version",
+    "approved_by",
+    "updated_at"
+  ],
   "properties": {
-    "feature_id": {"type": "string", "pattern": "^CF05-FUT-(00[1-9]|0[1-3][0-9]|040)$"},
-    "title": {"type": "string", "minLength": 3, "maxLength": 190},
-    "category": {"type": "string", "enum": ["metric_governance", "lineage_catalog", "quality_intelligence", "institutional_intelligence", "privacy_research", "ai_intelligence"]},
-    "phase": {"type": "string", "enum": ["NEXT", "SCALE", "EXPERIMENT"]},
-    "risk": {"type": "string", "enum": ["standard", "elevated", "critical"]},
-    "state": {"type": "string", "enum": ["disabled", "configured", "approved", "active", "paused", "retired"]},
-    "aggregate_only": {"const": true},
-    "human_governed": {"const": true},
-    "autonomous_decision": {"const": false}
+    "feature_id": {
+      "type": "string",
+      "pattern": "^CF05-FUT-(00[1-9]|0[1-3][0-9]|040)$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 190
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "metric_governance",
+        "lineage_catalog",
+        "quality_intelligence",
+        "institutional_intelligence",
+        "privacy_research",
+        "ai_intelligence"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "NEXT",
+        "SCALE",
+        "EXPERIMENT"
+      ]
+    },
+    "risk": {
+      "type": "string",
+      "enum": [
+        "standard",
+        "elevated",
+        "critical"
+      ]
+    },
+    "capability": {
+      "type": "string",
+      "pattern": "^smai_[a-z0-9_]{3,100}$"
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 500
+    },
+    "default_state": {
+      "const": "disabled"
+    },
+    "aggregate_only": {
+      "const": true
+    },
+    "human_governed": {
+      "const": true
+    },
+    "autonomous_decision": {
+      "const": false
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "disabled",
+        "configured",
+        "approved",
+        "active",
+        "paused",
+        "retired"
+      ]
+    },
+    "configured": {
+      "type": "boolean"
+    },
+    "row_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "approved_by": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
   }
 }
