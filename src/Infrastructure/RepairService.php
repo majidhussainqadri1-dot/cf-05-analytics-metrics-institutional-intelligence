@@ -22,18 +22,26 @@ final class RepairService
                 $missing[] = $name;
             }
         }
+        $schemaVersion = (string) get_option('smai_schema_version', 'unknown');
+        $cron = [
+            'retention' => wp_next_scheduled('smai_daily_retention') ?: null,
+            'jobs' => wp_next_scheduled('smai_run_jobs') ?: null,
+            'reports' => wp_next_scheduled('smai_schedule_reports') ?: null,
+            'access_expiry' => wp_next_scheduled('smai_access_expiry') ?: null,
+            'future_intelligence' => wp_next_scheduled('smai_future_intelligence_tick') ?: null,
+        ];
+        $audit = (new AuditVerifier($this->db))->verify(10000);
+        $healthy = $missing === []
+            && hash_equals(SMAI_SCHEMA_VERSION, $schemaVersion)
+            && !in_array(null, $cron, true)
+            && (($audit['status'] ?? '') === 'verified');
         return [
+            'status' => $healthy ? 'healthy' : 'needs_repair',
             'missing_tables' => $missing,
-            'schema_version' => (string) get_option('smai_schema_version', 'unknown'),
+            'schema_version' => $schemaVersion,
             'expected_schema_version' => SMAI_SCHEMA_VERSION,
-            'cron' => [
-                'retention' => wp_next_scheduled('smai_daily_retention') ?: null,
-                'jobs' => wp_next_scheduled('smai_run_jobs') ?: null,
-                'reports' => wp_next_scheduled('smai_schedule_reports') ?: null,
-                'access_expiry' => wp_next_scheduled('smai_access_expiry') ?: null,
-                'future_intelligence' => wp_next_scheduled('smai_future_intelligence_tick') ?: null,
-            ],
-            'audit' => (new AuditVerifier($this->db))->verify(10000),
+            'cron' => $cron,
+            'audit' => $audit,
             'runtime_state' => RuntimeGate::state(),
             'checked_at' => gmdate('c'),
         ];
@@ -78,6 +86,7 @@ final class RepairService
             }
         }
         $result = $this->check();
+        $result['status'] = ($result['status'] ?? '') === 'healthy' ? 'repaired' : 'incomplete';
         $result['requeued_unprocessed_events'] = $requeued;
         $result['requeued_deletion_jobs'] = $requeuedDeletions;
         if (!(new AuditLogger($this->db))->log(
