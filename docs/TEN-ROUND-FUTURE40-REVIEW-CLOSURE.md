@@ -19,7 +19,7 @@ This ledger records the sequential review/fix cycle performed after the Future-4
 
 The final round added base runtime activation transaction/audit binding, schema-ready activation gates, pending-request concurrency safety, governance REST mutation idempotency/request parity, Future-aware uninstall cleanup, custom-role/capability removal, and mandatory release-governance QA invariants.
 
-The source candidate remains `1.0.0-rc.6`, schema `1.4.0`, contract `1.4.0`, with `CF05-FUT-001..CF05-FUT-040` and 45 governed tables. No schema/public-contract version bump was required by the final corrections.
+At the time this historical closure ledger was completed, the source candidate was `1.0.0-rc.6`, schema `1.4.0`, contract `1.4.0`, with `CF05-FUT-001..CF05-FUT-040` and 45 governed tables. This sentence is historical evidence, not current release identity; current release metadata is authoritative in the root manifest and exact repository HEAD.
 
 ## Status boundary
 
