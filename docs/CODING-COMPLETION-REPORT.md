@@ -9,7 +9,7 @@
 
 ## Source identity
 
-- Candidate: `1.0.0-rc.8`
+- Candidate: `1.0.0-rc.9`
 - Database schema: `1.4.1`
 - Public contract family: `1.4.0`
 - Runtime default: `foundation_disabled`
