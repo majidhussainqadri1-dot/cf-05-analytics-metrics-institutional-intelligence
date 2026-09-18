@@ -27,9 +27,13 @@ final class ReportService
     /** @param array<string,mixed> $definition */
     public function create(string $name, string $projectUuid, array $definition, ?string $schedule, int $actorUserId): array|WP_Error
     {
+        $allowedDefinitionKeys = ['metrics','recipients','expires_at'];
+        $cleanName = Text::truncate(trim(wp_strip_all_tags($name)), 190);
         $metrics = is_array($definition['metrics'] ?? null) ? array_values($definition['metrics']) : [];
         $recipients = is_array($definition['recipients'] ?? null) ? array_values($definition['recipients']) : [];
-        if ($actorUserId < 1 || strlen(trim($name)) < 3 || $metrics === [] || $recipients === [] || count($metrics) > 50 || count($recipients) > 50) {
+        if ($actorUserId < 1 || strlen($cleanName) < 3 || $metrics === [] || $recipients === [] || count($metrics) > 50 || count($recipients) > 50
+            || array_diff(array_keys($definition), $allowedDefinitionKeys) !== []
+            || (new \Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector())->violations([$cleanName, $definition]) !== []) {
             return new WP_Error('smai_invalid_report', 'Report definition is incomplete.', ['status' => 400]);
         }
         $access = new AccessProjectService($this->db);
@@ -40,6 +44,7 @@ final class ReportService
         $seen = [];
         foreach ($metrics as &$metric) {
             if (!is_array($metric)
+                || array_diff(array_keys($metric), ['metric_id','metric_version','dimensions']) !== []
                 || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) ($metric['metric_id'] ?? '')) !== 1
                 || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', (string) ($metric['metric_version'] ?? '')) !== 1
                 || !is_array($metric['dimensions'] ?? [])) {
@@ -70,7 +75,13 @@ final class ReportService
         unset($metric);
         $recipientIds = [];
         foreach ($recipients as $recipient) {
-            if (!is_array($recipient) || (string) ($recipient['type'] ?? '') !== 'user' || (int) ($recipient['user_id'] ?? 0) < 1 || !user_can((int) $recipient['user_id'], 'smai_view_insights')) {
+            if (!is_array($recipient)
+                || array_diff(array_keys($recipient), ['type','user_id']) !== []
+                || (string) ($recipient['type'] ?? '') !== 'user'
+                || !array_key_exists('user_id', $recipient)
+                || !is_int($recipient['user_id'])
+                || $recipient['user_id'] < 1
+                || !user_can($recipient['user_id'], 'smai_view_insights')) {
                 return new WP_Error('smai_invalid_report_recipient', 'Report recipient is invalid.', ['status' => 400]);
             }
             $recipientIds[(int) $recipient['user_id']] = true;
@@ -99,7 +110,7 @@ final class ReportService
         }
         $ok = $wpdb->insert($this->db->table('reports'), [
             'report_uuid' => $uuid,
-            'name' => Text::truncate(trim(wp_strip_all_tags($name)), 190),
+            'name' => $cleanName,
             'state' => 'draft',
             'owner_user_id' => $actorUserId,
             'project_uuid' => $projectUuid,
