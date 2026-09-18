@@ -24,6 +24,10 @@ final class ReportControlService
     /** @param array<string,mixed> $changes */
     public function update(string $uuid, int $expectedVersion, array $changes, int $actorUserId): array|WP_Error
     {
+        $allowedChangeKeys = ['recipients','metrics','name','schedule','expires_at'];
+        if (array_diff(array_keys($changes), $allowedChangeKeys) !== []) {
+            return new WP_Error('smai_invalid_report_update', 'Report update contains unsupported fields.', ['status' => 400]);
+        }
         $report = $this->get($uuid);
         if (!is_array($report) || !in_array((string) $report['state'], ['draft', 'paused'], true)) {
             return new WP_Error('smai_report_not_editable', 'Only draft or paused reports can be updated.', ['status' => 409]);
@@ -53,8 +57,9 @@ final class ReportControlService
         $name = array_key_exists('name', $changes)
             ? Text::truncate(trim(wp_strip_all_tags((string) $changes['name'])), 190)
             : (string) $report['name'];
-        if (strlen($name) < 3) {
-            return new WP_Error('smai_invalid_report_name', 'Report name is invalid.', ['status' => 400]);
+        if (strlen($name) < 3
+            || (new \Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector())->violations($name) !== []) {
+            return new WP_Error('smai_invalid_report_name', 'Report name is invalid or contains prohibited sensitive material.', ['status' => 400]);
         }
 
         $schedule = array_key_exists('schedule', $changes) ? $changes['schedule'] : $report['schedule_rrule'];
