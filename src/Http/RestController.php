@@ -206,14 +206,29 @@ final class RestController
     public function queryMetric(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
         $dimensions = $request->get_param('dimensions');
-        if (is_string($dimensions) && $dimensions !== '') {
-            $dimensions = json_decode($dimensions, true);
+        if ($dimensions === null || $dimensions === '') {
+            $dimensions = [];
+        } elseif (is_string($dimensions)) {
+            $decoded = json_decode($dimensions, true);
+            if (!is_array($decoded) || array_is_list($decoded)) {
+                return new WP_Error('smai_invalid_dimensions', 'Dimensions must be a valid JSON object.', ['status' => 400]);
+            }
+            $dimensions = $decoded;
+        } elseif (!is_array($dimensions) || array_is_list($dimensions)) {
+            return new WP_Error('smai_invalid_dimensions', 'Dimensions must be an object.', ['status' => 400]);
+        }
+        if (count($dimensions) > 10) {
+            return new WP_Error('smai_invalid_dimensions', 'Too many dimensions were supplied.', ['status' => 400]);
         }
         $clean = [];
-        foreach (array_slice(is_array($dimensions) ? $dimensions : [], 0, 10, true) as $key => $value) {
-            if (is_string($key) && preg_match('/^[a-z][a-z0-9_]{0,63}$/', $key) === 1 && is_scalar($value)) {
-                $clean[$key] = is_string($value) ? Text::truncate(sanitize_text_field($value), 100) : $value;
+        foreach ($dimensions as $key => $value) {
+            if (!is_string($key)
+                || preg_match('/^[a-z][a-z0-9_]{0,63}$/', $key) !== 1
+                || (!is_scalar($value) && $value !== null)
+                || (is_float($value) && !is_finite($value))) {
+                return new WP_Error('smai_invalid_dimensions', 'A dimension key or value is invalid.', ['status' => 400]);
             }
+            $clean[$key] = is_string($value) ? Text::truncate(sanitize_text_field($value), 100) : $value;
         }
         $result = (new MetricQueryService($this->db))->query(
             (string) $request['metric_id'],
@@ -231,13 +246,16 @@ final class RestController
     public function requestAccess(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
         return $this->mutation('access-request', $request, function (array $p) {
+            if (!array_key_exists('training_confirmed', $p) || !is_bool($p['training_confirmed'])) {
+                return new WP_Error('smai_invalid_training_confirmation', 'training_confirmed must be a JSON boolean.', ['status' => 400]);
+            }
             return (new AccessProjectService($this->db))->request(
                 (string) ($p['name'] ?? ''),
                 (string) ($p['purpose'] ?? ''),
                 is_array($p['datasets'] ?? null) ? array_map('strval', $p['datasets']) : [],
                 is_array($p['fields'] ?? null) ? $p['fields'] : [],
                 (string) ($p['expires_at'] ?? ''),
-                (bool) ($p['training_confirmed'] ?? false),
+                $p['training_confirmed'],
                 get_current_user_id()
             );
         }, 201);
@@ -464,6 +482,9 @@ final class RestController
         if(!($decoded instanceof \stdClass))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]);
         $payload=$request->get_json_params();
         if(!is_array($payload))return new WP_Error('smai_invalid_json','A JSON object is required.',['status'=>400]);
+        if(array_key_exists('row_version',$payload) && (!is_int($payload['row_version']) || $payload['row_version'] < 1)) {
+            return new WP_Error('smai_invalid_row_version','row_version must be a positive JSON integer.',['status'=>400]);
+        }
         return $payload;
     }
 
