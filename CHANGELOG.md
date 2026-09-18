@@ -1,3 +1,9 @@
+## 1.0.0-rc.9 — 2026-09-18
+- Closed sequential review rounds SR-50..SR-58 across audit-chain verification, operational repair provenance, atomic quality runs, snapshot concurrency, disclosure freshness, experiment/decision integrity, idempotency expiry and catalog-mode fail-closed controls.
+- Advanced the current governing-source metadata to the CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended.
+- Added a permanent SR-50..59 regression-invariant QA gate; schema remains `1.4.1` and public contract family remains `1.4.0`.
+- Staging/live/operational evidence remains a separate lifecycle gate.
+
 ## 1.0.0-rc.8 — 2026-09-18
 - Closed sequential review rounds SR-40..SR-49 across event contracts, jobs/pipeline, privacy accounting, exports, reports, deletion completeness, provider/restore governance and REST safety.
 - Schema remains `1.4.1`; public contract family remains `1.4.0`.
