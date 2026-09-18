@@ -184,6 +184,15 @@ final class BackfillService
         $uuid = (string) ($payload['backfill_uuid'] ?? '');
         $cursor = max(0, (int) ($payload['cursor_id'] ?? 0));
         $row = $this->backfill($uuid);
+        if (is_array($row) && (string) $row['state'] === 'compared' && !empty($row['build_uuid'])) {
+            return [
+                'backfill_uuid' => $uuid,
+                'build_uuid' => (string) $row['build_uuid'],
+                'state' => 'compared',
+                'comparison' => Json::object((string) ($row['comparison_json'] ?? '{}')),
+                'unchanged' => true,
+            ];
+        }
         if ($row === null || !in_array((string) $row['state'], ['approved','shadow_build'], true)) {
             throw new \RuntimeException('Backfill is not approved.');
         }
@@ -193,27 +202,52 @@ final class BackfillService
         }
         $buildUuid = (string) ($row['build_uuid'] ?? '');
         if ($buildUuid === '') {
-            $buildUuid = Uuid::v4();
-            $now = $this->db->now();
-            if ($this->db->wpdb()->insert($this->db->table('dataset_builds'), [
-                'build_uuid' => $buildUuid,
-                'dataset_id' => $row['dataset_id'],
-                'dataset_version' => $row['dataset_version'],
-                'state' => 'building',
-                'is_active' => 0,
-                'source_start' => $row['date_start'],
-                'source_end' => $row['date_end'],
-                'created_by' => (int) $row['requested_by'],
-                'approved_by' => (int) $row['approved_by'],
-                'checkpoint_json' => Json::encode(['cursor_id' => 0, 'processed' => 0]),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]) !== 1) {
-                throw new \RuntimeException('Shadow build could not be created.');
+            $wpdb = $this->db->wpdb();
+            if ($wpdb->query('START TRANSACTION') === false) {
+                throw new \RuntimeException('Shadow-build creation transaction could not start.');
             }
-            $updated = $this->db->wpdb()->update($this->db->table('backfills'), ['state' => 'shadow_build', 'build_uuid' => $buildUuid, 'updated_at' => $now], ['id' => (int) $row['id'], 'state' => 'approved']);
-            if ($updated !== 1) {
-                throw new \RuntimeException('Backfill changed while creating the shadow build.');
+            try {
+                $locked = $wpdb->get_row($wpdb->prepare(
+                    "SELECT * FROM `{$this->db->table('backfills')}` WHERE id=%d FOR UPDATE",
+                    (int) $row['id']
+                ), ARRAY_A);
+                if (!is_array($locked) || !in_array((string) $locked['state'], ['approved','shadow_build'], true)) {
+                    throw new \RuntimeException('Backfill changed while creating the shadow build.');
+                }
+                $buildUuid = (string) ($locked['build_uuid'] ?? '');
+                if ($buildUuid === '') {
+                    $buildUuid = Uuid::v4();
+                    $now = $this->db->now();
+                    if ($wpdb->insert($this->db->table('dataset_builds'), [
+                        'build_uuid' => $buildUuid,
+                        'dataset_id' => $locked['dataset_id'],
+                        'dataset_version' => $locked['dataset_version'],
+                        'state' => 'building',
+                        'is_active' => 0,
+                        'source_start' => $locked['date_start'],
+                        'source_end' => $locked['date_end'],
+                        'created_by' => (int) $locked['requested_by'],
+                        'approved_by' => (int) $locked['approved_by'],
+                        'checkpoint_json' => Json::encode(['cursor_id' => 0, 'processed' => 0]),
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]) !== 1) {
+                        throw new \RuntimeException('Shadow build could not be created.');
+                    }
+                    if ($wpdb->update(
+                        $this->db->table('backfills'),
+                        ['state' => 'shadow_build', 'build_uuid' => $buildUuid, 'updated_at' => $now],
+                        ['id' => (int) $locked['id'], 'state' => 'approved', 'build_uuid' => $locked['build_uuid']]
+                    ) !== 1) {
+                        throw new \RuntimeException('Backfill changed while creating the shadow build.');
+                    }
+                }
+                if ($wpdb->query('COMMIT') === false) {
+                    throw new \RuntimeException('Shadow-build creation could not be committed.');
+                }
+            } catch (\Throwable $error) {
+                $wpdb->query('ROLLBACK');
+                throw $error;
             }
         }
 
@@ -288,7 +322,9 @@ final class BackfillService
         }
         $wpdb = $this->db->wpdb();
         $buildTable = $this->db->table('dataset_builds');
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_backfill_activation_failed', 'Backfill activation transaction could not start.', ['status' => 500]);
+        }
         try {
             $locked = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$this->db->table('backfills')}` WHERE id=%d FOR UPDATE", (int) $row['id']), ARRAY_A);
             if (!is_array($locked) || (string) $locked['state'] !== 'compared') {throw new \RuntimeException('Backfill changed concurrently.');}
@@ -316,7 +352,9 @@ final class BackfillService
         }
         $wpdb = $this->db->wpdb();
         $buildTable = $this->db->table('dataset_builds');
-        $wpdb->query('START TRANSACTION');
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return new WP_Error('smai_backfill_rollback_failed', 'Backfill rollback transaction could not start.', ['status' => 500]);
+        }
         try {
             $locked = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$this->db->table('backfills')}` WHERE id=%d FOR UPDATE", (int) $row['id']), ARRAY_A);
             if (!is_array($locked) || (string) $locked['state'] !== 'activated') {throw new \RuntimeException('Backfill changed concurrently.');}
