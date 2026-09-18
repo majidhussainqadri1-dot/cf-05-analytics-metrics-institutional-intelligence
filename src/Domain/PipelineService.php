@@ -44,54 +44,89 @@ final class PipelineService
                 continue;
             }
             $build = $this->activeBuild((string) $dataset['dataset_id'], (string) $dataset['dataset_version'], (int) $dataset['created_by']);
-            if (!empty($event['correction_of_event_id'])) {
-                $this->db->wpdb()->query($this->db->wpdb()->prepare(
-                    "UPDATE `{$this->db->table('dataset_rows')}` SET is_current=0,effective_to=%s WHERE build_uuid=%s AND source_event_id=%s AND is_current=1",
-                    $event['occurred_at'],
+            $wpdb = $this->db->wpdb();
+            if ($wpdb->query('START TRANSACTION') === false) {
+                throw new \RuntimeException('Dataset projection transaction could not start.');
+            }
+            try {
+                if (!empty($event['correction_of_event_id'])) {
+                    $corrected = $wpdb->query($wpdb->prepare(
+                        "UPDATE `{$this->db->table('dataset_rows')}` SET is_current=0,effective_to=%s WHERE build_uuid=%s AND source_event_id=%s AND is_current=1",
+                        $event['occurred_at'],
+                        $build['build_uuid'],
+                        $event['correction_of_event_id']
+                    ));
+                    if ($corrected === false) {
+                        throw new \RuntimeException('Dataset correction projection failed.');
+                    }
+                }
+                $row = $this->transform->map($event, (array) ($definition['fields'] ?? []));
+                $rowJson = Json::canonical($row);
+                $rowHash = hash('sha256', $eventId . '|' . $rowJson);
+                $inserted = $wpdb->query($wpdb->prepare(
+                    "INSERT IGNORE INTO `{$this->db->table('dataset_rows')}` (build_uuid,dataset_id,dataset_version,source_event_id,source_object_ref,deletion_key,effective_from,effective_to,is_current,row_json,row_hash,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,NULL,1,%s,%s,%s)",
                     $build['build_uuid'],
-                    $event['correction_of_event_id']
+                    $dataset['dataset_id'],
+                    $dataset['dataset_version'],
+                    $eventId,
+                    $event['object_ref'],
+                    $event['deletion_key'],
+                    $event['occurred_at'],
+                    $rowJson,
+                    $rowHash,
+                    $this->db->now()
                 ));
-            }
-            $row = $this->transform->map($event, (array) ($definition['fields'] ?? []));
-            $rowJson = Json::canonical($row);
-            $rowHash = hash('sha256', $eventId . '|' . $rowJson);
-            $inserted = $this->db->wpdb()->query($this->db->wpdb()->prepare(
-                "INSERT IGNORE INTO `{$this->db->table('dataset_rows')}` (build_uuid,dataset_id,dataset_version,source_event_id,source_object_ref,deletion_key,effective_from,effective_to,is_current,row_json,row_hash,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,NULL,1,%s,%s,%s)",
-                $build['build_uuid'],
-                $dataset['dataset_id'],
-                $dataset['dataset_version'],
-                $eventId,
-                $event['object_ref'],
-                $event['deletion_key'],
-                $event['occurred_at'],
-                $rowJson,
-                $rowHash,
-                $this->db->now()
-            ));
-            if ($inserted === 1) {
-                $projected++;
-                $this->db->wpdb()->query($this->db->wpdb()->prepare(
-                    "UPDATE `{$this->db->table('dataset_builds')}` SET row_count=row_count+1,updated_at=%s WHERE build_uuid=%s",
-                    $this->db->now(),
-                    $build['build_uuid']
-                ));
-            }
-            if (!$this->lineage->link('event', $eventId, (string) $event['event_version'], 'build', (string) $build['build_uuid'], (string) $dataset['dataset_version'], (string) $dataset['owner_module'], isset($payload['job_uuid']) ? (string)$payload['job_uuid'] : null, defined('SMAI_CODE_SHA') ? SMAI_CODE_SHA : null)) {
-                throw new \RuntimeException('Dataset lineage evidence could not be recorded.');
+                if ($inserted === false) {
+                    throw new \RuntimeException('Dataset projection row could not be stored.');
+                }
+                if ($inserted === 1) {
+                    $counted = $wpdb->query($wpdb->prepare(
+                        "UPDATE `{$this->db->table('dataset_builds')}` SET row_count=row_count+1,updated_at=%s WHERE build_uuid=%s",
+                        $this->db->now(),
+                        $build['build_uuid']
+                    ));
+                    if ($counted !== 1) {
+                        throw new \RuntimeException('Dataset build row count could not be advanced.');
+                    }
+                }
+                if (!$this->lineage->link('event', $eventId, (string) $event['event_version'], 'build', (string) $build['build_uuid'], (string) $dataset['dataset_version'], (string) $dataset['owner_module'], isset($payload['_job_uuid']) ? (string)$payload['_job_uuid'] : null, defined('SMAI_CODE_SHA') ? SMAI_CODE_SHA : null)) {
+                    throw new \RuntimeException('Dataset lineage evidence could not be recorded.');
+                }
+                if ($wpdb->query('COMMIT') === false) {
+                    throw new \RuntimeException('Dataset projection transaction could not be committed.');
+                }
+                if ($inserted === 1) {
+                    $projected++;
+                }
+            } catch (\Throwable $error) {
+                $wpdb->query('ROLLBACK');
+                throw $error;
             }
         }
-        if (!(new CheckpointService($this->db))->advance(
-            (string) $event['source_module'] . ':' . (string) $event['source_environment'],
-            'cf05-pipeline',
-            SMAI_CONTRACT_VERSION,
-            (string) $event['occurred_at'],
-            $event['source_sequence'] === null ? null : (int) $event['source_sequence'],
-            ['event_id' => $eventId]
-        )) {
-            throw new \RuntimeException('Pipeline checkpoint could not be advanced safely.');
+        $wpdb = $this->db->wpdb();
+        if ($wpdb->query('START TRANSACTION') === false) {
+            throw new \RuntimeException('Pipeline completion transaction could not start.');
         }
-        if ($this->db->wpdb()->update($this->db->table('events'), ['processed_at' => $this->db->now()], ['event_id' => $eventId]) === false) {
-            throw new \RuntimeException('Event processing state could not be recorded.');
+        try {
+            if (!(new CheckpointService($this->db))->advance(
+                (string) $event['source_module'] . ':' . (string) $event['source_environment'],
+                'cf05-pipeline',
+                SMAI_CONTRACT_VERSION,
+                (string) $event['occurred_at'],
+                $event['source_sequence'] === null ? null : (int) $event['source_sequence'],
+                ['event_id' => $eventId]
+            )) {
+                throw new \RuntimeException('Pipeline checkpoint could not be advanced safely.');
+            }
+            if ($wpdb->update($this->db->table('events'), ['processed_at' => $this->db->now()], ['event_id' => $eventId]) !== 1) {
+                throw new \RuntimeException('Event processing state could not be recorded.');
+            }
+            if ($wpdb->query('COMMIT') === false) {
+                throw new \RuntimeException('Pipeline completion transaction could not be committed.');
+            }
+        } catch (\Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            throw $error;
         }
         return ['event_id' => $eventId, 'projected_datasets' => $projected];
     }
