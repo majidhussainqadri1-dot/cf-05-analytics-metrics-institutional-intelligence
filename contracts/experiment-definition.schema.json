@@ -30,19 +30,219 @@
       "pattern": "^[a-z0-9][a-z0-9_.-]{1,99}$"
     },
     "audience": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "eligibility_contract",
+        "exclusions"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 500
+        },
+        "eligibility_contract": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]{2,189}@[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "exclusions": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.:-]{1,99}$"
+          }
+        }
+      }
     },
     "primary_metrics": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 10
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "metric_id",
+          "metric_version"
+        ],
+        "properties": {
+          "metric_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{2,189}$"
+          },
+          "metric_version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "outcome_type": {
+            "enum": [
+              "ratio",
+              "number"
+            ]
+          },
+          "base_dimensions": {
+            "type": "object",
+            "maxProperties": 10,
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "number",
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "minimum_effect": {
+            "type": "number",
+            "minimum": 0
+          },
+          "threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "harm_direction": {
+            "enum": [
+              "increase",
+              "decrease"
+            ]
+          }
+        }
+      }
     },
     "guardrails": {
       "type": "array",
-      "maxItems": 20
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "metric_id",
+          "metric_version"
+        ],
+        "properties": {
+          "metric_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_.-]{2,189}$"
+          },
+          "metric_version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "outcome_type": {
+            "enum": [
+              "ratio",
+              "number"
+            ]
+          },
+          "base_dimensions": {
+            "type": "object",
+            "maxProperties": 10,
+            "additionalProperties": {
+              "type": [
+                "string",
+                "integer",
+                "number",
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "minimum_effect": {
+            "type": "number",
+            "minimum": 0
+          },
+          "threshold": {
+            "type": "number",
+            "minimum": 0
+          },
+          "harm_direction": {
+            "enum": [
+              "increase",
+              "decrease"
+            ]
+          }
+        }
+      }
     },
     "design": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_sample",
+        "duration_days",
+        "multiple_testing_policy",
+        "missing_data_policy",
+        "minimum_practical_effect",
+        "variants",
+        "randomization_unit"
+      ],
+      "properties": {
+        "minimum_sample": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 10000000
+        },
+        "duration_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365
+        },
+        "multiple_testing_policy": {
+          "enum": [
+            "bonferroni",
+            "holm",
+            "fdr",
+            "single_primary"
+          ]
+        },
+        "missing_data_policy": {
+          "enum": [
+            "exclude",
+            "intention_to_treat",
+            "worst_case",
+            "report_only"
+          ]
+        },
+        "minimum_practical_effect": {
+          "type": "number",
+          "minimum": 0
+        },
+        "randomization_unit": {
+          "enum": [
+            "pseudonymous_subject",
+            "session",
+            "organization"
+          ]
+        },
+        "variants": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "allocation"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+              },
+              "allocation": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        }
+      }
     },
     "privacy_class": {
       "enum": [
@@ -51,19 +251,27 @@
         "C3"
       ]
     },
+    "involves_minors": {
+      "type": "boolean"
+    },
+    "medical_context": {
+      "type": "boolean"
+    },
     "starts_at": {
       "type": [
         "string",
         "null"
       ],
-      "format": "date-time"
+      "format": "date-time",
+      "maxLength": 35
     },
     "ends_at": {
       "type": [
         "string",
         "null"
       ],
-      "format": "date-time"
+      "format": "date-time",
+      "maxLength": 35
     }
   }
 }
