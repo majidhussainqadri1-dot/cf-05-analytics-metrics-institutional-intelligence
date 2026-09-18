@@ -251,8 +251,16 @@ final class ExportService
             if (PrivacyQueryPolicy::violations($metricDefinition, $dimensions) !== []) { continue; }
             $minimum = PrivacyQueryPolicy::effectiveMinimum($metricDefinition, $dimensions, $baseMinimum);
             if ((int) $row['cohort_size'] < $minimum) { continue; }
+            $disclosure = SnapshotDisclosurePolicy::evaluate(
+                (string) $row['quality_status'],
+                $row['data_through'] ?? null,
+                Json::list((string) $row['caveats']),
+                $metricDefinition
+            );
             $row['dimensions'] = $dimensions;
-            $row['caveats'] = Json::list((string) $row['caveats']);
+            $row['quality_status'] = $disclosure['quality_status'];
+            $row['data_through'] = $disclosure['data_through'];
+            $row['caveats'] = $disclosure['caveats'];
             $safe[] = $row;
             if (count($safe) >= $limit) { break; }
         }
