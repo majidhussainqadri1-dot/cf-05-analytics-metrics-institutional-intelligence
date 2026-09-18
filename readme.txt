@@ -16,6 +16,11 @@ Runtime is disabled by default. Installation never authorizes production use.
 
 == Changelog ==
 
+= 1.0.0-rc.10 =
+* Current source candidate; contract/schema parity, sequential-review evidence, release-governance and repository hygiene hardened through the current exact HEAD.
+* Runtime remains conditional and disabled by default; staging/live/operational acceptance requires separate evidence.
+
+
 = 1.0.0-rc.6 =
 * Completed forty fresh review-and-fix rounds.
 * Hardened event metadata persistence, experiment deletion/reassignment integrity and fail-closed schema migration.
