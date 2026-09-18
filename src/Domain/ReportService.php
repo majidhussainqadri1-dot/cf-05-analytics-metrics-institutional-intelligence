@@ -176,23 +176,36 @@ final class ReportService
         foreach (is_array($reports) ? $reports : [] as $report) {
             $scheduledFor = (string) $report['next_run_at'];
             $next = gmdate('Y-m-d H:i:s', $this->nextTimestamp((string) $report['schedule_rrule'], (int) strtotime($scheduledFor)));
-            $claimed = $this->db->wpdb()->update($table, [
-                'next_run_at' => $next,
-                'row_version' => (int) $report['row_version'] + 1,
-                'updated_at' => $now,
-            ], ['id' => (int) $report['id'], 'state' => 'active', 'next_run_at' => $scheduledFor, 'row_version' => (int) $report['row_version']]);
-            if ($claimed !== 1) {
+            $wpdb = $this->db->wpdb();
+            if ($wpdb->query('START TRANSACTION') === false) {
                 continue;
             }
-            $job = (new JobQueue($this->db))->enqueue('report.run', [
-                'report_uuid' => $report['report_uuid'],
-                'scheduled_for' => $scheduledFor,
-            ], 'report|' . $report['report_uuid'] . '|' . $scheduledFor);
-            if (is_wp_error($job)) {
-                $this->db->wpdb()->update($table, ['next_run_at' => $scheduledFor, 'updated_at' => $now], ['id' => (int) $report['id'], 'next_run_at' => $next]);
-                continue;
+            try {
+                $claimed = $wpdb->update($table, [
+                    'next_run_at' => $next,
+                    'row_version' => (int) $report['row_version'] + 1,
+                    'updated_at' => $now,
+                ], ['id' => (int) $report['id'], 'state' => 'active', 'next_run_at' => $scheduledFor, 'row_version' => (int) $report['row_version']]);
+                if ($claimed !== 1) {
+                    $wpdb->query('ROLLBACK');
+                    continue;
+                }
+                $job = (new JobQueue($this->db))->enqueue('report.run', [
+                    'report_uuid' => $report['report_uuid'],
+                    'scheduled_for' => $scheduledFor,
+                ], 'report|' . $report['report_uuid'] . '|' . $scheduledFor);
+                if (is_wp_error($job)) {
+                    $wpdb->query('ROLLBACK');
+                    continue;
+                }
+                if ($wpdb->query('COMMIT') === false) {
+                    $wpdb->query('ROLLBACK');
+                    continue;
+                }
+                $count++;
+            } catch (\Throwable $error) {
+                $wpdb->query('ROLLBACK');
             }
-            $count++;
         }
         return $count;
     }
