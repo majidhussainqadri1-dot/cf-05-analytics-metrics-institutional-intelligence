@@ -12,15 +12,11 @@ final class Activator
             deactivate_plugins(plugin_basename(SMAI_FILE));
             wp_die(esc_html__('CF-05 requires PHP 8.1 or newer.', 'sabri-analytics-institutional-intelligence'));
         }
-        if (!add_option('smai_activation_lock', ['started_at' => time()], '', false)) {
-            $lock = get_option('smai_activation_lock');
-            if (!is_array($lock) || time() - (int) ($lock['started_at'] ?? 0) < 600) {
-                wp_die(esc_html__('CF-05 activation is already running.', 'sabri-analytics-institutional-intelligence'));
-            }
-            delete_option('smai_activation_lock');
-            if (!add_option('smai_activation_lock', ['started_at' => time()], '', false)) {
-                wp_die(esc_html__('CF-05 activation lock could not be acquired.', 'sabri-analytics-institutional-intelligence'));
-            }
+        global $wpdb;
+        $lock = 'smai_activate_' . substr(hash('sha256', $wpdb->prefix . '|' . (defined('DB_NAME') ? DB_NAME : 'wordpress')), 0, 32);
+        $lockAcquired = (int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s,5)', $lock));
+        if ($lockAcquired !== 1) {
+            wp_die(esc_html__('CF-05 activation lock could not be acquired.', 'sabri-analytics-institutional-intelligence'));
         }
         try {
             SchemaMigrator::migrate();
@@ -29,7 +25,7 @@ final class Activator
             self::registerSchedule();
             self::schedules();
         } finally {
-            delete_option('smai_activation_lock');
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
         }
     }
 

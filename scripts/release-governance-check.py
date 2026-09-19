@@ -10,6 +10,8 @@ def text(rel):
 runtime=text('src/Infrastructure/RuntimeActivationService.php')
 gov=text('src/Http/GovernanceRestController.php')
 uninstall=text('uninstall.php')
+schema=text('src/Infrastructure/SchemaMigrator.php')
+activator=text('src/Infrastructure/Activator.php')
 build=text('scripts/build-package.py')
 parity=text('scripts/package-parity.py')
 verify=text('scripts/verify-deterministic-build.sh')
@@ -20,6 +22,11 @@ for token in ['START TRANSACTION','logInOpenTransaction','RuntimeGate::schemaRea
     if token not in runtime: errors.append('runtime_activation_guard_missing:'+token)
 for token in ['IdempotencyGuard','private function mutation','smai_request_too_large','smai_invalid_json','X-Sabri-Trace-ID']:
     if token not in gov: errors.append('governance_rest_guard_missing:'+token)
+for token in ['GET_LOCK','RELEASE_LOCK']:
+    if token not in schema: errors.append('schema_migration_lock_missing:'+token)
+    if token not in activator: errors.append('activation_lock_missing:'+token)
+for token in ["invalidateRuntimeApprovals","RuntimeGate::SAFE_MODE","smai_activation_approved","smai_worker_enabled","smai_future40_approved"]:
+    if token not in schema: errors.append('schema_migration_failclosed_missing:'+token)
 for token in ['smai_future_intelligence_tick','smai_future_run_retention_days','smai_future_scenario_retention_days','smai_future_alert_retention_days','smai_future_incident_retention_days','smai_future40_activation_request','smai_future40_approved_by','smai_future40_approved_at','smai_activation_request','remove_role','remove_cap']:
     if token not in uninstall: errors.append('uninstall_cleanup_missing:'+token)
 for token in ['SMAI_VERSION','SMAI_SCHEMA_VERSION','SMAI_CONTRACT_VERSION']:

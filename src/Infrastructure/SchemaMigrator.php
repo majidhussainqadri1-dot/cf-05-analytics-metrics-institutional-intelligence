@@ -11,16 +11,11 @@ final class SchemaMigrator
         global $wpdb;
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-        $lock = 'smai_schema_upgrade_lock';
-        if (!add_option($lock, ['started_at' => time()], '', false)) {
-            $current = get_option($lock);
-            if (!is_array($current) || time() - (int) ($current['started_at'] ?? 0) < 600) {
-                throw new \RuntimeException('CF-05 schema migration is already in progress.');
-            }
-            delete_option($lock);
-            if (!add_option($lock, ['started_at' => time()], '', false)) {
-                throw new \RuntimeException('CF-05 schema migration lock could not be acquired.');
-            }
+        $previousSchemaVersion = (string) get_option('smai_schema_version', '');
+        $lock = 'smai_schema_' . substr(hash('sha256', $wpdb->prefix . '|' . (defined('DB_NAME') ? DB_NAME : 'wordpress')), 0, 32);
+        $lockAcquired = (int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s,5)', $lock));
+        if ($lockAcquired !== 1) {
+            throw new \RuntimeException('CF-05 schema migration lock could not be acquired.');
         }
 
         try {
@@ -986,6 +981,9 @@ final class SchemaMigrator
 
             update_option('smai_schema_version', SMAI_SCHEMA_VERSION, false);
             delete_option('smai_schema_migration_error');
+            if ($previousSchemaVersion !== SMAI_SCHEMA_VERSION) {
+                self::invalidateRuntimeApprovals($previousSchemaVersion === '');
+            }
         } catch (\Throwable $error) {
             update_option('smai_schema_migration_error', [
                 'code' => 'schema_migration_failed',
@@ -993,10 +991,26 @@ final class SchemaMigrator
                 'message_hash' => hash('sha256', $error->getMessage()),
                 'failed_at' => gmdate('c'),
             ], false);
+            self::invalidateRuntimeApprovals(false);
             throw $error;
         }
         } finally {
-            delete_option($lock);
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
         }
+    }
+
+    private static function invalidateRuntimeApprovals(bool $freshInstall): void
+    {
+        update_option('smai_runtime_state', $freshInstall ? RuntimeGate::FOUNDATION_DISABLED : RuntimeGate::SAFE_MODE, false);
+        update_option('smai_activation_approved', '0', false);
+        update_option('smai_activation_evidence_hash', '', false);
+        update_option('smai_worker_enabled', '0', false);
+        delete_option('smai_activation_request');
+        update_option('smai_future40_state', 'disabled', false);
+        update_option('smai_future40_approved', '0', false);
+        update_option('smai_future40_evidence_hash', '', false);
+        delete_option('smai_future40_activation_request');
+        delete_option('smai_future40_approved_by');
+        delete_option('smai_future40_approved_at');
     }
 }
