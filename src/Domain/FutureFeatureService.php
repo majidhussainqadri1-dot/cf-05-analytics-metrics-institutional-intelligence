@@ -43,8 +43,10 @@ final class FutureFeatureService
         if (!user_can($actorUserId, 'smai_manage_future_intelligence')) return new WP_Error('smai_future_forbidden','Future feature configuration is not authorized.',['status'=>403]);
         $violations = (new SensitiveValueDetector())->violations($config);
         if ($violations !== []) return new WP_Error('smai_future_sensitive_input', 'Sensitive or restricted input is not allowed.', ['status' => 400, 'violations' => $violations]);
+        $shapeError = $this->evidenceShapeError($config);
+        if ($shapeError !== null) return new WP_Error('smai_future_input_shape_invalid', $shapeError, ['status'=>400]);
         $wpdb = $this->db->wpdb(); $table = $this->db->table('future_features'); $id = (string) $definition['feature_id'];
-        $now = $this->db->now(); $json = Json::canonical($this->minimize($config)); $hash = hash('sha256', $json);
+        $now = $this->db->now(); $json = Json::canonical($config); $hash = hash('sha256', $json);
         if (!$this->begin()) return new WP_Error('smai_future_transaction_failed', 'Future feature transaction could not start.', ['status' => 500]);
         try {
             $existing = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$table}` WHERE feature_id=%s FOR UPDATE", $id), ARRAY_A);
@@ -88,6 +90,9 @@ final class FutureFeatureService
             $row=$wpdb->get_row($wpdb->prepare("SELECT * FROM `{$table}` WHERE feature_id=%s FOR UPDATE",$id),ARRAY_A);
             if(!is_array($row))return $this->rollbackError(new WP_Error('smai_future_not_configured','Configure the future feature before changing lifecycle state.',['status'=>409]));
             $current=(string)$row['state'];
+            if (!is_string($row['config_json'] ?? null) || !hash_equals((string)($row['config_hash'] ?? ''), hash('sha256', (string)$row['config_json']))) {
+                return $this->rollbackError(new WP_Error('smai_future_config_integrity', 'Future feature configuration integrity verification failed.', ['status'=>409]));
+            }
             $map=['approve'=>['configured'=>'approved','paused'=>'approved'],'activate'=>['approved'=>'active'],'pause'=>['active'=>'paused'],'disable'=>['configured'=>'disabled','approved'=>'disabled','active'=>'disabled','paused'=>'disabled'],'retire'=>['disabled'=>'retired','paused'=>'retired']];
             $next=$map[$action][$current]??null;
             if($next===null)return $this->rollbackError(new WP_Error('smai_future_invalid_transition','Future feature lifecycle transition is not allowed.',['status'=>409,'state'=>$current]));
@@ -116,13 +121,15 @@ final class FutureFeatureService
         $definition=FutureFeatureRegistry::get($featureId);if($definition===null)return new WP_Error('smai_future_unknown','Unknown future feature.',['status'=>404]);
         $requiredCapability=(string)($definition['capability']??'');if($requiredCapability===''||!user_can($actorUserId,$requiredCapability))return new WP_Error('smai_future_forbidden','Future feature execution is not authorized.',['status'=>403]);
         $violations=(new SensitiveValueDetector())->violations($input);if($violations!==[])return new WP_Error('smai_future_sensitive_input','Sensitive or restricted input is not allowed.',['status'=>400,'violations'=>$violations]);
+        $shapeError=$this->evidenceShapeError($input);if($shapeError!==null)return new WP_Error('smai_future_input_shape_invalid',$shapeError,['status'=>400]);
         if(!RuntimeGate::schemaReady())return new WP_Error('smai_future_schema_gate','CF-05 schema is not ready for governed Future-40 execution.',['status'=>409]);
         $id=(string)$definition['feature_id'];$wpdb=$this->db->wpdb();
         if (!$this->begin()) return new WP_Error('smai_future_transaction_failed', 'Future feature run transaction could not start.', ['status' => 500]);
         try {
-            $row=$wpdb->get_row($wpdb->prepare('SELECT state,approved_by,requested_by,row_version,config_hash FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s FOR UPDATE',$id),ARRAY_A);
+            $row=$wpdb->get_row($wpdb->prepare('SELECT state,approved_by,requested_by,row_version,config_hash,config_json FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s FOR UPDATE',$id),ARRAY_A);
             if(!is_array($row))return $this->rollbackError(new WP_Error('smai_future_not_configured','Configure the future feature before any governed run, including dry-run.',['status'=>409]));
             $state=(string)$row['state'];
+            if(!is_string($row['config_json']??null)||!hash_equals((string)($row['config_hash']??''),hash('sha256',(string)$row['config_json'])))return $this->rollbackError(new WP_Error('smai_future_config_integrity','Future feature configuration integrity verification failed.',['status'=>409]));
             if($state==='retired')return $this->rollbackError(new WP_Error('smai_future_retired','Retired future features cannot be executed.',['status'=>409]));
             if(!$dryRun&&$state!=='active')return $this->rollbackError(new WP_Error('smai_future_not_active','Future feature is not active. Use governed dry-run or complete activation gates.',['status'=>409]));
             if(!$dryRun&&($row['approved_by']===null||(int)$row['approved_by']<1||(int)$row['approved_by']===(int)$row['requested_by']))return $this->rollbackError(new WP_Error('smai_future_approval_integrity','Active execution requires valid independent approval evidence.',['status'=>409]));
@@ -137,7 +144,7 @@ final class FutureFeatureService
             if(is_wp_error($artifacts))return $this->rollbackError($artifacts);
             $governance=['feature_row_version'=>(int)$row['row_version'],'config_hash'=>(string)$row['config_hash'],'schema_version'=>defined('SMAI_SCHEMA_VERSION')?SMAI_SCHEMA_VERSION:null,'contract_version'=>defined('SMAI_CONTRACT_VERSION')?SMAI_CONTRACT_VERSION:null];
             $storedResult=$result+['governance'=>$governance,'artifacts'=>$artifacts];
-            $runUuid=Uuid::v4();$requestHash=hash('sha256',Json::canonical($this->minimize($executionInput)));$resultJson=Json::canonical($this->minimize($storedResult));
+            $runUuid=Uuid::v4();$requestHash=hash('sha256',Json::canonical($executionInput));$resultJson=Json::canonical($storedResult);
             $inserted=$wpdb->insert($this->db->table('future_runs'),['run_uuid'=>$runUuid,'feature_id'=>$id,'mode'=>$dryRun?'dry_run':'active','request_hash'=>$requestHash,'result_json'=>$resultJson,'result_hash'=>hash('sha256',$resultJson),'actor_user_id'=>$actorUserId,'created_at'=>$this->db->now()]);
             if($inserted!==1)return $this->rollbackError(new WP_Error('smai_future_run_store_failed','Future feature result could not be stored.',['status'=>500]));
             if (!(new AuditLogger($this->db))->logInOpenTransaction('future_feature_run','future_feature',$id,'success',['run_uuid'=>$runUuid,'mode'=>$dryRun?'dry_run':'active','request_hash'=>$requestHash,'feature_row_version'=>(int)$row['row_version'],'config_hash'=>(string)$row['config_hash'],'artifacts'=>$artifacts],'future40_analysis',null,$actorUserId)) {
@@ -161,10 +168,11 @@ final class FutureFeatureService
         $summary=Text::truncate(trim((string)($payload['summary']??'')),255);$severity=strtoupper((string)($payload['severity']??'SEV-4'));
         if($summary===''||!in_array($severity,['SEV-0','SEV-1','SEV-2','SEV-3','SEV-4'],true))return new WP_Error('smai_future_invalid_incident','Valid incident summary and severity are required.',['status'=>400]);
         if((new SensitiveValueDetector())->violations($payload)!==[])return new WP_Error('smai_future_sensitive_input','Sensitive incident payload is not allowed.',['status'=>400]);
+        $shapeError=$this->evidenceShapeError($payload);if($shapeError!==null)return new WP_Error('smai_future_input_shape_invalid',$shapeError,['status'=>400]);
         $uuid=Uuid::v4();$now=$this->db->now();$wpdb=$this->db->wpdb();
         if (!$this->begin()) return new WP_Error('smai_future_transaction_failed', 'Analytics incident transaction could not start.', ['status' => 500]);
         try {
-            $inserted=$wpdb->insert($this->db->table('analytics_incidents'),['incident_uuid'=>$uuid,'severity'=>$severity,'state'=>'open','summary'=>$summary,'evidence_json'=>Json::canonical($this->minimize(is_array($payload['evidence']??null)?$payload['evidence']:[])),'owner_user_id'=>$actorUserId,'created_at'=>$now,'updated_at'=>$now]);
+            $inserted=$wpdb->insert($this->db->table('analytics_incidents'),['incident_uuid'=>$uuid,'severity'=>$severity,'state'=>'open','summary'=>$summary,'evidence_json'=>Json::canonical(is_array($payload['evidence']??null)?$payload['evidence']:[]),'owner_user_id'=>$actorUserId,'created_at'=>$now,'updated_at'=>$now]);
             if($inserted!==1)return $this->rollbackError(new WP_Error('smai_future_incident_store_failed','Analytics incident could not be stored.',['status'=>500]));
             if (!(new AuditLogger($this->db))->logInOpenTransaction('analytics_incident_created','analytics_incident',$uuid,'success',['severity'=>$severity],'future40_operations',null,$actorUserId)) {
                 return $this->rollbackError(new WP_Error('smai_future_audit_failed', 'Incident was not committed because audit evidence could not be written.', ['status' => 500]));
@@ -188,7 +196,7 @@ final class FutureFeatureService
     {
         if(!FutureActivationService::isApproved()||!RuntimeGate::queryEnabled())return;
         $wpdb=$this->db->wpdb();
-        $rows=$wpdb->get_results("SELECT feature_id,approved_by,requested_by,row_version,config_hash FROM `{$this->db->table('future_features')}` WHERE state='active' AND feature_id IN ('CF05-FUT-036','CF05-FUT-037')",ARRAY_A);
+        $rows=$wpdb->get_results("SELECT feature_id,approved_by,requested_by,row_version,config_hash,config_json FROM `{$this->db->table('future_features')}` WHERE state='active' AND feature_id IN ('CF05-FUT-036','CF05-FUT-037')",ARRAY_A);
         $bucket=gmdate('Y-m-d\\TH:00:00\\Z');
         foreach(is_array($rows)?$rows:[] as $candidate){
             if(!is_array($candidate))continue;
@@ -196,11 +204,12 @@ final class FutureFeatureService
             if((int)($candidate['approved_by']??0)<1||(int)$candidate['approved_by']===(int)($candidate['requested_by']??0))continue;
             if(!$this->begin())continue;
             try {
-                $row=$wpdb->get_row($wpdb->prepare('SELECT state,approved_by,requested_by,row_version,config_hash FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s FOR UPDATE',$featureId),ARRAY_A);
+                $row=$wpdb->get_row($wpdb->prepare('SELECT state,approved_by,requested_by,row_version,config_hash,config_json FROM `'.$this->db->table('future_features').'` WHERE feature_id=%s FOR UPDATE',$featureId),ARRAY_A);
                 if(!is_array($row)||(string)$row['state']!=='active'||(int)($row['approved_by']??0)<1||(int)$row['approved_by']===(int)($row['requested_by']??0)){ $this->rollback(); continue; }
                 if(!FutureActivationService::isApproved()||!RuntimeGate::queryEnabled()||!RuntimeGate::schemaReady()){ $this->rollback(); continue; }
                 $configHash=(string)($row['config_hash']??'');$rowVersion=(int)($row['row_version']??0);
-                if($rowVersion<1||preg_match('/^[a-f0-9]{64}$/',$configHash)!==1){ $this->rollback(); continue; }
+                $configJson=$row['config_json']??null;
+                if($rowVersion<1||preg_match('/^[a-f0-9]{64}$/',$configHash)!==1||!is_string($configJson)||!hash_equals($configHash,hash('sha256',$configJson))){ $this->rollback(); continue; }
                 $uuid=$this->scheduledEvidenceUuid($featureId,$bucket,$rowVersion,$configHash);
                 $evidence=['automatic_external_delivery'=>false,'scheduled_bucket'=>$bucket,'feature_row_version'=>$rowVersion,'config_hash'=>$configHash];
                 $inserted=$wpdb->query($wpdb->prepare(
@@ -248,15 +257,24 @@ final class FutureFeatureService
         return $error;
     }
 
-    /** @param array<string,mixed> $value @return array<string,mixed> */
-    private function minimize(array $value):array
+    private function evidenceShapeError(mixed $value, int $depth = 0): ?string
     {
-        $out=[];foreach(array_slice($value,0,100,true) as $key=>$item)$out[Text::truncate((string)$key,100)]=$this->safeValue($item,0);return$out;
-    }
-
-    private function safeValue(mixed $value,int $depth):mixed
-    {
-        if($depth>5)return '[truncated]';if(is_string($value))return Text::truncate(wp_strip_all_tags($value),1000);if(is_scalar($value)||$value===null)return$value;
-        if(is_array($value)){$out=[];foreach(array_slice($value,0,100,true) as $key=>$item)$out[(string)$key]=$this->safeValue($item,$depth+1);return$out;}return '[unsupported]';
+        if ($depth > 8) return 'Future-40 input nesting exceeds the governed depth limit.';
+        if (is_string($value)) {
+            if (strlen($value) > 4000 || wp_strip_all_tags($value) !== $value) return 'Future-40 string input is over-length or requires lossy sanitization.';
+            return null;
+        }
+        if (is_float($value) && !is_finite($value)) return 'Future-40 numeric input must be finite.';
+        if (is_int($value) || is_float($value) || is_bool($value) || $value === null) return null;
+        if (!is_array($value)) return 'Future-40 input contains an unsupported value type.';
+        if (count($value) > 1000) return 'Future-40 collection exceeds the governed item limit.';
+        foreach ($value as $key => $item) {
+            if ((!is_int($key) && !is_string($key)) || (is_string($key) && ($key === '' || strlen($key) > 100))) {
+                return 'Future-40 input contains an invalid key.';
+            }
+            $error = $this->evidenceShapeError($item, $depth + 1);
+            if ($error !== null) return $error;
+        }
+        return null;
     }
 }

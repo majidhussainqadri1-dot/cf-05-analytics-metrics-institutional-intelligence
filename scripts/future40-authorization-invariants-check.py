@@ -12,6 +12,8 @@ if "smai_manage_future_intelligence')) return new WP_Error('smai_future_forbidde
 if "array_diff(array_keys($payload),['summary','severity','evidence'])" not in s:e.append('incident schema silently accepts unsupported fields')
 marker="if(!FutureActivationService::isApproved()||!RuntimeGate::queryEnabled()||!RuntimeGate::schemaReady())"
 if marker not in s:e.append('scheduled Future-40 execution does not recheck gates after feature lock')
+if "config_json" not in s or "smai_future_config_integrity" not in s:e.append('Future-40 config hash is not verified against persisted config')
+if "hash_equals($configHash,hash('sha256',$configJson))" not in s:e.append('scheduled Future-40 config integrity is not rechecked')
 if "user_can($actorUserId, 'smai_manage_future_intelligence')" not in a:e.append('Future-40 activation proposal lacks domain-layer capability enforcement')
 if a.count("user_can($actorUserId, 'smai_approve_future_intelligence')") < 2:e.append('Future-40 activation approve/disable lacks domain-layer capability enforcement')
 if e:print('\n'.join(e),file=sys.stderr);sys.exit(1)

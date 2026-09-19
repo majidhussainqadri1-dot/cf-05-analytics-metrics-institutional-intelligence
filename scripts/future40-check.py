@@ -55,6 +55,8 @@ if "get_option('smai_future40_state', 'disabled') !== 'approved'" not in activat
     errors.append('future40_state_not_enforced')
 if 'FutureActivationService::isApproved()' not in service:
     errors.append('feature_service_not_bound_to_global_activation_gate')
+for token in ["evidenceShapeError","Json::canonical($executionInput)","Json::canonical($storedResult)","smai_future_config_integrity","hash('sha256',(string)$row['config_json'])"]:
+    if token not in service: errors.append('future40_exact_evidence_guard_missing:'+token)
 # Review-4 semantic invariants.
 for token in ['breaking_added_required_fields','zero_variance_baseline','over_budget','requires_review','metric_not_allowlisted','human_review_confirmed','is_finite','validDate']:
     if token not in engine: errors.append(f'review4_semantic_guard_missing:{token}')
@@ -85,6 +87,8 @@ if service.count('smai_future_actor_required') < 4:
 artifact=text('src/Domain/FutureArtifactStore.php')
 for token in ['FutureArtifactStore','feature_row_version','config_hash','schema_version','contract_version']:
     if token not in service: errors.append(f'review6_run_binding_missing:{token}')
+if "Json::canonical($this->clean($input))" in artifact or "Json::canonical($this->clean($result))" in artifact:
+    errors.append('scenario_artifact_uses_lossy_evidence_persistence')
 for token in ['CF05-FUT-021','scenario_models','CF05-FUT-025','privacy_budgets','CF05-FUT-029','research_workspaces','CF05-FUT-038','transparency_records','FOR UPDATE','budget_row_version']:
     if token not in artifact: errors.append(f'review6_artifact_persistence_missing:{token}')
 if manifest.get('version')!='1.0.0-rc.10': errors.append('manifest_version_not_rc10')

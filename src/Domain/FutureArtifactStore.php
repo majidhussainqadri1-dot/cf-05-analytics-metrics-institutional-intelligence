@@ -72,7 +72,7 @@ final class FutureArtifactStore
         $uuid = Uuid::v4(); $now = $this->db->now();
         $ok = $this->db->wpdb()->insert($this->db->table('scenario_models'), [
             'scenario_uuid'=>$uuid,'feature_id'=>'CF05-FUT-021','name'=>$name,
-            'definition_json'=>Json::canonical($this->clean($input)),'result_json'=>Json::canonical($this->clean($result)),
+            'definition_json'=>Json::canonical($input),'result_json'=>Json::canonical($result),
             'owner_user_id'=>$actorUserId,'row_version'=>1,'created_at'=>$now,'updated_at'=>$now,
         ]);
         return $ok === 1 ? ['scenario_uuid'=>$uuid] : new WP_Error('smai_future_scenario_store_failed', 'Scenario evidence could not be persisted.', ['status'=>500]);
