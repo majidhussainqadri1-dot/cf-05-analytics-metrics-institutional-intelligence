@@ -95,7 +95,8 @@ final class ReportControlService
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'row_version' => $expectedVersion, 'state' => (string) $report['state']]);
-        if ($updated !== 1 || !$this->audit->logInOpenTransaction('report_updated','report',$uuid,'success',['requires_reapproval'=>true],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_update_conflict', 'Report update and audit evidence could not be committed.', ['status' => 409]); }
+        $now = $this->db->now();
+        if ($updated !== 1 || !$this->revokeDeliveries($uuid, null, $now) || !$this->audit->logInOpenTransaction('report_updated','report',$uuid,'success',['requires_reapproval'=>true,'prior_deliveries_revoked'=>true],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_update_conflict', 'Report update and audit evidence could not be committed.', ['status' => 409]); }
         if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_control_commit_failed','Report update could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => 'draft', 'row_version' => $expectedVersion + 1, 'requires_reapproval' => true];
     }
@@ -123,6 +124,13 @@ final class ReportControlService
         $project = (new AccessProjectService($this->db))->get((string) $report['project_uuid']);
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_report_project_inactive', 'Report access project is inactive.', ['status' => 409]);
+        }
+        $definition = Json::object((string) $report['definition_json']);
+        $recipients = is_array($definition['recipients'] ?? null) ? array_values($definition['recipients']) : [];
+        $metrics = is_array($definition['metrics'] ?? null) ? array_values($definition['metrics']) : [];
+        if (is_wp_error($this->validateRecipients($recipients))
+            || is_wp_error($this->validateMetrics($metrics, (string) $report['project_uuid'], (int) $report['owner_user_id']))) {
+            return new WP_Error('smai_report_contract_drift', 'Report resume is blocked because its stored recipient, metric, privacy or access contract is no longer valid.', ['status' => 409]);
         }
         $reason = $this->reason($reason);
         if (is_wp_error($reason)) {
@@ -232,7 +240,8 @@ final class ReportControlService
             'row_version' => $expectedVersion + 1,
             'updated_at' => $this->db->now(),
         ], ['id' => (int) $report['id'], 'state' => $from, 'row_version' => $expectedVersion]);
-        if ($updated !== 1 || !$this->audit->logInOpenTransaction('report_'.$to,'report',$uuid,'success',['reason'=>$reason],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_transition_conflict', 'Report transition and audit evidence could not be committed.', ['status' => 409]); }
+        $deliveriesRevoked = $to !== 'paused' || $this->revokeDeliveries($uuid, null, $this->db->now());
+        if ($updated !== 1 || !$deliveriesRevoked || !$this->audit->logInOpenTransaction('report_'.$to,'report',$uuid,'success',['reason'=>$reason,'prior_deliveries_revoked'=>$to==='paused'],'institutional_reporting',null,$actorUserId)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_report_transition_conflict', 'Report transition, delivery revocation and audit evidence could not be committed.', ['status' => 409]); }
         if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_report_control_commit_failed','Report transition could not be committed.',['status'=>500]);}
         return ['report_uuid' => $uuid, 'state' => $to, 'row_version' => $expectedVersion + 1];
     }

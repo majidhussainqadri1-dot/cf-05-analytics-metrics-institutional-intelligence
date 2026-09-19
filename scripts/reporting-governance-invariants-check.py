@@ -29,5 +29,12 @@ if "user_can($actorUserId, 'smai_approve_catalog')" not in files['ReportControlS
 if "user_can($actorUserId, 'smai_manage_access')" not in files['ReportControlService.php']: e.append('report revocation lacks service-layer manage_access authorization')
 if "user_can($actorUserId, 'smai_manage_reports')" not in files['NarrativeService.php']: e.append('narrative creation lacks service-layer manage_reports authorization')
 if "user_can($reviewerUserId, 'smai_approve_catalog')" not in files['NarrativeService.php']: e.append('narrative publication lacks service-layer approval authorization')
+report_control=files['ReportControlService.php']
+update_section=report_control.split('public function update',1)[1].split('public function pause',1)[0]
+resume_section=report_control.split('public function resume',1)[1].split('public function revoke',1)[0]
+transition_section=report_control.split('private function transition',1)[1].split('private function validateRecipients',1)[0]
+if "revokeDeliveries($uuid, null" not in update_section: e.append('report update does not revoke stale prior deliveries')
+if "validateRecipients($recipients)" not in resume_section or "validateMetrics($metrics" not in resume_section: e.append('report resume does not revalidate stored governed contract')
+if "$to !== 'paused' || $this->revokeDeliveries" not in transition_section: e.append('report pause does not revoke outstanding delivery tokens')
 if e: print('\n'.join(e),file=sys.stderr);sys.exit(1)
 print('Reporting governance invariants check passed.')
