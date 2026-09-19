@@ -1,0 +1,46 @@
+name: CF-05 CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'codex/**'
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Executable quality suite
+        run: bash scripts/qa.sh
+      - name: Deterministic release build
+        run: bash scripts/verify-deterministic-build.sh
+      - name: Artifact integrity
+        run: |
+          set -euo pipefail
+          version="$(php -r '$s=file_get_contents("sabri-analytics-institutional-intelligence.php"); if (!preg_match("/define\\(\x27SMAI_VERSION\x27,\\s*\x27([^\x27]+)\x27\\);/", $s, $m)) { exit(2); } echo $m[1];')"
+          archive="build/dist/CF-05-sabri-analytics-institutional-intelligence-${version}.zip"
+          checksum="${archive}.sha256"
+          test -f "$archive"
+          test -f "$checksum"
+          (cd build/dist && sha256sum -c "$(basename "$checksum")")
+          unzip -t "$archive"
+          test -f "build/dist/CF-05-${version}-sbom.cdx.json"
+          test -f "build/dist/CF-05-${version}-package-manifest.json"
+      - uses: actions/upload-artifact@v7
+        if: matrix.php == '8.3'
+        with:
+          name: cf-05-release-candidate
+          path: build/dist/*

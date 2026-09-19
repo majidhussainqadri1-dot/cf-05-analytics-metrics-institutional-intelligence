@@ -1,0 +1,184 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Sabri\AnalyticsIntelligence\Domain;
+
+use Sabri\AnalyticsIntelligence\Infrastructure\AuditLogger;
+use Sabri\AnalyticsIntelligence\Infrastructure\Database;
+use Sabri\AnalyticsIntelligence\Infrastructure\Json;
+use Sabri\AnalyticsIntelligence\Infrastructure\SensitiveValueDetector;
+use Sabri\AnalyticsIntelligence\Infrastructure\Uuid;
+use WP_Error;
+
+final class RestoreService
+{
+    private Database $db;
+    private AuditLogger $audit;
+
+    public function __construct(Database $db)
+    {
+        $this->db = $db;
+        $this->audit = new AuditLogger($db);
+    }
+
+    /** @param array<string,mixed> $evidence */
+    public function record(string $codeSha, array $evidence, int $actorUserId): array|WP_Error
+    {
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_restore')) {
+            return new WP_Error('smai_restore_forbidden', 'Restore-point recording is not authorized.', ['status'=>403]);
+        }
+        if (preg_match('/^[a-f0-9]{40,64}$/', $codeSha) !== 1 || (new SensitiveValueDetector())->violations($evidence) !== []) {
+            return new WP_Error('smai_invalid_restore_evidence', 'Restore evidence is invalid or contains sensitive values.', ['status' => 400]);
+        }
+        foreach (['backup_manifest_hash','backup_archive_hash','backup_created_at'] as $required) {
+            if (!isset($evidence[$required]) || ($required !== 'backup_created_at' && preg_match('/^[a-f0-9]{64}$/', (string) $evidence[$required]) !== 1)) {
+                return new WP_Error('smai_incomplete_restore_evidence', 'Restore evidence is incomplete.', ['status' => 400, 'field' => $required]);
+            }
+        }
+        $backupCreatedAt = (string) $evidence['backup_created_at'];
+        if (strlen($backupCreatedAt)>35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/',$backupCreatedAt,$m)!==1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1]) || ($backupTs=strtotime($backupCreatedAt))===false || $backupTs>time()+300) {
+            return new WP_Error('smai_invalid_restore_timestamp', 'Backup evidence timestamp is invalid or in the future.', ['status' => 400]);
+        }
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION WITH CONSISTENT SNAPSHOT')===false){return new WP_Error('smai_restore_transaction_failed','Restore evidence transaction could not start.',['status'=>500]);}
+        try {
+            $uuid = Uuid::v4();
+            $catalogHash = $this->catalogHash();
+            $checkpoints = $this->checkpointSnapshot();
+            $deletionFloor = (int) $wpdb->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('deletion_jobs')}`");
+            $accessFloor = (int) $wpdb->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('access_projects')}`");
+            $ok = $wpdb->insert($this->db->table('restore_points'), [
+            'restore_uuid' => $uuid,
+            'state' => 'recorded',
+            'code_sha' => strtolower($codeSha),
+            'schema_version' => (string) get_option('smai_schema_version', 'unknown'),
+            'catalog_hash' => $catalogHash,
+            'checkpoints_json' => Json::canonical($checkpoints),
+            'deletion_floor_id' => $deletionFloor,
+            'access_floor_id' => $accessFloor,
+            'evidence_json' => Json::canonical($evidence),
+            'recorded_by' => $actorUserId,
+            'created_at' => $this->db->now(),
+        ]);
+        if ($ok !== 1) { $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_restore_point_store_failed', 'Restore point could not be stored.', ['status' => 500]);
+        }
+        if(!$this->audit->logInOpenTransaction('restore_point_recorded', 'restore_point', $uuid, 'success', ['code_sha' => $codeSha, 'catalog_hash' => $catalogHash], 'disaster_recovery', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_restore_audit_failed','Restore point was not committed because audit evidence failed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_restore_commit_failed','Restore point could not be committed.',['status'=>500]);}
+        return ['restore_uuid' => $uuid, 'state' => 'recorded', 'catalog_hash' => $catalogHash, 'checkpoint_hash' => hash('sha256', Json::canonical($checkpoints))];
+        } catch (\Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_restore_point_store_failed', 'Restore point could not be stored safely.', ['status' => 500]);
+        }
+    }
+
+    public function verify(string $uuid, int $actorUserId): array|WP_Error
+    {
+        if($actorUserId<1||!user_can($actorUserId,'smai_restore')){return new WP_Error('smai_restore_forbidden','Restore verification is not authorized.',['status'=>403]);}
+        if(preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',$uuid)!==1){return new WP_Error('smai_invalid_restore_verification','Restore verification identity or actor is invalid.',['status'=>400]);}
+        $table = $this->db->table('restore_points');
+        (new AccessProjectService($this->db))->expireDue();
+        $wpdb=$this->db->wpdb();
+        if($wpdb->query('START TRANSACTION WITH CONSISTENT SNAPSHOT')===false){return new WP_Error('smai_restore_transaction_failed','Restore verification transaction could not start.',['status'=>500]);}
+        try {
+        $point = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$table}` WHERE restore_uuid=%s FOR UPDATE", $uuid), ARRAY_A);
+        if (!is_array($point)) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_restore_point_not_found', 'Restore point was not found.', ['status' => 404]);
+        }
+        if ((string)$point['state']==='verified') { $wpdb->query('ROLLBACK'); return new WP_Error('smai_restore_already_verified','Verified restore evidence is immutable.',['status'=>409]); }
+        if (!in_array((string)$point['state'],['recorded','failed'],true)) { $wpdb->query('ROLLBACK'); return new WP_Error('smai_restore_state_invalid','Restore point state does not allow verification.',['status'=>409]); }
+        if ((int) $point['recorded_by'] === $actorUserId) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_separation_of_duties', 'Restore verification requires an independent actor.', ['status' => 403]);
+        }
+        $currentCodeSha = defined('SMAI_CODE_SHA') && is_string(SMAI_CODE_SHA) ? SMAI_CODE_SHA : (string) apply_filters('smai_current_code_sha', '');
+        $checks = [
+            'code_sha_matches' => $currentCodeSha !== '' && hash_equals((string) $point['code_sha'], $currentCodeSha),
+            'schema_matches' => hash_equals((string) $point['schema_version'], (string) get_option('smai_schema_version', 'unknown')),
+            'catalog_matches' => hash_equals((string) $point['catalog_hash'], $this->catalogHash()),
+            'checkpoints_match' => hash_equals(hash('sha256', (string) $point['checkpoints_json']), hash('sha256', Json::canonical($this->checkpointSnapshot()))),
+            'deletion_floor_applied' => $this->verifyDeletionFloor((int) $point['deletion_floor_id']),
+            'deleted_subjects_absent' => $this->verifyDeletedSubjects((int) $point['deletion_floor_id']),
+            'access_floor_applied' => $this->verifyAccessFloor((int) $point['access_floor_id']),
+            'provider_restore_verified' => $this->verifyProviders($uuid),
+        ];
+        $verified = !in_array(false, $checks, true);
+        $updated=$wpdb->update($table, ['state' => $verified ? 'verified' : 'failed', 'verified_by' => $actorUserId, 'verified_at' => $this->db->now()], ['id' => (int) $point['id'], 'state' => (string)$point['state']]);
+        if($updated!==1 || !$this->audit->logInOpenTransaction('warehouse_restore_verified', 'restore_point', $uuid, $verified ? 'success' : 'failed', $checks, 'disaster_recovery', null, $actorUserId)){ $wpdb->query('ROLLBACK'); return new WP_Error('smai_restore_audit_failed','Restore verification evidence could not be committed.',['status'=>503]); }
+        if($wpdb->query('COMMIT')===false){$wpdb->query('ROLLBACK');return new WP_Error('smai_restore_commit_failed','Restore verification could not be committed.',['status'=>500]);}
+        do_action('smai_restore_verification_completed', ['restore_uuid' => $uuid, 'verified' => $verified, 'checks' => $checks]);
+        return ['restore_uuid' => $uuid, 'state' => $verified ? 'verified' : 'failed', 'checks' => $checks];
+        } catch (\Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('smai_restore_verification_failed', 'Restore verification failed safely.', ['status' => 500]);
+        }
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function checkpointSnapshot(): array
+    {
+        $rows = $this->db->wpdb()->get_results("SELECT stream_ref,consumer_ref,contract_version,watermark_at,source_sequence,checkpoint_hash FROM `{$this->db->table('checkpoints')}` ORDER BY stream_ref,consumer_ref", ARRAY_A);
+        return is_array($rows) ? $rows : [];
+    }
+
+    private function catalogHash(): string
+    {
+        $parts = [];
+        foreach ([
+            ['event_schemas','event_name,event_version,schema_hash,state,row_version'],
+            ['datasets','dataset_id,dataset_version,definition_hash,state,row_version'],
+            ['metrics','metric_id,metric_version,definition_hash,state,row_version'],
+            ['providers','provider_id,provider_version,state,region_code,row_version'],
+            ['quality_rules','rule_id,rule_version,config_hash,state,row_version'],
+            ['dashboard_definitions','dashboard_id,dashboard_version,definition_hash,state,row_version'],
+        ] as [$tableName, $columns]) {
+            $rows = $this->db->wpdb()->get_results("SELECT {$columns} FROM `{$this->db->table($tableName)}` ORDER BY id", ARRAY_A);
+            $parts[$tableName] = is_array($rows) ? $rows : [];
+        }
+        return hash('sha256', Json::canonical($parts));
+    }
+
+    private function verifyDeletionFloor(int $floor): bool
+    {
+        if ($floor < 1) {return true;}
+        return (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('deletion_jobs')}` WHERE id<=%d AND state<>'completed'", $floor)) === 0;
+    }
+
+    private function verifyDeletedSubjects(int $floor): bool
+    {
+        if ($floor < 1) {return true;}
+        $jobs = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT deletion_key FROM `{$this->db->table('deletion_jobs')}` WHERE id<=%d AND state='completed'", $floor), ARRAY_A);
+        foreach (is_array($jobs) ? $jobs : [] as $job) {
+            $key = (string) $job['deletion_key'];
+            foreach ([['events','deletion_key'],['dataset_rows','deletion_key'],['experiment_facts','deletion_key']] as [$table,$column]) {
+                $count = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table($table)}` WHERE `{$column}`=%s", $key));
+                if ($count !== 0) {return false;}
+            }
+        }
+        return true;
+    }
+
+    private function verifyAccessFloor(int $floor): bool
+    {
+        if ($floor < 1) {return true;} $wpdb=$this->db->wpdb();$now=$this->db->now();
+        $staleProjects=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('access_projects')}` WHERE id<=%d AND state='active' AND expires_at<=%s",$floor,$now));
+        $staleExports=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('exports')}` e INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=e.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND e.state IN ('requested','building','ready')",$floor,$now));
+        $staleReports=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('reports')}` r INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND r.state='active'",$floor,$now));
+        $staleDashboards=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('dashboard_definitions')}` d INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=d.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND d.state='active'",$floor,$now));
+        $staleDeliveries=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('report_deliveries')}` d INNER JOIN `{$this->db->table('reports')}` r ON r.report_uuid=d.report_uuid INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND ((p.state<>'active' OR p.expires_at<=%s) OR r.state<>'active' OR (r.expires_at IS NOT NULL AND r.expires_at<=%s)) AND d.state IN ('ready','sent')",$floor,$now,$now));
+        return $staleProjects===0&&$staleExports===0&&$staleReports===0&&$staleDashboards===0&&$staleDeliveries===0;
+    }
+
+    private function verifyProviders(string $uuid): bool
+    {
+        $providers = $this->db->wpdb()->get_results("SELECT provider_id,provider_version FROM `{$this->db->table('providers')}` WHERE state='active'", ARRAY_A);
+        foreach (is_array($providers) ? $providers : [] as $provider) {
+            if (in_array((string) $provider['provider_id'], ['local','local-wordpress'], true)) {continue;}
+            $result = apply_filters('smai_verify_provider_restore', null, $provider['provider_id'], $provider['provider_version'], $uuid);
+            if (!is_array($result) || ($result['verified'] ?? false) !== true || preg_match('/^[a-f0-9]{64}$/', (string) ($result['evidence_hash'] ?? '')) !== 1) {return false;}
+        }
+        return true;
+    }
+}
