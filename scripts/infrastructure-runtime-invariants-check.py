@@ -14,3 +14,10 @@ if "preg_match('/^[A-Za-z0-9][A-Za-z0-9:._-]{0,99}$/', $workerId)" not in queue:
 if "if (!$this->queue->complete" not in runner:e.append('job runner ignores completion persistence failure')
 if e:print('\n'.join(e),file=sys.stderr);sys.exit(1)
 print('Infrastructure/runtime invariants check passed.')
+
+job_queue=(root/'src/Infrastructure/JobQueue.php').read_text(encoding='utf-8')
+report=(root/'src/Domain/ReportService.php').read_text(encoding='utf-8')
+for token in ["private const TYPES","'pipeline.process_event'","'report.run'","in_array($type, self::TYPES, true)"]:
+    if token not in job_queue: errors.append('job_queue_allowlist_missing:'+token)
+if "RuntimeGate::workerEnabled()" not in report.split('public function scheduleDue(): int',1)[1].split('/**',1)[0]:
+    errors.append('report_scheduler_runtime_gate_missing')

@@ -184,6 +184,9 @@ final class ReportService
 
     public function scheduleDue(): int
     {
+        if (!\Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate::workerEnabled()) {
+            return 0;
+        }
         $table = $this->db->table('reports');
         $now = $this->db->now();
         $reports = $this->db->wpdb()->get_results($this->db->wpdb()->prepare(

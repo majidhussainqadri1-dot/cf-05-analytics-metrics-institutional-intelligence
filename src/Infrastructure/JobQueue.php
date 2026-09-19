@@ -8,6 +8,16 @@ use WP_Error;
 
 final class JobQueue
 {
+    private const TYPES = [
+        'pipeline.process_event',
+        'snapshot.compute',
+        'quality.run',
+        'backfill.run',
+        'export.build',
+        'report.run',
+        'deletion.apply',
+    ];
+
     private Database $db;
 
     public function __construct(Database $db)
@@ -18,7 +28,7 @@ final class JobQueue
     /** @param array<string,mixed> $payload */
     public function enqueue(string $type, array $payload, string $idempotencyKey, int $maxAttempts = 5, ?string $runAt = null): array|WP_Error
     {
-        if (!preg_match('/^[a-z][a-z0-9_.-]{2,99}$/', $type) || strlen($idempotencyKey) < 8) {
+        if (!in_array($type, self::TYPES, true) || strlen($idempotencyKey) < 8 || strlen($idempotencyKey) > 1000) {
             return new WP_Error('smai_invalid_job', 'Job type or idempotency key is invalid.', ['status' => 400]);
         }
         if ($runAt !== null) {
