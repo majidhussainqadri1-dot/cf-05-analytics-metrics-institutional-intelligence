@@ -13,5 +13,8 @@ Metric query authorization, access-project checks, dimension policy, privacy bud
 - REST now rejects over-length or sanitizer-altered dimension values rather than silently changing them.
 - Added regression tests and permanent metric/privacy invariants.
 
+## Post-correction QA
+The first correction commit exposed that `violations()` stopped validating a dimension value after detecting a missing dimension policy. That made the new bounded-value regression incomplete. The early `continue` was removed so policy absence and invalid value shape are both detected before this round was closed.
+
 ## Truth boundary
 This is repository privacy-control evidence; it does not establish live query traffic, deployed privacy budgets or production access-project state.

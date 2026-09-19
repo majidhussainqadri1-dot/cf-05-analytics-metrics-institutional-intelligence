@@ -20,7 +20,6 @@ final class PrivacyQueryPolicy
         foreach ($dimensions as $name => $value) {
             if (!is_string($name) || !isset($policies[$name]) || !is_array($policies[$name])) {
                 $errors[] = 'dimension_policy_missing';
-                continue;
             }
             if (is_array($value) || is_object($value) || is_resource($value)
                 || (is_float($value) && !is_finite($value))
