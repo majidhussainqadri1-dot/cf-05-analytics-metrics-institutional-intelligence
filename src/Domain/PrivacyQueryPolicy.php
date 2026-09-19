@@ -22,7 +22,9 @@ final class PrivacyQueryPolicy
                 $errors[] = 'dimension_policy_missing';
                 continue;
             }
-            if (is_array($value) || is_object($value) || is_resource($value)) {
+            if (is_array($value) || is_object($value) || is_resource($value)
+                || (is_float($value) && !is_finite($value))
+                || (is_string($value) && strlen($value) > 100)) {
                 $errors[] = 'invalid_dimension_value';
             }
         }
@@ -75,9 +77,17 @@ final class PrivacyQueryPolicy
      */
     public static function differencingRisk(array $current, array $previous, int $floor): bool
     {
-        if (($previous['window_start'] ?? '') !== $current['window_start'] || ($previous['window_end'] ?? '') !== $current['window_end']) {
+        $currentStart = strtotime($current['window_start']);
+        $currentEnd = strtotime($current['window_end']);
+        $previousStart = strtotime((string) ($previous['window_start'] ?? ''));
+        $previousEnd = strtotime((string) ($previous['window_end'] ?? ''));
+        if ($currentStart === false || $currentEnd === false || $previousStart === false || $previousEnd === false
+            || $currentStart >= $currentEnd || $previousStart >= $previousEnd) {
             return false;
         }
+        $sameWindow = $previousStart === $currentStart && $previousEnd === $currentEnd;
+        $nestedWindow = ($currentStart >= $previousStart && $currentEnd <= $previousEnd)
+            || ($previousStart >= $currentStart && $previousEnd <= $currentEnd);
 
         $currentNames = array_values(array_unique(array_map('strval', $current['dimension_names'])));
         $previousNames = array_values(array_unique(array_map('strval', (array) ($previous['dimension_names'] ?? []))));
@@ -86,13 +96,17 @@ final class PrivacyQueryPolicy
         $currentHashes = is_array($current['dimension_hashes']) ? $current['dimension_hashes'] : [];
         $previousHashes = is_array($previous['dimension_hashes'] ?? null) ? $previous['dimension_hashes'] : [];
 
-        if ($currentNames === $previousNames && $currentHashes === $previousHashes) {
+        if ($sameWindow && $currentNames === $previousNames && $currentHashes === $previousHashes) {
             return false;
         }
 
         $difference = abs((int) $current['cohort_size'] - (int) ($previous['cohort_size'] ?? 0));
         if ($difference >= max(1, $floor)) {
             return false;
+        }
+
+        if (!$sameWindow) {
+            return $nestedWindow && $currentNames === $previousNames && $currentHashes === $previousHashes;
         }
 
         $currentSubset = count(array_diff($currentNames, $previousNames)) === 0;

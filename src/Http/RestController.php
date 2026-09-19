@@ -225,10 +225,11 @@ final class RestController
             if (!is_string($key)
                 || preg_match('/^[a-z][a-z0-9_]{0,63}$/', $key) !== 1
                 || (!is_scalar($value) && $value !== null)
-                || (is_float($value) && !is_finite($value))) {
+                || (is_float($value) && !is_finite($value))
+                || (is_string($value) && (strlen($value) > 100 || sanitize_text_field($value) !== $value))) {
                 return new WP_Error('smai_invalid_dimensions', 'A dimension key or value is invalid.', ['status' => 400]);
             }
-            $clean[$key] = is_string($value) ? Text::truncate(sanitize_text_field($value), 100) : $value;
+            $clean[$key] = $value;
         }
         $result = (new MetricQueryService($this->db))->query(
             (string) $request['metric_id'],

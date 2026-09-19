@@ -56,6 +56,31 @@ $tests['nested low-difference slices are detected'] = static function (): void {
     falsity(PrivacyQueryPolicy::differencingRisk($current, $previous, 5));
 };
 
+$tests['nested time windows are protected from low-difference disclosure'] = static function (): void {
+    $current = [
+        'window_start' => '2026-08-02 00:00:00',
+        'window_end' => '2026-08-10 00:00:00',
+        'dimension_names' => ['locale'],
+        'dimension_hashes' => ['locale' => 'a'],
+        'cohort_size' => 91,
+    ];
+    $previous = [
+        'window_start' => '2026-08-01 00:00:00',
+        'window_end' => '2026-08-10 00:00:00',
+        'dimension_names' => ['locale'],
+        'dimension_hashes' => ['locale' => 'a'],
+        'cohort_size' => 100,
+    ];
+    truth(PrivacyQueryPolicy::differencingRisk($current, $previous, 20));
+    falsity(PrivacyQueryPolicy::differencingRisk($current, $previous, 5));
+};
+
+$tests['dimension values are bounded at policy layer'] = static function (): void {
+    $definition = baseDefinition();
+    $violations = PrivacyQueryPolicy::violations($definition, ['locale' => str_repeat('x', 101)]);
+    truth(in_array('invalid_dimension_value', $violations, true));
+};
+
 $tests['exact repeated slice is not treated as differencing'] = static function (): void {
     $slice = [
         'window_start' => '2026-08-01 00:00:00',
