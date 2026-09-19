@@ -12,5 +12,8 @@ The complete queue claim/dispatch lifecycle, every current job producer, schedul
 - Scheduled reports now return without advancing state unless the governed worker runtime is enabled.
 - Added permanent runtime/queue invariants for both boundaries.
 
+## Post-correction QA
+The first correction commit exposed a defect in the newly extended invariant script itself: it referenced undefined Python variables after the pre-existing success/exit block. That regression was corrected within Round 84 and the invariant was integrated into the existing `e` failure ledger before continuing.
+
 ## Truth boundary
 This is repository-source behavior. It does not establish the live cron state, deployed worker state, queue contents or production runtime mode.
