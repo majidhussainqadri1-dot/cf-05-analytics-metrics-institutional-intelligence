@@ -18,7 +18,7 @@ jobs:
       matrix:
         php: ['8.1', '8.2', '8.3']
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
@@ -39,7 +39,7 @@ jobs:
           unzip -t "$archive"
           test -f "build/dist/CF-05-${version}-sbom.cdx.json"
           test -f "build/dist/CF-05-${version}-package-manifest.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: matrix.php == '8.3'
         with:
           name: cf-05-release-candidate

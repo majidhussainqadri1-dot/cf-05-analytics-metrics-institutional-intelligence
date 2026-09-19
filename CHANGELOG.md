@@ -1,5 +1,5 @@
 ## 1.0.0-rc.10 — 2026-09-18
-- Post-cycle REST security hardening: moved export/report bearer tokens out of query strings into dedicated headers and route-bound the raw CSV response filter to the exact CF-05 export endpoint.
+- Post-cycle REST/CI security hardening: moved export/report bearer tokens out of query strings into dedicated headers, route-bound the raw CSV response filter to the exact CF-05 export endpoint, and advanced GitHub checkout/upload actions to current v7 majors to remove the deprecated Node.js 20 action-runtime path.
 - Completed governed sequential review rounds SR-74..SR-83 using audit-first / fix-after-round discipline; hardened contract parity, release identity, Future-40/report/access/catalog/export/provider/deletion/restore service authorization and permanent regression gates.
 - Corrected stale release-facing traceability and pull-request evidence so current candidate identity is not confused with older rc.8/rc.9 source states.
 - Continued governed sequential review after SR-59, including repair authorization, REST typing, Future-40 reason minimization, restore consistency, scheduled-report atomicity, schema locking, retry idempotency and disclosure-contract closure.
