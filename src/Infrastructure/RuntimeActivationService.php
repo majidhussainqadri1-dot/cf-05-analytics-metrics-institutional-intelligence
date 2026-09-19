@@ -23,6 +23,7 @@ final class RuntimeActivationService
         }
         if(!$this->protectedEvidenceMatches($evidenceHash))return new WP_Error('smai_activation_evidence_mismatch','Activation evidence does not match the protected configuration.',['status'=>409]);
         if(!RuntimeGate::schemaReady())return new WP_Error('smai_schema_gate','CF-05 schema must be ready before runtime activation can be proposed.',['status'=>409]);
+        if(in_array($state,[RuntimeGate::STAGING_ACTIVE,RuntimeGate::PRODUCTION_ACTIVE],true)&&!RuntimeGate::privateConfigurationReady())return new WP_Error('smai_runtime_private_configuration_missing','Required private runtime configuration is incomplete.',['status'=>409]);
         if(!$this->begin())return new WP_Error('smai_activation_transaction_failed','Runtime activation transaction could not start.',['status'=>500]);
         try{
             if($this->readOptionForUpdate(self::OPTION_REQUEST)!==null)return $this->rollbackError(new WP_Error('smai_activation_request_pending','A runtime activation proposal is already pending independent review.',['status'=>409]));
@@ -52,6 +53,7 @@ final class RuntimeActivationService
             if(!RuntimeGate::schemaReady())return $this->rollbackError(new WP_Error('smai_schema_gate','CF-05 schema must be ready before runtime activation can be approved.',['status'=>409]));
             $state=(string)($request['state']??'');
             if(!in_array($state,[RuntimeGate::CATALOG_ONLY,RuntimeGate::STAGING_ACTIVE,RuntimeGate::PRODUCTION_ACTIVE],true))return $this->rollbackError(new WP_Error('smai_activation_request_stale','Activation target state is invalid or stale.',['status'=>409]));
+            if(in_array($state,[RuntimeGate::STAGING_ACTIVE,RuntimeGate::PRODUCTION_ACTIVE],true)&&!RuntimeGate::privateConfigurationReady())return $this->rollbackError(new WP_Error('smai_runtime_private_configuration_missing','Required private runtime configuration is incomplete.',['status'=>409]));
             $environment=function_exists('wp_get_environment_type')?wp_get_environment_type():'unknown';
             if($state===RuntimeGate::PRODUCTION_ACTIVE&&$environment!=='production')return $this->rollbackError(new WP_Error('smai_activation_environment_mismatch','Production activation is permitted only in the production environment.',['status'=>409]));
             if($state===RuntimeGate::STAGING_ACTIVE&&!in_array($environment,['staging','development','local'],true))return $this->rollbackError(new WP_Error('smai_activation_environment_mismatch','Staging activation is permitted only in a non-production staging-compatible environment.',['status'=>409]));

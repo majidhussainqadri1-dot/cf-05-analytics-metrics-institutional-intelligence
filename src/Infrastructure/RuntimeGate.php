@@ -60,16 +60,32 @@ final class RuntimeGate
         return preg_match('/^[a-f0-9]{64}$/', $configured) === 1 && hash_equals($stored, $configured);
     }
 
+    public static function privateConfigurationReady(): bool
+    {
+        foreach (['SMAI_INGESTION_SECRET','SMAI_PSEUDONYM_KEY','SMAI_EXPORT_KEY'] as $name) {
+            if (!defined($name)) {
+                return false;
+            }
+            $value = constant($name);
+            if (!is_string($value) || strlen($value) < 32) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static function ingestionEnabled(): bool
     {
-        return self::schemaReady()
+        return self::privateConfigurationReady()
+            && self::schemaReady()
             && self::activeRuntimeIsEnvironmentCompatible()
             && self::activationApproved();
     }
 
     public static function queryEnabled(): bool
     {
-        return self::schemaReady()
+        return self::privateConfigurationReady()
+            && self::schemaReady()
             && self::activeRuntimeIsEnvironmentCompatible()
             && self::activationApproved();
     }

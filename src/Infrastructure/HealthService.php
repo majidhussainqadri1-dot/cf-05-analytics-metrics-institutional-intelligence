@@ -48,9 +48,10 @@ final class HealthService
         $secretConfigured = defined('SMAI_INGESTION_SECRET') && is_string(SMAI_INGESTION_SECRET) && strlen(SMAI_INGESTION_SECRET) >= 32;
         $pseudonymConfigured = defined('SMAI_PSEUDONYM_KEY') && is_string(SMAI_PSEUDONYM_KEY) && strlen(SMAI_PSEUDONYM_KEY) >= 32;
         $exportConfigured = defined('SMAI_EXPORT_KEY') && is_string(SMAI_EXPORT_KEY) && strlen(SMAI_EXPORT_KEY) >= 32;
-        if ((RuntimeGate::ingestionEnabled() || RuntimeGate::workerEnabled()) && (!$secretConfigured || !$pseudonymConfigured)) {
+        $privateConfigurationReady = RuntimeGate::privateConfigurationReady();
+        if (in_array(RuntimeGate::state(), [RuntimeGate::STAGING_ACTIVE, RuntimeGate::PRODUCTION_ACTIVE], true) && !$privateConfigurationReady) {
             $healthy = false;
-            $degradationReasons[] = 'runtime_secret_missing';
+            $degradationReasons[] = 'runtime_private_configuration_missing';
         }
 
         $queue = $this->db->exists('jobs') ? $this->db->wpdb()->get_row(
@@ -99,6 +100,7 @@ final class HealthService
             'ingestion_enabled' => RuntimeGate::ingestionEnabled(),
             'query_enabled' => RuntimeGate::queryEnabled(),
             'worker_enabled' => RuntimeGate::workerEnabled(),
+            'private_configuration_ready' => $privateConfigurationReady,
             'secrets' => [
                 'ingestion' => $secretConfigured ? 'configured' : 'missing',
                 'pseudonymization' => $pseudonymConfigured ? 'configured' : 'missing',
