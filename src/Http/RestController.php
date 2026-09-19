@@ -285,9 +285,13 @@ final class RestController
 
     public function downloadExport(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
+        $token = trim((string) $request->get_header('x-sabri-download-token'));
+        if (preg_match('/^[0-9a-f]{64}$/i', $token) !== 1) {
+            return new WP_Error('smai_export_token_missing', 'A valid export download token header is required.', ['status' => 401]);
+        }
         $result = (new ExportService($this->db))->download(
             (string) $request['uuid'],
-            (string) $request->get_param('token'),
+            $token,
             get_current_user_id()
         );
         if (is_wp_error($result)) {
@@ -316,9 +320,13 @@ final class RestController
 
     public function accessReportDelivery(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
+        $token = trim((string) $request->get_header('x-sabri-report-token'));
+        if (preg_match('/^[0-9a-f]{64}$/i', $token) !== 1) {
+            return new WP_Error('smai_report_token_missing', 'A valid report delivery token header is required.', ['status' => 401]);
+        }
         $result = (new ReportService($this->db))->accessDelivery(
             (string) $request['uuid'],
-            (string) $request->get_param('token'),
+            $token,
             get_current_user_id()
         );
         return is_wp_error($result) ? $result : $this->response($result);
@@ -419,6 +427,9 @@ final class RestController
 
     public function serveRawDownload(bool $served, mixed $result, WP_REST_Request $request, mixed $server): bool
     {
+        if (preg_match('#^/sabri-analytics/v1/exports/[0-9a-fA-F-]{36}/download$#', (string) $request->get_route()) !== 1) {
+            return $served;
+        }
         if (!$result instanceof WP_REST_Response) {
             return $served;
         }
@@ -429,9 +440,10 @@ final class RestController
         if (headers_sent()) {
             return $served;
         }
-        header('Content-Type: ' . (string) ($data['content_type'] ?? 'application/octet-stream'));
-        header('Content-Disposition: attachment; filename="' . sanitize_file_name((string) ($data['filename'] ?? 'download.bin')) . '"');
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . sanitize_file_name((string) ($data['filename'] ?? 'download.csv')) . '"');
         header('Cache-Control: private, no-store, max-age=0');
+        header('Pragma: no-cache');
         header('X-Content-Type-Options: nosniff');
         echo (string) ($data['content'] ?? ''); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         return true;

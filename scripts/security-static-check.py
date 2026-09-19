@@ -20,6 +20,12 @@ for path in php:
     continue
    fail.append(f'{path.relative_to(root)}:{label}')
    break
+rest=(root/'src/Http/RestController.php').read_text(encoding='utf-8')
+if "get_param('token')" in rest:
+ fail.append('RestController:bearer-token-in-query')
+for token in ["get_header('x-sabri-download-token')","get_header('x-sabri-report-token')","^/sabri-analytics/v1/exports/"]:
+ if token not in rest:
+  fail.append('RestController:missing-download-boundary:'+token)
 if fail:
  print('\n'.join(fail),file=sys.stderr);sys.exit(1)
 print(f'Security primitive scan passed: {len(php)} PHP files.')
