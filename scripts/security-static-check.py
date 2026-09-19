@@ -26,6 +26,12 @@ if "get_param('token')" in rest:
 for token in ["get_header('x-sabri-download-token')","get_header('x-sabri-report-token')","^/sabri-analytics/v1/exports/"]:
  if token not in rest:
   fail.append('RestController:missing-download-boundary:'+token)
+idem=(root/'src/Infrastructure/IdempotencyGuard.php').read_text(encoding='utf-8')
+for token in ["containsSecret","__encrypted","new CryptoBox(SMAI_EXPORT_KEY)","idempotency|"]:
+ if token not in idem:
+  fail.append('IdempotencyGuard:protected-replay-missing:'+token)
+if "'response_json' => Json::encode($response)" in idem:
+ fail.append('IdempotencyGuard:plaintext-response-persistence')
 if fail:
  print('\n'.join(fail),file=sys.stderr);sys.exit(1)
 print(f'Security primitive scan passed: {len(php)} PHP files.')

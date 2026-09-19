@@ -77,9 +77,21 @@ final class IdempotencyGuard
                 return new WP_Error('smai_idempotency_conflict', 'Idempotency key was reused with a different request.', ['status' => 409]);
             }
             if ((string) $row['state'] === 'completed') {
+                $stored = Json::object((string) ($row['response_json'] ?? '{}'));
+                if (($stored['__encrypted'] ?? false) === true) {
+                    if (!defined('SMAI_EXPORT_KEY') || !is_string(SMAI_EXPORT_KEY) || strlen(SMAI_EXPORT_KEY) < 32 || !is_string($stored['payload'] ?? null)) {
+                        return new WP_Error('smai_idempotency_replay_unavailable', 'Protected idempotency replay is unavailable.', ['status' => 503]);
+                    }
+                    try {
+                        $plain = (new CryptoBox(SMAI_EXPORT_KEY))->decrypt((string) $stored['payload'], 'idempotency|' . $hash);
+                        $stored = Json::object($plain);
+                    } catch (\Throwable $error) {
+                        return new WP_Error('smai_idempotency_replay_unavailable', 'Protected idempotency replay could not be verified.', ['status' => 503]);
+                    }
+                }
                 return [
                     'state' => 'completed',
-                    'response' => Json::object((string) ($row['response_json'] ?? '{}')),
+                    'response' => $stored,
                     'status_code' => (int) ($row['status_code'] ?? 200),
                 ];
             }
@@ -108,9 +120,23 @@ final class IdempotencyGuard
             return false;
         }
         $hash = $this->identityHash($scope, $actorRef, $key);
+        $responseJson = Json::encode($response);
+        if ($this->containsSecret($response)) {
+            if (!defined('SMAI_EXPORT_KEY') || !is_string(SMAI_EXPORT_KEY) || strlen(SMAI_EXPORT_KEY) < 32) {
+                return false;
+            }
+            try {
+                $responseJson = Json::encode([
+                    '__encrypted' => true,
+                    'payload' => (new CryptoBox(SMAI_EXPORT_KEY))->encrypt($responseJson, 'idempotency|' . $hash),
+                ]);
+            } catch (\Throwable $error) {
+                return false;
+            }
+        }
         return $this->db->wpdb()->update($this->db->table('idempotency_keys'), [
             'state' => 'completed',
-            'response_json' => Json::encode($response),
+            'response_json' => $responseJson,
             'status_code' => $statusCode,
             'updated_at' => $this->db->now(),
         ], [
@@ -119,6 +145,20 @@ final class IdempotencyGuard
             'actor_ref' => $actorRef,
             'state' => 'started',
         ]) === 1;
+    }
+
+    /** @param array<string,mixed> $value */
+    private function containsSecret(array $value): bool
+    {
+        foreach ($value as $key => $item) {
+            if (preg_match('/(?:^|_)(?:token|secret|password|otp|cvv|pan|api_key)(?:$|_)/i', (string) $key) === 1) {
+                return true;
+            }
+            if (is_array($item) && $this->containsSecret($item)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function validIdentity(string $scope, string $actorRef, string $key): bool
