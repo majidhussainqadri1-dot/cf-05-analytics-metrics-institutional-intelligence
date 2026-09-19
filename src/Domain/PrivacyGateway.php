@@ -74,10 +74,10 @@ final class PrivacyGateway
             'boolean' => is_bool($value) ? $value : $this->reject($errors, 'invalid_boolean_' . $name),
             'integer' => is_int($value) ? $this->boundedInteger($value, $definition, $errors, $name) : $this->reject($errors, 'invalid_integer_' . $name),
             'number' => is_int($value) || is_float($value) ? $this->boundedNumber((float) $value, $definition, $errors, $name) : $this->reject($errors, 'invalid_number_' . $name),
-            'enum' => is_scalar($value) && in_array((string) $value, array_map('strval', (array) ($definition['values'] ?? [])), true) ? (string) $value : $this->reject($errors, 'invalid_enum_' . $name),
+            'enum' => (is_string($value) || is_int($value) || is_bool($value)) && in_array($value, (array) ($definition['values'] ?? []), true) ? $value : $this->reject($errors, 'invalid_enum_' . $name),
             'safe_string' => is_string($value) ? $this->safeString($value, $definition, $errors, $name) : $this->reject($errors, 'invalid_string_' . $name),
             'timestamp' => is_string($value) && ($timestamp = $this->strictTimestamp($value)) !== null ? gmdate('c', $timestamp) : $this->reject($errors, 'invalid_timestamp_' . $name),
-            'pseudonymous_ref' => is_scalar($value) ? $this->pseudonymize((string) $value, 'field:' . $name) : $this->reject($errors, 'invalid_ref_' . $name),
+            'pseudonymous_ref' => $this->pseudonymousRef($value, $name, $errors),
             default => $this->reject($errors, 'unsupported_type_' . $name),
         };
     }
@@ -113,7 +113,12 @@ final class PrivacyGateway
     /** @param array<string,mixed> $definition @param array<int,string> $errors */
     private function safeString(string $value, array $definition, array &$errors, string $name): ?string
     {
-        $value = Text::truncate(trim(wp_strip_all_tags($value)), max(1, min(500, (int) ($definition['max_length'] ?? 100))));
+        $value = trim(wp_strip_all_tags($value));
+        $maximum = max(1, min(500, (int) ($definition['max_length'] ?? 100)));
+        if (strlen($value) > $maximum) {
+            $errors[] = 'string_too_long_' . $name;
+            return null;
+        }
         if ($value === '' && ($definition['required'] ?? false) === true) {
             $errors[] = 'empty_' . $name;
             return null;
@@ -123,6 +128,17 @@ final class PrivacyGateway
             return null;
         }
         return $value;
+    }
+
+    /** @param array<int,string> $errors */
+    private function pseudonymousRef(mixed $value, string $name, array &$errors): ?string
+    {
+        if ((!is_string($value) && !is_int($value))
+            || (is_string($value) && ($value === '' || strlen($value) > 190))) {
+            $errors[] = 'invalid_ref_' . $name;
+            return null;
+        }
+        return $this->pseudonymize((string) $value, 'field:' . $name);
     }
 
     /** @param array<int,string> $errors */

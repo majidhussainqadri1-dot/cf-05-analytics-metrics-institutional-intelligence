@@ -10,6 +10,7 @@ use Sabri\AnalyticsIntelligence\Contracts\ExperimentDefinitionValidator;
 use Sabri\AnalyticsIntelligence\Contracts\MetricDefinitionValidator;
 use Sabri\AnalyticsIntelligence\Domain\FilterEvaluator;
 use Sabri\AnalyticsIntelligence\Domain\LifecyclePolicy;
+use Sabri\AnalyticsIntelligence\Domain\PrivacyGateway;
 use Sabri\AnalyticsIntelligence\Domain\Statistics;
 use Sabri\AnalyticsIntelligence\Domain\TransformationEngine;
 use Sabri\AnalyticsIntelligence\Infrastructure\CryptoBox;
@@ -85,6 +86,33 @@ $tests['experiment definition requires governed audience allocation metrics and 
 $tests['experiment timestamps require strict RFC3339'] = static function (): void {
     $definition=governedExperimentDefinition();$definition['starts_at']='tomorrow';truth(in_array('invalid_starts_at',(new ExperimentDefinitionValidator())->errors($definition),true));
     $definition['starts_at']='2026-09-20T10:00:00Z';$definition['ends_at']='2026-09-21T10:00:00Z';same([],(new ExperimentDefinitionValidator())->errors($definition));
+};
+
+$tests['privacy gateway preserves typed enums and rejects lossy event values'] = static function (): void {
+    $gateway = new PrivacyGateway(str_repeat('p', 64));
+    $schema = [
+        'minor_policy' => 'aggregate_only',
+        'fields' => [
+            'typed' => ['type' => 'enum', 'values' => [1, true, '1'], 'required' => true],
+            'ref' => ['type' => 'pseudonymous_ref'],
+            'label' => ['type' => 'safe_string', 'max_length' => 4],
+        ],
+    ];
+    $accepted = $gateway->process(['properties' => ['typed' => true, 'ref' => 7, 'label' => 'safe']], $schema);
+    truth($accepted['accepted']);
+    same(true, $accepted['properties']['typed']);
+
+    $floatEnum = $gateway->process(['properties' => ['typed' => 1.0]], $schema);
+    truth(!$floatEnum['accepted']);
+    truth(in_array('invalid_enum_typed', $floatEnum['errors'], true));
+
+    $badRef = $gateway->process(['properties' => ['typed' => 1, 'ref' => false]], $schema);
+    truth(!$badRef['accepted']);
+    truth(in_array('invalid_ref_ref', $badRef['errors'], true));
+
+    $long = $gateway->process(['properties' => ['typed' => '1', 'label' => '12345']], $schema);
+    truth(!$long['accepted']);
+    truth(in_array('string_too_long_label', $long['errors'], true));
 };
 
 $tests['lifecycle transitions are closed and independent'] = static function (): void {

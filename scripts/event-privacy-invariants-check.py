@@ -13,6 +13,11 @@ for token,msg in [
     if token not in pg: errors.append(msg)
 if "logInOpenTransaction" not in ing or "accepted_audit_degraded" in ing: errors.append('event acceptance is not audit-atomic')
 if "logInOpenTransaction('event_schema_registered'" not in reg: errors.append('event schema registration is not audit-atomic')
+for token,msg in [
+    ("in_array($value, (array) ($definition['values'] ?? []), true)",'enum values are not type-strict'),
+    ("private function pseudonymousRef",'pseudonymous refs lack a strict scalar identity boundary'),
+    ("string_too_long_",'safe strings are silently truncated instead of rejected')]:
+    if token not in pg: errors.append(msg)
 if errors:
     print('\n'.join(errors),file=sys.stderr);sys.exit(1)
 print('Event/privacy invariants check passed.')
