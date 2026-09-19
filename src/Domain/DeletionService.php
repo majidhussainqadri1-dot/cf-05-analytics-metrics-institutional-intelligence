@@ -287,11 +287,35 @@ final class DeletionService
     {
         $retry = (int) $job['retry_count'] + 1;
         $delay = min(DAY_IN_SECONDS, 300 * (2 ** min(7, max(0, $retry - 1))));
-        $this->db->wpdb()->update($this->db->table('deletion_jobs'), [
-            'state' => 'retrying', 'result_json' => Json::encode($reconciliation), 'retry_count' => $retry,
-            'next_retry_at' => gmdate('Y-m-d H:i:s', time() + $delay), 'updated_at' => $this->db->now(),
-        ], ['id' => (int) $job['id']]);
-        $this->audit->log('analytics_deletion_retrying', 'deletion_job', (string) $job['job_uuid'], 'failed', ['failed_stores' => $failedStores, 'retry_count' => $retry], 'privacy_rights', null, null, 'system');
+        $wpdb = $this->db->wpdb();
+        if ($wpdb->query('START TRANSACTION') === false) {
+            throw new \RuntimeException('Deletion retry evidence transaction could not start.');
+        }
+        try {
+            $updated = $wpdb->update($this->db->table('deletion_jobs'), [
+                'state' => 'retrying', 'result_json' => Json::encode($reconciliation), 'retry_count' => $retry,
+                'next_retry_at' => gmdate('Y-m-d H:i:s', time() + $delay), 'updated_at' => $this->db->now(),
+            ], ['id' => (int) $job['id']]);
+            if ($updated !== 1 || !$this->audit->logInOpenTransaction(
+                'analytics_deletion_retrying',
+                'deletion_job',
+                (string) $job['job_uuid'],
+                'failed',
+                ['failed_stores' => $failedStores, 'retry_count' => $retry],
+                'privacy_rights',
+                null,
+                null,
+                'system'
+            )) {
+                throw new \RuntimeException('Deletion retry state and audit evidence could not be stored atomically.');
+            }
+            if ($wpdb->query('COMMIT') === false) {
+                throw new \RuntimeException('Deletion retry evidence could not be committed.');
+            }
+        } catch (\Throwable $error) {
+            $wpdb->query('ROLLBACK');
+            throw new \RuntimeException('Deletion retry persistence failed safely.', 0, $error);
+        }
     }
 
     private function recordReconciliation(int $jobId, string $store, int $before, int $after, string $state, ?string $evidenceHash = null): void

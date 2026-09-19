@@ -8,6 +8,8 @@ x=(r/'src/Domain/RestoreService.php').read_text(encoding='utf-8')
 t=(r/'src/Infrastructure/RetentionRunner.php').read_text(encoding='utf-8')
 e=[]
 if "audit->log('analytics_deletion_requested'" in d or "audit->log('analytics_deletion_completed'" in d:e.append('deletion governance audit is not atomic')
+retry=d.split('private function retry',1)[1].split('private function recordReconciliation',1)[0] if 'private function retry' in d else ''
+if "START TRANSACTION" not in retry or "logInOpenTransaction" not in retry or "$updated !== 1" not in retry:e.append('deletion retry state/audit is not fail-closed and atomic')
 if 'provider_registered' not in p or "audit->log('provider_transition'" in p:e.append('provider governance audit is incomplete/non-atomic')
 if "in_array($target,['approved','active'],true)?$actorUserId" in p:e.append('provider activation overwrites independent approver provenance')
 if "['experiment_facts','subject_ref']" in x:e.append('restore deletion verification checks the wrong experiment-fact column')
