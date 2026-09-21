@@ -44,9 +44,17 @@ final class InsightsShortcode
                 . esc_html__('No approved dashboard was selected.', 'sabri-analytics-institutional-intelligence')
                 . '</div>';
         }
+        $dashboardId = strtolower(trim((string) $attributes['dashboard']));
+        $dashboardVersion = trim((string) $attributes['version']);
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $dashboardId) !== 1
+            || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $dashboardVersion) !== 1) {
+            return '<div class="smai-state smai-state--warning" role="alert"><span class="dashicons dashicons-warning" aria-hidden="true"></span> '
+                . esc_html__('The selected dashboard identity is invalid.', 'sabri-analytics-institutional-intelligence')
+                . '</div>';
+        }
         $bundle = (new DashboardService($this->db))->bundle(
-            sanitize_key((string) $attributes['dashboard']),
-            sanitize_text_field((string) $attributes['version']),
+            $dashboardId,
+            $dashboardVersion,
             get_current_user_id()
         );
         if (is_wp_error($bundle)) {

@@ -39,8 +39,11 @@ final class DashboardService
         }
         if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', (string) $definition['dashboard_id']) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', (string) $definition['dashboard_version']) !== 1
-            || strlen(trim((string) $definition['name'])) < 3
-            || (new SensitiveValueDetector())->violations((string) $definition['name']) !== []
+            || !is_string($definition['name'])
+            || strlen(trim($definition['name'])) < 3
+            || strlen($definition['name']) > 190
+            || trim(wp_strip_all_tags($definition['name'])) !== $definition['name']
+            || (new SensitiveValueDetector())->violations($definition['name']) !== []
             || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', (string) $definition['project_uuid']) !== 1
             || !is_array($definition['audience'])
             || !is_array($definition['widgets'])
@@ -108,6 +111,7 @@ final class DashboardService
             }
             $expiresAt = gmdate('Y-m-d H:i:s', $expiry);
         }
+        $definition['name'] = trim($definition['name']);
         $definition['audience'] = $audience;
         $definition['widgets'] = $widgets;
         $canonical = Json::canonical($definition);
