@@ -34,8 +34,17 @@ for name,data in expected.items():
 
 manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
 sha=hashlib.sha256(archive.read_bytes()).hexdigest()
-review_docs=list((root/'docs').glob('SEQUENTIAL-REVIEW-ROUND-*.md'))
-review_rounds_completed=max([int(p.stem.rsplit('-',1)[-1]) for p in review_docs if p.stem.rsplit('-',1)[-1].isdigit()] or [0])
+review_rounds_completed=0
+for p in (root/'docs').glob('SEQUENTIAL-REVIEW-ROUND*.md'):
+    name=p.name
+    single=re.fullmatch(r'SEQUENTIAL-REVIEW-ROUND-(\d+)\.md',name)
+    batch=re.fullmatch(r'SEQUENTIAL-REVIEW-ROUNDS-(\d+)-(\d+)\.md',name)
+    if single:
+        review_rounds_completed=max(review_rounds_completed,int(single.group(1)))
+    elif batch:
+        start,end=map(int,batch.groups())
+        if start<=end:
+            review_rounds_completed=max(review_rounds_completed,end)
 if manifest.get('version')!=version or manifest.get('sha256')!=sha or manifest.get('file_count')!=len(expected) or manifest.get('review_rounds_completed')!=review_rounds_completed:
     print('package manifest mismatch',file=sys.stderr);sys.exit(1)
 print(f'Package/source parity passed: {len(expected)} files, {sha}.')
