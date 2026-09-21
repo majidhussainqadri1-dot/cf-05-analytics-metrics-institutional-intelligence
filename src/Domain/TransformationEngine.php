@@ -26,23 +26,32 @@ final class TransformationEngine
             } elseif (count($from) === 2 && $from[0] === 'properties') {
                 $value = $properties[$from[1]] ?? null;
             }
-            $row[$name] = $this->normalize($value, (string) ($definition['type'] ?? 'string'));
+            $normalized = $this->normalize($value, (string) ($definition['type'] ?? 'string'), $definition);
+            if ($value !== null && $normalized === null) {
+                throw new \RuntimeException('Dataset field normalization failed: ' . $name);
+            }
+            if (($definition['required'] ?? false) === true && $normalized === null) {
+                throw new \RuntimeException('Required dataset field is unavailable: ' . $name);
+            }
+            $row[$name] = $normalized;
         }
         return $row;
     }
 
-    private function normalize(mixed $value, string $type): mixed
+    /** @param array<string,mixed> $definition */
+    private function normalize(mixed $value, string $type, array $definition): mixed
     {
         if ($value === null) {
             return null;
         }
         return match ($type) {
-            'boolean' => is_bool($value) ? $value : null,
-            'integer' => is_int($value) ? $value : (is_numeric($value) ? (int) $value : null),
-            'number' => is_numeric($value) ? (float) $value : null,
+            'boolean' => is_bool($value) ? $value : (is_int($value) && ($value === 0 || $value === 1) ? (bool) $value : null),
+            'integer' => is_int($value) ? $value : null,
+            'number' => (is_int($value) || is_float($value)) && is_finite((float) $value) ? (float) $value : null,
             'timestamp' => is_string($value) && strtotime($value) !== false ? gmdate('c', (int) strtotime($value)) : null,
             'pseudonymous_ref' => is_string($value) && preg_match('/^[a-f0-9]{64}$/', $value) === 1 ? $value : null,
-            default => is_scalar($value) ? (string) $value : null,
+            'string' => is_string($value) && strlen($value) <= max(1, min(500, (int) ($definition['max_length'] ?? 190))) ? $value : null,
+            default => null,
         };
     }
 }

@@ -158,6 +158,28 @@ $tests['transformation and filters are allowlist-driven'] = static function (): 
     falsity(FilterEvaluator::matches($row, [['field' => 'score', 'operator' => 'gt', 'value' => 9]]));
 };
 
+$tests['dataset transformation fails closed on lossy or missing required values'] = static function (): void {
+    $engine = new TransformationEngine();
+    $event = ['properties' => ['count' => 7, 'label' => 'safe'], 'is_late' => 1];
+    same(
+        ['count' => 7, 'label' => 'safe', 'late' => true],
+        $engine->map($event, [
+            'count' => ['from' => 'properties.count', 'type' => 'integer', 'required' => true],
+            'label' => ['from' => 'properties.label', 'type' => 'string', 'required' => true, 'max_length' => 10],
+            'late' => ['from' => 'event.is_late', 'type' => 'boolean', 'required' => true],
+        ])
+    );
+    throws(static fn() => $engine->map(['properties' => ['count' => '7']], [
+        'count' => ['from' => 'properties.count', 'type' => 'integer', 'required' => true],
+    ]));
+    throws(static fn() => $engine->map(['properties' => []], [
+        'count' => ['from' => 'properties.count', 'type' => 'integer', 'required' => true],
+    ]));
+    throws(static fn() => $engine->map(['properties' => ['label' => 'too-long']], [
+        'label' => ['from' => 'properties.label', 'type' => 'string', 'required' => true, 'max_length' => 3],
+    ]));
+};
+
 $tests['sensitive detector blocks nested secrets and identifiers'] = static function (): void {
     $detector = new SensitiveValueDetector();
     truth(in_array('forbidden_key_fragment', $detector->violations(['nested' => ['api_key' => 'hidden']]), true));

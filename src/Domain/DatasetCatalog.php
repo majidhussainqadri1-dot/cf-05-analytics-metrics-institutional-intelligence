@@ -146,8 +146,16 @@ final class DatasetCatalog
     {
         $errors = [];
         $safeEnvelope = [
-            'occurred_at','recorded_at','source_module','source_version','source_environment',
-            'purpose','actor_ref','object_ref','deletion_key','is_late',
+            'occurred_at' => ['type' => 'timestamp', 'required' => true],
+            'recorded_at' => ['type' => 'timestamp', 'required' => true],
+            'source_module' => ['type' => 'safe_string', 'required' => true, 'max_length' => 100],
+            'source_version' => ['type' => 'safe_string', 'required' => true, 'max_length' => 64],
+            'source_environment' => ['type' => 'safe_string', 'required' => true, 'max_length' => 32],
+            'purpose' => ['type' => 'safe_string', 'required' => true, 'max_length' => 190],
+            'actor_ref' => ['type' => 'pseudonymous_ref', 'required' => false],
+            'object_ref' => ['type' => 'pseudonymous_ref', 'required' => false],
+            'deletion_key' => ['type' => 'pseudonymous_ref', 'required' => false],
+            'is_late' => ['type' => 'boolean', 'required' => true],
         ];
         foreach ($fields as $name => $field) {
             if (!is_array($field)) {
@@ -155,8 +163,16 @@ final class DatasetCatalog
             }
             [$scope, $sourceField] = array_pad(explode('.', (string) ($field['from'] ?? ''), 2), 2, '');
             if ($scope === 'event') {
-                if (!in_array($sourceField, $safeEnvelope, true)) {
+                $sourceDefinition = $safeEnvelope[$sourceField] ?? null;
+                if (!is_array($sourceDefinition)) {
                     $errors[] = 'unsafe_event_mapping_' . $name;
+                    continue;
+                }
+                if (!$this->sourceDefinitionCompatible($sourceDefinition, $field)) {
+                    $errors[] = 'incompatible_mapping_' . $name;
+                }
+                if (($field['required'] ?? false) === true && ($sourceDefinition['required'] ?? false) !== true) {
+                    $errors[] = 'optional_source_for_required_field_' . $name;
                 }
                 continue;
             }
@@ -167,8 +183,11 @@ final class DatasetCatalog
                     continue;
                 }
                 $present++;
-                if (!$this->typesCompatible((string) ($sourceDefinition['type'] ?? ''), (string) ($field['type'] ?? ''))) {
+                if (!$this->sourceDefinitionCompatible($sourceDefinition, $field)) {
                     $errors[] = 'incompatible_mapping_' . $name;
+                }
+                if (($field['required'] ?? false) === true && ($sourceDefinition['required'] ?? false) !== true) {
+                    $errors[] = 'optional_source_for_required_field_' . $name;
                 }
             }
             if ($present === 0 || (($field['required'] ?? false) === true && $present !== count($schemas))) {
@@ -178,8 +197,11 @@ final class DatasetCatalog
         return array_values(array_unique($errors));
     }
 
-    private function typesCompatible(string $eventType, string $datasetType): bool
+    /** @param array<string,mixed> $sourceDefinition @param array<string,mixed> $datasetField */
+    private function sourceDefinitionCompatible(array $sourceDefinition, array $datasetField): bool
     {
+        $eventType = (string) ($sourceDefinition['type'] ?? '');
+        $datasetType = (string) ($datasetField['type'] ?? '');
         $map = [
             'boolean' => ['boolean'],
             'integer' => ['integer','number'],
@@ -189,6 +211,29 @@ final class DatasetCatalog
             'timestamp' => ['timestamp'],
             'pseudonymous_ref' => ['pseudonymous_ref'],
         ];
-        return in_array($datasetType, $map[$eventType] ?? [], true);
+        if (!in_array($datasetType, $map[$eventType] ?? [], true)) {
+            return false;
+        }
+        if ($eventType === 'enum') {
+            $values = $sourceDefinition['values'] ?? [];
+            if (!is_array($values) || $values === []) {
+                return false;
+            }
+            foreach ($values as $value) {
+                if (!is_string($value)) {
+                    return false;
+                }
+            }
+        }
+        if (in_array($eventType, ['safe_string','enum'], true) && $datasetType === 'string') {
+            $targetMax = (int) ($datasetField['max_length'] ?? 190);
+            $sourceMax = $eventType === 'safe_string'
+                ? (int) ($sourceDefinition['max_length'] ?? 100)
+                : max(array_map(static fn (string $value): int => strlen($value), (array) $sourceDefinition['values']));
+            if ($sourceMax > $targetMax) {
+                return false;
+            }
+        }
+        return true;
     }
 }
