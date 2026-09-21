@@ -31,6 +31,8 @@ for token in ['smai_future_intelligence_tick','smai_future_run_retention_days','
     if token not in uninstall: errors.append('uninstall_cleanup_missing:'+token)
 for token in ['SMAI_VERSION','SMAI_SCHEMA_VERSION','SMAI_CONTRACT_VERSION']:
     if token not in build: errors.append('dynamic_build_identity_missing:'+token)
+for token in ["SEQUENTIAL-REVIEW-ROUND-(\\d+)","SEQUENTIAL-REVIEW-ROUNDS-(\\d+)-(\\d+)",'review_rounds_completed=max(review_rounds_completed,end)']:
+    if token not in build: errors.append('package_review_evidence_parser_missing:'+token)
 if 'SMAI_VERSION' not in parity: errors.append('dynamic_parity_version_missing')
 if 'SMAI_VERSION' not in verify: errors.append('dynamic_verify_version_missing')
 import re
@@ -47,4 +49,4 @@ for rel,body in [('build-package.py',build),('package-parity.py',parity)]:
     if re.search(r"version\s*=\s*['\"]1\\.0\\.0-rc\\.",body): errors.append('hardcoded_release_version:'+rel)
 if errors:
     print('\n'.join(errors),file=sys.stderr);sys.exit(1)
-print('Release governance check passed: base activation atomicity, governance REST parity and uninstall least-privilege cleanup verified.')
+print('Release governance check passed: base activation atomicity, governance REST parity, package review evidence and uninstall least-privilege cleanup verified.')
