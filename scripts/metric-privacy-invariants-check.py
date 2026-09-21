@@ -11,6 +11,10 @@ if 'SELECT GET_LOCK' not in q or 'SELECT RELEASE_LOCK' not in q: errors.append('
 if "$stored === false" not in q or 'smai_privacy_evidence_unavailable' not in q: errors.append('privacy evidence persistence can fail open')
 if ": hash('sha256', $dimensionsJson)" in m: errors.append('metric audit fingerprint has unkeyed fallback')
 if "logInOpenTransaction" not in c: errors.append('metric registration audit is not transactional')
+for token in ["sourceSemanticsErrors","non_numeric_calculation_field","filter_value_type_mismatch_","filterValueMatchesField"]:
+ if token not in c: errors.append('metric source semantic gate missing:'+token)
+snapshot=(r/'src/Domain/SnapshotService.php').read_text(encoding='utf-8')
+if "is_numeric($row[$field]" in snapshot: errors.append('snapshot calculation still permits numeric-string coercion')
 if "count($dimensions) > 10" not in m or "SensitiveValueDetector())->violations($dimensions)" not in m: errors.append('metric domain query dimensions are not independently fail-closed')
 if "is_float($value) && !is_finite($value)" not in m: errors.append('metric domain query accepts non-finite dimension values')
 policy=(r/'src/Domain/PrivacyQueryPolicy.php').read_text(encoding='utf-8')

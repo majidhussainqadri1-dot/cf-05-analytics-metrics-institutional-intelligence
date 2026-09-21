@@ -319,7 +319,7 @@ final class SnapshotService
         if($type==='ratio'){$numFilters=is_array($calculation['numerator_filters']??null)?$calculation['numerator_filters']:[];$denFilters=is_array($calculation['denominator_filters']??null)?$calculation['denominator_filters']:[];$num=0;$den=0;
             foreach($rows as $row){$eligible=FilterEvaluator::matches($row,$denFilters);if($eligible){$den++;if(FilterEvaluator::matches($row,$numFilters)){$num++;}}}
             return[$den>0?$num/$den:null,(float)$num,(float)$den];}
-        if(in_array($type,['sum','average'],true)){$field=(string)($calculation['field']??'');$filters=is_array($calculation['filters']??null)?$calculation['filters']:[];$values=[];foreach($rows as $row){if(FilterEvaluator::matches($row,$filters)&&is_numeric($row[$field]??null)){$values[]=(float)$row[$field];}}$sum=array_sum($values);return[$type==='average'?Statistics::mean($values):$sum,$sum,(float)count($values)];}
+        if(in_array($type,['sum','average'],true)){$field=(string)($calculation['field']??'');$filters=is_array($calculation['filters']??null)?$calculation['filters']:[];$values=[];foreach($rows as $row){if(FilterEvaluator::matches($row,$filters)){ $candidate=$row[$field]??null; if((is_int($candidate)||is_float($candidate))&&is_finite((float)$candidate)){$values[]=(float)$candidate;} }}$sum=array_sum($values);return[$type==='average'?Statistics::mean($values):$sum,$sum,(float)count($values)];}
         $filters=is_array($calculation['filters']??null)?$calculation['filters']:[];$count=0;foreach($rows as $row){if(FilterEvaluator::matches($row,$filters)){$count++;}}return[(float)$count,(float)$count,null];
     }
 

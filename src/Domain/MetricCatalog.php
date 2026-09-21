@@ -44,7 +44,8 @@ final class MetricCatalog
             return new WP_Error('smai_metric_source_unpublished', 'Metric source dataset must be published.', ['status' => 409]);
         }
         $datasetDefinition = is_array($dataset['definition'] ?? null) ? $dataset['definition'] : [];
-        $datasetFields = is_array($datasetDefinition['fields'] ?? null) ? array_keys($datasetDefinition['fields']) : [];
+        $datasetFieldDefinitions = is_array($datasetDefinition['fields'] ?? null) ? $datasetDefinition['fields'] : [];
+        $datasetFields = array_keys($datasetFieldDefinitions);
         $referencedFields = array_values(array_unique(array_merge(
             array_map('strval', (array) ($normalized['dimensions'] ?? [])),
             $this->calculationFields((array) $normalized['calculation']),
@@ -53,6 +54,10 @@ final class MetricCatalog
         $unknownFields = array_values(array_diff($referencedFields, $datasetFields));
         if ($unknownFields !== []) {
             return new WP_Error('smai_metric_unknown_source_field', 'Metric references fields absent from the published dataset contract.', ['status' => 409, 'fields' => $unknownFields]);
+        }
+        $semanticErrors = $this->sourceSemanticsErrors($normalized, $datasetFieldDefinitions);
+        if ($semanticErrors !== []) {
+            return new WP_Error('smai_metric_source_semantics_invalid', 'Metric calculation/filter semantics do not match the published dataset contract.', ['status' => 409, 'errors' => $semanticErrors]);
         }
         $rank = ['C1' => 1, 'C2' => 2, 'C3' => 3];
         if (($rank[(string) $normalized['privacy_class']] ?? 0) < ($rank[(string) $dataset['privacy_class']] ?? 0)) {
@@ -142,6 +147,63 @@ final class MetricCatalog
         }
         $definition = Json::object((string) $row['definition_json']);
         return $definition === [] ? null : array_merge($row, ['definition' => $definition]);
+    }
+
+    /** @param array<string,mixed> $definition @param array<string,mixed> $datasetFields @return array<int,string> */
+    private function sourceSemanticsErrors(array $definition, array $datasetFields): array
+    {
+        $errors = [];
+        $calculation = is_array($definition['calculation'] ?? null) ? $definition['calculation'] : [];
+        $type = (string) ($calculation['type'] ?? '');
+        if (in_array($type, ['sum','average'], true)) {
+            $field = (string) ($calculation['field'] ?? '');
+            $fieldDefinition = is_array($datasetFields[$field] ?? null) ? $datasetFields[$field] : [];
+            if (!in_array((string) ($fieldDefinition['type'] ?? ''), ['integer','number'], true)) {
+                $errors[] = 'non_numeric_calculation_field';
+            }
+        }
+        foreach (['filters','numerator_filters','denominator_filters'] as $key) {
+            foreach ((array) ($calculation[$key] ?? []) as $filter) {
+                if (!is_array($filter)) {
+                    continue;
+                }
+                $field = (string) ($filter['field'] ?? '');
+                $fieldDefinition = is_array($datasetFields[$field] ?? null) ? $datasetFields[$field] : [];
+                $fieldType = (string) ($fieldDefinition['type'] ?? '');
+                $operator = (string) ($filter['operator'] ?? '');
+                if (in_array($operator, ['gt','gte','lt','lte'], true) && !in_array($fieldType, ['integer','number'], true)) {
+                    $errors[] = 'non_numeric_order_filter_' . $field;
+                    continue;
+                }
+                if (!array_key_exists('value', $filter) || in_array($operator, ['exists','not_exists'], true)) {
+                    continue;
+                }
+                $values = in_array($operator, ['in','not_in'], true) && is_array($filter['value'])
+                    ? $filter['value']
+                    : [$filter['value']];
+                foreach ($values as $value) {
+                    if (!$this->filterValueMatchesField($value, $fieldDefinition)) {
+                        $errors[] = 'filter_value_type_mismatch_' . $field;
+                        break;
+                    }
+                }
+            }
+        }
+        return array_values(array_unique($errors));
+    }
+
+    /** @param array<string,mixed> $field */
+    private function filterValueMatchesField(mixed $value, array $field): bool
+    {
+        return match ((string) ($field['type'] ?? '')) {
+            'boolean' => is_bool($value),
+            'integer' => is_int($value),
+            'number' => (is_int($value) || is_float($value)) && is_finite((float) $value),
+            'string' => is_string($value) && strlen($value) <= max(1, min(500, (int) ($field['max_length'] ?? 190))),
+            'timestamp' => is_string($value) && strtotime($value) !== false,
+            'pseudonymous_ref' => is_string($value) && preg_match('/^[a-f0-9]{64}$/', $value) === 1,
+            default => false,
+        };
     }
 
     /** @param array<string,mixed> $calculation @return array<int,string> */
