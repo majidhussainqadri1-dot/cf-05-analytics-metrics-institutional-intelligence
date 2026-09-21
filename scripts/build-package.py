@@ -42,8 +42,23 @@ components=[{'type':'file','name':p.relative_to(root).as_posix(),'hashes':[{'alg
 serial_version=re.sub(r'[^a-z0-9]+','-',version.lower()).strip('-')
 sbom={'bomFormat':'CycloneDX','specVersion':'1.5','serialNumber':f'urn:uuid:cf05-analytics-{serial_version}','version':1,'metadata':{'component':{'type':'application','name':slug,'version':version}},'components':components}
 (dist/f'CF-05-{version}-sbom.cdx.json').write_text(json.dumps(sbom,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
-review_docs=list((root/'docs').glob('SEQUENTIAL-REVIEW-ROUND-*.md'))
-review_rounds_completed=max([int(p.stem.rsplit('-',1)[-1]) for p in review_docs if p.stem.rsplit('-',1)[-1].isdigit()] or [0])
+
+# Review evidence exists in both legacy per-round files (for example
+# SEQUENTIAL-REVIEW-ROUND-99.md) and later batched ledgers (for example
+# SEQUENTIAL-REVIEW-ROUNDS-110-119.md).  Derive the highest completed round
+# from both forms so package evidence cannot silently regress to 99.
+review_rounds_completed=0
+for p in (root/'docs').glob('SEQUENTIAL-REVIEW-ROUND*.md'):
+    name=p.name
+    single=re.fullmatch(r'SEQUENTIAL-REVIEW-ROUND-(\d+)\.md',name)
+    batch=re.fullmatch(r'SEQUENTIAL-REVIEW-ROUNDS-(\d+)-(\d+)\.md',name)
+    if single:
+        review_rounds_completed=max(review_rounds_completed,int(single.group(1)))
+    elif batch:
+        start,end=map(int,batch.groups())
+        if start<=end:
+            review_rounds_completed=max(review_rounds_completed,end)
+
 evidence={'module':'CF-05','version':version,'schema_version':schema_version,'contract_version':contract_version,'archive':archive.name,'sha256':sha,'file_count':len(files),'review_rounds_completed':review_rounds_completed,'future40_features_coded':40,'reproducible_archive_timestamp':'2026-08-06T00:00:00Z','staging_accepted':False,'live_deployed':False,'operational':False}
 (dist/f'CF-05-{version}-package-manifest.json').write_text(json.dumps(evidence,indent=2)+'\n',encoding='utf-8')
 print(archive)
