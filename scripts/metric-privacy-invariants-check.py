@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import sys
+r=Path(__file__).resolve().parents[1]
+q=(r/'src/Domain/QueryPrivacyGuard.php').read_text(encoding='utf-8')
+m=(r/'src/Domain/MetricQueryService.php').read_text(encoding='utf-8')
+c=(r/'src/Domain/MetricCatalog.php').read_text(encoding='utf-8')
+errors=[]
+if "hash('sha256', Json::canonical($value))" in q or "dimensions_fingerprint' => hash('sha256'" in q: errors.append('query privacy fingerprints are unkeyed')
+if 'SELECT GET_LOCK' not in q or 'SELECT RELEASE_LOCK' not in q: errors.append('privacy budget accounting is not serialized')
+if "$stored === false" not in q or 'smai_privacy_evidence_unavailable' not in q: errors.append('privacy evidence persistence can fail open')
+if ": hash('sha256', $dimensionsJson)" in m: errors.append('metric audit fingerprint has unkeyed fallback')
+if "logInOpenTransaction" not in c: errors.append('metric registration audit is not transactional')
+for token in ["sourceSemanticsErrors","non_numeric_calculation_field","filter_value_type_mismatch_","filterValueMatchesField"]:
+ if token not in c: errors.append('metric source semantic gate missing:'+token)
+snapshot=(r/'src/Domain/SnapshotService.php').read_text(encoding='utf-8')
+if "is_numeric($row[$field]" in snapshot: errors.append('snapshot calculation still permits numeric-string coercion')
+if "count($dimensions) > 10" not in m or "SensitiveValueDetector())->violations($dimensions)" not in m: errors.append('metric domain query dimensions are not independently fail-closed')
+if "is_float($value) && !is_finite($value)" not in m: errors.append('metric domain query accepts non-finite dimension values')
+policy=(r/'src/Domain/PrivacyQueryPolicy.php').read_text(encoding='utf-8')
+rest=(r/'src/Http/RestController.php').read_text(encoding='utf-8')
+if "strlen($value) > 100" not in policy: errors.append('privacy policy lacks bounded string dimension values')
+if "$nestedWindow" not in policy: errors.append('differencing policy ignores nested time windows')
+if "Text::truncate(sanitize_text_field($value), 100)" in rest: errors.append('REST dimensions are silently truncated')
+if errors: print('\n'.join(errors),file=sys.stderr);sys.exit(1)
+print('Metric privacy invariants check passed.')

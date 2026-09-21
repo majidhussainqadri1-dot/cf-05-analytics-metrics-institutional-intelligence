@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import hashlib,json,pathlib,re,zipfile
+
+root=pathlib.Path(__file__).resolve().parents[1]
+plugin_path=root/'sabri-analytics-institutional-intelligence.php'
+plugin=plugin_path.read_text(encoding='utf-8')
+
+def constant(name:str)->str:
+    match=re.search(r"define\('"+re.escape(name)+r"',\s*'([^']+)'\);",plugin)
+    if not match:
+        raise SystemExit(f'missing release constant: {name}')
+    return match.group(1)
+
+slug='sabri-analytics-institutional-intelligence'
+version=constant('SMAI_VERSION')
+schema_version=constant('SMAI_SCHEMA_VERSION')
+contract_version=constant('SMAI_CONTRACT_VERSION')
+dist=root/'build'/'dist';dist.mkdir(parents=True,exist_ok=True)
+archive=dist/f'CF-05-{slug}-{version}.zip'
+
+files=[plugin_path,root/'readme.txt',root/'README.md',root/'CHANGELOG.md',root/'MANIFEST.json',root/'SECURITY.md',root/'uninstall.php']
+for name in ['assets','contracts','src']:
+    files.extend(p for p in (root/name).rglob('*') if p.is_file())
+files=sorted(set(files),key=lambda p:p.as_posix())
+
+for p in files:
+    if not p.is_file():
+        raise SystemExit(f'missing package input: {p.relative_to(root)}')
+
+with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+    for p in files:
+        rel=pathlib.Path(slug)/p.relative_to(root)
+        info=zipfile.ZipInfo(rel.as_posix(),(2026,8,6,0,0,0))
+        info.compress_type=zipfile.ZIP_DEFLATED
+        info.external_attr=0o100644<<16
+        z.writestr(info,p.read_bytes(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+
+sha=hashlib.sha256(archive.read_bytes()).hexdigest()
+archive.with_suffix(archive.suffix+'.sha256').write_text(f'{sha}  {archive.name}\n',encoding='utf-8')
+components=[{'type':'file','name':p.relative_to(root).as_posix(),'hashes':[{'alg':'SHA-256','content':hashlib.sha256(p.read_bytes()).hexdigest()}]} for p in files]
+serial_version=re.sub(r'[^a-z0-9]+','-',version.lower()).strip('-')
+sbom={'bomFormat':'CycloneDX','specVersion':'1.5','serialNumber':f'urn:uuid:cf05-analytics-{serial_version}','version':1,'metadata':{'component':{'type':'application','name':slug,'version':version}},'components':components}
+(dist/f'CF-05-{version}-sbom.cdx.json').write_text(json.dumps(sbom,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+
+# Review evidence exists in both legacy per-round files (for example
+# SEQUENTIAL-REVIEW-ROUND-99.md) and later batched ledgers (for example
+# SEQUENTIAL-REVIEW-ROUNDS-110-119.md).  Derive the highest completed round
+# from both forms so package evidence cannot silently regress to 99.
+review_rounds_completed=0
+for p in (root/'docs').glob('SEQUENTIAL-REVIEW-ROUND*.md'):
+    name=p.name
+    single=re.fullmatch(r'SEQUENTIAL-REVIEW-ROUND-(\d+)\.md',name)
+    batch=re.fullmatch(r'SEQUENTIAL-REVIEW-ROUNDS-(\d+)-(\d+)\.md',name)
+    if single:
+        review_rounds_completed=max(review_rounds_completed,int(single.group(1)))
+    elif batch:
+        start,end=map(int,batch.groups())
+        if start<=end:
+            review_rounds_completed=max(review_rounds_completed,end)
+
+evidence={'module':'CF-05','version':version,'schema_version':schema_version,'contract_version':contract_version,'archive':archive.name,'sha256':sha,'file_count':len(files),'review_rounds_completed':review_rounds_completed,'future40_features_coded':40,'reproducible_archive_timestamp':'2026-08-06T00:00:00Z','staging_accepted':False,'live_deployed':False,'operational':False}
+(dist/f'CF-05-{version}-package-manifest.json').write_text(json.dumps(evidence,indent=2)+'\n',encoding='utf-8')
+print(archive)
+print(sha)
