@@ -45,7 +45,7 @@ final class RetentionRunner
             $eventCutoff
         ));
         $this->mustQuery($wpdb, $wpdb->prepare(
-            "DELETE r FROM `{$this->db->table('dataset_rows')}` r INNER JOIN `{$this->db->table('datasets')}` d ON d.dataset_id=r.dataset_id AND d.dataset_version=r.dataset_version WHERE r.created_at<DATE_SUB(%s, INTERVAL d.retention_days DAY)",
+            "DELETE r FROM `{$this->db->table('dataset_rows')}` r INNER JOIN `{$this->db->table('datasets')}` d ON d.dataset_id=r.dataset_id AND d.dataset_version=r.dataset_version WHERE r.effective_from<DATE_SUB(%s, INTERVAL d.retention_days DAY)",
             $now
         ));
         $this->mustQuery($wpdb, $wpdb->prepare(
@@ -53,7 +53,7 @@ final class RetentionRunner
             $modelCutoff
         ));
         $this->mustQuery($wpdb, $wpdb->prepare(
-            "DELETE FROM `{$this->db->table('quarantine')}` WHERE created_at<%s AND status IN ('resolved','discarded')",
+            "DELETE FROM `{$this->db->table('quarantine')}` WHERE created_at<%s",
             $quarantineCutoff
         ));
         $expiredExports = $wpdb->get_col($wpdb->prepare(

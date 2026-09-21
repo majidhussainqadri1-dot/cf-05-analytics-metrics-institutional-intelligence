@@ -15,5 +15,7 @@ if "in_array($target,['approved','active'],true)?$actorUserId" in p:e.append('pr
 if "['experiment_facts','subject_ref']" in x:e.append('restore deletion verification checks the wrong experiment-fact column')
 if "audit->log('restore_point_recorded'" in x or "audit->log('warehouse_restore_verified'" in x:e.append('restore evidence audit is not atomic')
 if 'analytics_retention_completed' not in t or 'mustQuery' not in t:e.append('retention can fail partially without durable evidence')
+if "r.effective_from<DATE_SUB(%s, INTERVAL d.retention_days DAY)" not in t:e.append('dataset row retention is based on processing time rather than effective fact time')
+if "DELETE FROM `{$this->db->table('quarantine')}` WHERE created_at<%s" not in t or "status IN ('resolved','discarded')" in t:e.append('open quarantine can bypass the configured retention bound')
 if e:print('\n'.join(e),file=sys.stderr);sys.exit(1)
 print('Deletion/retention/provider/restore invariants check passed.')
