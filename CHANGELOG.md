@@ -1,3 +1,9 @@
+## 1.0.0-rc.12 — 2026-10-21
+- Forty fresh governed source checks SR-190..SR-229 completed against the amended CF-05 master plan, three central plans, public traffic architecture and companion module boundaries. Thirty-five FR subjects plus five cross-file gates are recorded in docs/SEQUENTIAL-REVIEW-ROUNDS-190-229.md; these are scoped reviews, not live certifications.
+- Eight newly reproduced defects were corrected: five background-authority rechecks (snapshot, quality, backfill, export, scheduled report), strict dataset/funnel timestamps, and deterministic fail-closed conflicting first-touch attribution.
+- Nine executable regression assertions are mandatory in exact-head CI; source/schema and public-contract boundaries remain unchanged (schema 1.4.1, contract 1.4.0).
+- Introduced unique rc.12 package identity and preserved separation of repository/source QA, staging, deployed artifact, DB migration, live test and operational acceptance.
+
 ## 1.0.0-rc.11 — 2026-10-21
 - Completed 40 source-scoped plan/completeness checks across the 35 governing CF-05 requirements and five cross-file/privacy/release areas. The scope and external acceptance limitations are recorded in `docs/CODE-COMPLETENESS-40-SCOPED-REVIEWS-2026-10-21.md`.
 - Added subject-deduplicated, consent-eligible, bounded entry-to-conversion funnel measurements with first-touch, last-touch and linear channel attribution. Unimplemented freeform attribution, exclusions and rounding declarations now fail closed; executable funnel regression fixtures are part of CI.
