@@ -249,6 +249,9 @@ final class DashboardService
             $dashboardId,
             $version
         ), ARRAY_A);
+        if (!is_array($widgets)) {
+            return new WP_Error('smai_dashboard_widgets_unavailable', 'Dashboard widgets could not be verified.', ['status' => 503]);
+        }
         $out = ['dashboard_id' => $dashboardId, 'dashboard_version' => $version, 'name' => $dashboard['name'], 'generated_at' => gmdate('c'), 'widgets' => []];
         foreach (is_array($widgets) ? $widgets : [] as $widget) {
             $config = Json::object((string) $widget['config_json']);
@@ -331,8 +334,14 @@ final class DashboardService
         $project = (new AccessProjectService($this->db))->get((string) $dashboard['project_uuid']);
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) { return new WP_Error('smai_dashboard_project_inactive', 'Dashboard access project is inactive.', ['status' => 409]); }
         $widgets = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT * FROM `{$this->db->table('dashboard_widgets')}` WHERE dashboard_id=%s AND dashboard_version=%s ORDER BY position_order,id",(string) $dashboard['dashboard_id'],(string) $dashboard['dashboard_version']), ARRAY_A);
+        if (!is_array($widgets)) {
+            return new WP_Error('smai_dashboard_widgets_unavailable', 'Dashboard widgets could not be verified for activation.', ['status' => 503]);
+        }
+        if ($widgets === []) {
+            return new WP_Error('smai_dashboard_widgets_missing', 'Dashboard has no stored widgets for activation.', ['status' => 409]);
+        }
         $access = new AccessProjectService($this->db);
-        foreach (is_array($widgets) ? $widgets : [] as $widget) {
+        foreach ($widgets as $widget) {
             $config = Json::object((string) $widget['config_json']); $dimensions = is_array($config['dimensions'] ?? null) ? $config['dimensions'] : [];
             $metricId = (string) $widget['metric_id']; $metricVersion = (string) $widget['metric_version']; $metric = (new MetricCatalog($this->db))->active($metricId, $metricVersion);
             if (!is_array($metric) || !$access->authorize((string) $dashboard['project_uuid'], (int) $dashboard['owner_user_id'], 'metric:' . $metricId . '@' . $metricVersion, [], (string) $project['purpose']) || PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) !== []) { return new WP_Error('smai_dashboard_activation_contract_drift', 'Dashboard activation is blocked because a stored widget no longer satisfies its governed metric/access/privacy contract.', ['status' => 409]); }

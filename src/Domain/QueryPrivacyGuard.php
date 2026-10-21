@@ -104,6 +104,37 @@ final class QueryPrivacyGuard
                 && is_string($previous['window_end'] ?? null)
                 && strtotime($previous['window_start']) !== false
                 && strtotime($previous['window_end']) !== false;
+            // An intact fingerprint is insufficient when other required slice
+            // dimensions or window evidence is missing. Differencing must
+            // never be silently downgraded by corrupted historical records.
+            $priorStart = $previous['window_start'] ?? null;
+            $priorEnd = $previous['window_end'] ?? null;
+            $priorStartTs = is_string($priorStart) ? strtotime($priorStart) : false;
+            $priorEndTs = is_string($priorEnd) ? strtotime($priorEnd) : false;
+            $priorNames = $previous['dimension_names'] ?? null;
+            $priorHashes = $previous['dimension_hashes'] ?? null;
+            $priorShapeValid = is_array($priorNames) && array_is_list($priorNames)
+                && count($priorNames) <= 10 && is_array($priorHashes)
+                && $priorStartTs !== false && $priorEndTs !== false && $priorStartTs < $priorEndTs;
+            if ($priorShapeValid) {
+                $distinctNames = [];
+                foreach ($priorNames as $name) {
+                    if (!is_string($name) || !array_key_exists($name, $priorHashes)
+                        || !is_string($priorHashes[$name])
+                        || preg_match('/^[0-9a-f]{64}$/D', $priorHashes[$name]) !== 1
+                        || isset($distinctNames[$name])) {
+                        $priorShapeValid = false;
+                        break;
+                    }
+                    $distinctNames[$name] = true;
+                }
+                if (count($priorHashes) !== count($distinctNames)) {
+                    $priorShapeValid = false;
+                }
+            }
+            if (!$priorShapeValid) {
+                return new WP_Error('smai_privacy_evidence_unavailable', 'Stored privacy accounting evidence is incomplete.', ['status' => 503]);
+            }
             if ((!$currentFingerprintValid && !$legacyFingerprintValid)
                 || !isset($previous['cohort_size'], $previous['privacy_cost'])
                 || !is_numeric($previous['cohort_size']) || !is_numeric($previous['privacy_cost'])
