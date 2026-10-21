@@ -1,3 +1,9 @@
+## 1.0.0-rc.17 — 2026-10-21
+- Completed distinct SR390–429 plan/source checks (35 CF05 FRs and five central/companion/release boundaries); two source witnesses per item, not an E2E certification. Evidence: `docs/SEQUENTIAL-REVIEW-ROUNDS-390-429.md`.
+- Fixed two confirmed fail-open source defects: invalid/noncanonical/reversed privacy windows, and false-success duplicate queued job read-back.
+- Added eight adversarial PHP regression fixtures to mandatory QA and five additional root-cause gates. Preserved schema 1.4.1 and contract 1.4.0.
+- Live deployed code, DB migrations, staging, provider contracts and Founder approval remain independently unverified.
+
 ## 1.0.0-rc.16 — 2026-10-21
 - Forty further source-scoped reviews SR350..389 (35 CF05 requirements and five cross-file release boundaries) plus independent authorized/unauthorized recipient behavior verification.
 - Corrected three related access-control defects affecting dashboard audience metric reads, shared report delivery read-time scope and unscoped report recipients at creation/activation/scheduled delivery.

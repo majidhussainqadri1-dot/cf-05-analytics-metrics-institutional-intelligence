@@ -20,6 +20,7 @@ python3 scripts/architecture-check.py
 python3 scripts/fresh40-plan-parity-20261021.py
 python3 scripts/sr310-349-source-trace-check.py
 python3 scripts/sr350-389-plan-scope-check.py
+python3 scripts/sr390-429-source-semantic-check.py
 python3 scripts/cross-plan-check.py
 python3 scripts/schema-contract-check.py
 python3 scripts/public-contract-parity-check.py
