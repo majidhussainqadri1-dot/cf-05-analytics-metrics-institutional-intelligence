@@ -15,6 +15,7 @@ php tests/sr350-389-viewer-access-contract.php
 php tests/sr390-429-privacy-job-integrity.php
 php tests/sr430-469-slice-duplicate.php
 php tests/sr470-509-job-immutability.php
+php tests/sr470-509-future40-privacy.php
 php tests/fresh-privacy-rate-boundary-20261021.php
 php tests/fresh-four-parser-parity-20261021.php
 python3 scripts/validate-json.py
@@ -24,6 +25,7 @@ python3 scripts/sr310-349-source-trace-check.py
 python3 scripts/sr350-389-plan-scope-check.py
 python3 scripts/sr390-429-source-semantic-check.py
 python3 scripts/sr430-469-scope-check.py
+python3 scripts/sr470-509-source-integrity-check.py
 python3 scripts/cross-plan-check.py
 python3 scripts/schema-contract-check.py
 python3 scripts/public-contract-parity-check.py
