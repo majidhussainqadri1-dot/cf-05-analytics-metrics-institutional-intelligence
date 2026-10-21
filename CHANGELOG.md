@@ -1,3 +1,9 @@
+## 1.0.0-rc.18 — 2026-10-21
+- Performed forty new plan-mapped source reviews SR430–469, 35 governing CF05 functional subjects and five cross-module/release boundaries; each has two source witnesses. No claim of 40 production integration passes.
+- Closed two independent new source defects: revised identical metric slice could reveal a small cohort delta despite differencing floor; queued job idempotency collisions could treat incompatible operation/payload as successful duplicate.
+- Added nine red/green PHP assertions, kept SR390–429 fixtures compatible with real persisted job details, and added a dedicated 40-source/4-fix CI guard.
+- Schema target 1.4.1, contract 1.4.0 and conditional Future40 runtime unchanged. Live staging/deployment and cross-owner acceptance still unverified.
+
 ## 1.0.0-rc.17 — 2026-10-21
 - Completed distinct SR390–429 plan/source checks (35 CF05 FRs and five central/companion/release boundaries); two source witnesses per item, not an E2E certification. Evidence: `docs/SEQUENTIAL-REVIEW-ROUNDS-390-429.md`.
 - Fixed two confirmed fail-open source defects: invalid/noncanonical/reversed privacy windows, and false-success duplicate queued job read-back.
