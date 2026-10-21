@@ -34,11 +34,19 @@ final class RateLimiter
         if ($result === false) {
             return false;
         }
-        $count = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+        $rawCount = $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
             "SELECT count_value FROM `{$table}` WHERE limit_key=%s AND bucket_start=%s",
             $key,
             $bucket
         ));
-        return $count <= $limit;
+        // A failed/empty SQL read must NEVER become numeric zero (allow).
+        // The inserted counter is at least one; anything else is unavailable.
+        if ((!is_int($rawCount) && !is_string($rawCount))
+            || preg_match('/^[1-9][0-9]*$/D', (string) $rawCount) !== 1
+            || strlen((string) $rawCount) > 12) {
+            return false;
+        }
+        $count = (int) $rawCount;
+        return $count >= 1 && $count <= $limit;
     }
 }
