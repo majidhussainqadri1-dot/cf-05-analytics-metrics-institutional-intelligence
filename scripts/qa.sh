@@ -7,6 +7,7 @@ php tests/run.php
 php tests/privacy-policy.php
 php tests/future40.php
 php tests/funnel-attribution.php
+php tests/fresh-completeness-regression.php
 python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/cross-plan-check.py
