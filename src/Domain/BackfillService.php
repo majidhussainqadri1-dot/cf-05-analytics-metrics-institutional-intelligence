@@ -215,6 +215,10 @@ final class BackfillService
     {
         $uuid = (string) ($payload['backfill_uuid'] ?? '');
         $cursor = max(0, (int) ($payload['cursor_id'] ?? 0));
+        $actorUserId = (int) ($payload['actor_user_id'] ?? 0);
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_approve_catalog')) {
+            throw new \RuntimeException('Backfill approver is not authorized at execution time.');
+        }
         $row = $this->backfill($uuid);
         if (is_array($row) && (string) $row['state'] === 'compared' && !empty($row['build_uuid'])) {
             return [

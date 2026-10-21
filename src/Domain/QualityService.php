@@ -122,6 +122,9 @@ final class QualityService
         if ($actorUserId < 1 || preg_match('/^[a-z][a-z0-9_.-]{2,189}@[0-9]+\\.[0-9]+\\.[0-9]+$/', $datasetRef) !== 1) {
             throw new \RuntimeException('Quality job provenance is invalid.');
         }
+        if (!user_can($actorUserId, 'smai_manage_quality')) {
+            throw new \RuntimeException('Quality job requester is not authorized at execution time.');
+        }
         [$datasetId, $version] = $this->splitRef($datasetRef);
         $wpdb = $this->db->wpdb();
         $dataset = $wpdb->get_row($wpdb->prepare("SELECT * FROM `{$this->db->table('datasets')}` WHERE dataset_id=%s AND dataset_version=%s", $datasetId, $version), ARRAY_A);

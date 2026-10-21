@@ -73,8 +73,11 @@ final class SnapshotService
         $startTs = $this->strictTimestamp((string) ($payload['window_start'] ?? ''));
         $endTs = $this->strictTimestamp((string) ($payload['window_end'] ?? ''));
         $dimensions = is_array($payload['dimensions'] ?? null) ? $payload['dimensions'] : [];
-        if ($actorUserId < 1
-            || preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
+        // A queued task is not an irrevocable authorization grant.
+        if ($actorUserId < 1 || !user_can($actorUserId, 'smai_manage_quality')) {
+            throw new \InvalidArgumentException('Snapshot actor is not authorized at execution time.');
+        }
+        if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/', $metricId) !== 1
             || preg_match('/^[0-9]+\\.[0-9]+\\.[0-9]+$/', $version) !== 1
             || $startTs === null || $endTs === null || $startTs >= $endTs
             || ($endTs - $startTs) > 366 * DAY_IN_SECONDS) {

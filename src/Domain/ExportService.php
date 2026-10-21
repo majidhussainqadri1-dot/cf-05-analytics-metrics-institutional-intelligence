@@ -146,6 +146,10 @@ final class ExportService
         if (!is_array($export) || strtotime((string) $export['expires_at']) <= time()) {
             throw new \RuntimeException('Export is unavailable or expired.');
         }
+        $requester = (int) ($export['requester_user_id'] ?? 0);
+        if ($requester < 1 || !user_can($requester, 'smai_export_metrics')) {
+            throw new \RuntimeException('Export requester is not authorized at execution time.');
+        }
         if ((string) $export['state'] === 'ready') {
             $payloadExists = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
                 "SELECT COUNT(*) FROM `{$this->db->table('export_payloads')}` WHERE export_uuid=%s",

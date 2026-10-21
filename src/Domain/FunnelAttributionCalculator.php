@@ -40,8 +40,8 @@ final class FunnelAttributionCalculator
                 || !is_string($time)) {
                 continue;
             }
-            $timestamp = strtotime($time);
-            if ($timestamp === false) {
+            $timestamp = self::strictTimestamp($time);
+            if ($timestamp === null) {
                 continue;
             }
             $channel = $row[$channelField] ?? 'unknown';
@@ -54,6 +54,16 @@ final class FunnelAttributionCalculator
         $numerator = 0.0;
         foreach ($subjects as $events) {
             usort($events, static fn(array $a, array $b): int => $a[0] <=> $b[0]);
+            // Conflicting simultaneous first-touches are not attributable.
+            $firstEntryAt = null;
+            $firstEntryChannels = [];
+            foreach ($events as [$at, $step, $channel]) {
+                if ($step !== $entry) { continue; }
+                if ($firstEntryAt === null) { $firstEntryAt = $at; }
+                if ($at !== $firstEntryAt) { break; }
+                $firstEntryChannels[$channel] = true;
+            }
+            if (count($firstEntryChannels) > 1) { continue; }
             $entryTime = null;
             $conversionTime = null;
             $path = [];
@@ -98,4 +108,20 @@ final class FunnelAttributionCalculator
         }
         return [$denominator > 0 ? $numerator / $denominator : null, $numerator, $denominator];
     }
+
+    private static function strictTimestamp(string $value): ?int
+    {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $match) === 1
+            && checkdate((int) $match[2], (int) $match[3], (int) $match[1])) {
+            $time = strtotime($value);
+            return $time === false ? null : $time;
+        }
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2}) (?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/', $value, $match) === 1
+            && checkdate((int) $match[2], (int) $match[3], (int) $match[1])) {
+            $utc = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, new \DateTimeZone('UTC'));
+            return $utc !== false && $utc->format('Y-m-d H:i:s') === $value ? $utc->getTimestamp() : null;
+        }
+        return null;
+    }
+
 }

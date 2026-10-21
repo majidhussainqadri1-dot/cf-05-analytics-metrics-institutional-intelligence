@@ -242,6 +242,10 @@ final class ReportService
         if (!is_array($report) || ($report['expires_at'] !== null && strtotime((string) $report['expires_at']) <= time())) {
             throw new \RuntimeException('Report is unavailable.');
         }
+        $reportOwner = (int) ($report['owner_user_id'] ?? 0);
+        if ($reportOwner < 1 || !user_can($reportOwner, 'smai_manage_reports')) {
+            throw new \RuntimeException('Report owner is not authorized at execution time.');
+        }
         $project = (new AccessProjectService($this->db))->get((string) $report['project_uuid']);
         if (!is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             throw new \RuntimeException('Report access project is inactive.');
