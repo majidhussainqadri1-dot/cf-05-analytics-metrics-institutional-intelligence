@@ -1,3 +1,10 @@
+## 1.0.0-rc.11 — 2026-10-21
+- Completed 40 source-scoped plan/completeness checks across the 35 governing CF-05 requirements and five cross-file/privacy/release areas. The scope and external acceptance limitations are recorded in `docs/CODE-COMPLETENESS-40-SCOPED-REVIEWS-2026-10-21.md`.
+- Added subject-deduplicated, consent-eligible, bounded entry-to-conversion funnel measurements with first-touch, last-touch and linear channel attribution. Unimplemented freeform attribution, exclusions and rounding declarations now fail closed; executable funnel regression fixtures are part of CI.
+- Restored all 35 CF05-FR requirement labels to the 2026-09-16 governing Word plan, with an exact ID/meaning parity assertion in CI.
+- Issued a unique candidate version to avoid package version collisions with earlier source builds; database schema `1.4.1` and public response contract family `1.4.0` remain unchanged.
+- **Status law:** this is a reviewed source/QA candidate only. Full companion integrations, Hostinger staging, deployed artifact parity, DB/migration state, penetration/accessibility testing, backup/restore rehearsal and live verification are still pending.
+
 ## 1.0.0-rc.10 — 2026-09-18
 - Completed the next governed ten-round cycle SR-84..SR-93: hardened background jobs/schedulers, runtime prerequisites, event semantic fidelity, metric differencing, deletion retry durability, report reactivation, migration/reapproval, Future-40 evidence integrity, protected idempotency replay, and final release-evidence consistency.
 - Post-cycle REST/CI security hardening: moved export/report bearer tokens out of query strings into dedicated headers, route-bound the raw CSV response filter to the exact CF-05 export endpoint, and advanced GitHub checkout/upload actions to current v7 majors to remove the deprecated Node.js 20 action-runtime path.
