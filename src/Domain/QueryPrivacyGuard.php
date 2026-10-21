@@ -80,16 +80,36 @@ final class QueryPrivacyGuard
             return new WP_Error('smai_privacy_lock_unavailable', 'Query privacy accounting is temporarily unavailable.', ['status' => 503]);
         }
         try {
-        $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare(
-            "SELECT request_hash,response_json,created_at FROM `{$table}` WHERE scope='privacy-query' AND actor_ref=%s AND state='completed' AND created_at>=%s ORDER BY created_at DESC LIMIT 200",
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT request_hash,response_json,created_at FROM `{$table}` WHERE scope='privacy-query' AND actor_ref=%s AND state='completed' AND created_at>=%s ORDER BY created_at DESC LIMIT 1001",
             $actorRef,
             gmdate('Y-m-d H:i:s', time() - HOUR_IN_SECONDS)
         ), ARRAY_A);
+        // A failed or truncated ledger cannot be treated as an empty privacy budget.
+        if (!is_array($rows) || count($rows) > 1000) {
+            return new WP_Error('smai_privacy_evidence_unavailable', 'Query privacy accounting could not be verified.', ['status' => 503]);
+        }
 
         $fingerprints = [];
         $budget = 0;
-        foreach (is_array($rows) ? $rows : [] as $row) {
-            $previous = Json::object((string) ($row['response_json'] ?? '{}'));
+        foreach ($rows as $row) {
+            $previous = is_array($row) ? Json::object((string) ($row['response_json'] ?? '')) : [];
+            $currentFingerprintValid = is_string($previous['slice_fingerprint'] ?? null)
+                && preg_match('/^[0-9a-f]{64}$/', $previous['slice_fingerprint']) === 1;
+            // Existing older rows may have only a window + dimension fingerprint.
+            $legacyFingerprintValid = !isset($previous['slice_fingerprint'])
+                && is_string($previous['dimensions_fingerprint'] ?? null)
+                && preg_match('/^[0-9a-f]{64}$/', $previous['dimensions_fingerprint']) === 1
+                && is_string($previous['window_start'] ?? null)
+                && is_string($previous['window_end'] ?? null)
+                && strtotime($previous['window_start']) !== false
+                && strtotime($previous['window_end']) !== false;
+            if ((!$currentFingerprintValid && !$legacyFingerprintValid)
+                || !isset($previous['cohort_size'], $previous['privacy_cost'])
+                || !is_numeric($previous['cohort_size']) || !is_numeric($previous['privacy_cost'])
+                || (int) $previous['privacy_cost'] < 0) {
+                return new WP_Error('smai_privacy_evidence_unavailable', 'Stored privacy accounting evidence is invalid.', ['status' => 503]);
+            }
             $dimensionFingerprint = (string) ($previous['dimensions_fingerprint'] ?? '');
             $fingerprint = (string) ($previous['slice_fingerprint'] ?? '');
             if ($fingerprint === '' && $dimensionFingerprint !== '') {
@@ -118,7 +138,10 @@ final class QueryPrivacyGuard
             'window_end' => $windowEnd,
             'dimensions' => $dimensions,
         ]), $privacyKey);
-        $idempotencyKey = hash_hmac('sha256', 'privacy-query|' . $actorRef . '|' . $requestHash, $privacyKey);
+        // Old keys survive the rolling window until retention runs. Rotate the
+        // key hourly so expired evidence cannot suppress a current witness.
+        $ledgerHour = intdiv(time(), HOUR_IN_SECONDS);
+        $idempotencyKey = hash_hmac('sha256', 'privacy-query|' . $actorRef . '|' . $ledgerHour . '|' . $requestHash, $privacyKey);
         $now = $this->db->now();
         $stored = $wpdb->query($wpdb->prepare(
             "INSERT IGNORE INTO `{$table}` (idempotency_key,scope,actor_ref,request_hash,response_json,status_code,state,expires_at,created_at,updated_at) VALUES (%s,'privacy-query',%s,%s,%s,200,'completed',%s,%s,%s)",
