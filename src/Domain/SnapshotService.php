@@ -146,11 +146,17 @@ final class SnapshotService
             if (!is_array($stored)) {
                 throw new \RuntimeException('Snapshot source rows could not be read.');
             }
+            $calculation = is_array($definition['calculation'] ?? null) ? $definition['calculation'] : ['type' => 'count'];
+            $funnel = ($calculation['type'] ?? '') === 'funnel';
+            $selectionDimensions = $dimensions;
+            if ($funnel) {
+                unset($selectionDimensions[(string) ($calculation['channel_field'] ?? '')]);
+            }
             $rows = [];
             $dataThrough = null;
             foreach ($stored as $item) {
                 $row = Json::object((string) $item['row_json']);
-                if (!$this->dimensionMatch($row, $dimensions)) {
+                if (!$this->dimensionMatch($row, $selectionDimensions)) {
                     continue;
                 }
                 $rows[] = $row;
@@ -159,8 +165,7 @@ final class SnapshotService
                 }
             }
 
-            $calculation = is_array($definition['calculation'] ?? null) ? $definition['calculation'] : ['type' => 'count'];
-            [$value,$numerator,$denominator] = $this->calculate($calculation, $rows);
+            [$value,$numerator,$denominator] = $this->calculate($calculation, $rows, $dimensions);
             $cohortField = (string) ($definition['cohort_field'] ?? '');
             $cohort = count($rows);
             if ($cohortField !== '') {
@@ -172,6 +177,10 @@ final class SnapshotService
                     }
                 }
                 $cohort = count($set);
+            }
+            if ($funnel) {
+                // Privacy thresholds apply to eligible distinct subjects, never event counts.
+                $cohort = (int) $denominator;
             }
             $minimum = PrivacyQueryPolicy::effectiveMinimum(
                 $definition,
@@ -210,7 +219,9 @@ final class SnapshotService
                 $caveats[] = 'Dataset quality is not green.';
             }
             $uncertainty = null;
-            if (($calculation['type'] ?? '') === 'ratio' && $numerator !== null && $denominator !== null && $denominator > 0) {
+            if (in_array(($calculation['type'] ?? ''), ['ratio','funnel'], true)
+                && (($calculation['attribution_policy'] ?? '') !== 'linear' || !$funnel)
+                && $numerator !== null && $denominator !== null && $denominator > 0) {
                 $uncertainty = Statistics::proportionInterval((int) round($numerator), (int) round($denominator));
             }
 
@@ -313,9 +324,14 @@ final class SnapshotService
     }
 
     /** @param array<string,mixed> $calculation @param array<int,array<string,mixed>> $rows */
-    private function calculate(array $calculation,array $rows):array
+    private function calculate(array $calculation,array $rows,array $dimensions=[]):array
     {
         $type=(string)($calculation['type']??'count');
+        if ($type==='funnel') {
+            $channelField=(string)$calculation['channel_field'];
+            $selectedChannel=array_key_exists($channelField,$dimensions)?(string)$dimensions[$channelField]:null;
+            return FunnelAttributionCalculator::calculate($rows,$calculation,$selectedChannel);
+        }
         if($type==='ratio'){$numFilters=is_array($calculation['numerator_filters']??null)?$calculation['numerator_filters']:[];$denFilters=is_array($calculation['denominator_filters']??null)?$calculation['denominator_filters']:[];$num=0;$den=0;
             foreach($rows as $row){$eligible=FilterEvaluator::matches($row,$denFilters);if($eligible){$den++;if(FilterEvaluator::matches($row,$numFilters)){$num++;}}}
             return[$den>0?$num/$den:null,(float)$num,(float)$den];}
