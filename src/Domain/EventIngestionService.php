@@ -285,21 +285,23 @@ final class EventIngestionService
             $hash = hash('sha256', serialize(array_keys($event)));
         }
         $now = $this->db->now();
+        // Untrusted JSON field names may themselves contain clinical or identity secrets.
         $sample = [
-            'keys' => array_slice(array_map('strval', array_keys($event)), 0, 30),
-            'property_keys' => array_slice(array_map('strval', array_keys(is_array($event['properties'] ?? null) ? $event['properties'] : [])), 0, 30),
+            'envelope_field_count' => min(1000, count($event)),
+            'property_field_count' => min(1000, count(is_array($event['properties'] ?? null) ? $event['properties'] : [])),
+            'field_names_redacted' => true,
         ];
         $wpdb = $this->db->wpdb();
         if ($wpdb->query('START TRANSACTION') === false) {
             return new WP_Error('smai_quarantine_evidence_failed', 'Event was rejected but quarantine evidence transaction could not start.', ['status' => 503, 'reason_code' => $code]);
         }
         $stored = $wpdb->insert($this->db->table('quarantine'), [
-            'event_id' => isset($event['event_id']) ? substr((string) $event['event_id'], 0, 64) : null,
-            'event_name' => isset($event['event_name']) ? substr((string) $event['event_name'], 0, 190) : null,
-            'event_version' => isset($event['event_version']) ? substr((string) $event['event_version'], 0, 32) : null,
-            'source_module' => isset($event['source_module']) ? substr((string) $event['source_module'], 0, 100) : null,
+            'event_id' => self::safeEvidenceIdentifier($event['event_id'] ?? null, 'uuid'),
+            'event_name' => self::safeEvidenceIdentifier($event['event_name'] ?? null, 'symbol'),
+            'event_version' => self::safeEvidenceIdentifier($event['event_version'] ?? null, 'version'),
+            'source_module' => self::safeEvidenceIdentifier($event['source_module'] ?? null, 'module'),
             'reason_code' => substr($code, 0, 100),
-            'reason_detail' => substr($detail, 0, 255),
+            'reason_detail' => 'untrusted_detail_redacted',
             'redacted_sample' => Json::encode($sample),
             'payload_hash' => $hash,
             'status' => 'open',
@@ -310,11 +312,11 @@ final class EventIngestionService
         $logged = $stored === 1 && $this->audit->logInOpenTransaction(
             'analytics_event_quarantined',
             'quarantine',
-            isset($event['event_id']) ? (string) $event['event_id'] : null,
+            self::safeEvidenceIdentifier($event['event_id'] ?? null, 'uuid'),
             'rejected',
             ['reason_code' => $code, 'service' => $service, 'payload_hash' => $hash, 'quarantine_stored' => true],
-            isset($event['purpose']) ? (string) $event['purpose'] : null,
-            isset($event['trace_id']) ? (string) $event['trace_id'] : null,
+            null,
+            null,
             null,
             'service'
         );
@@ -325,6 +327,20 @@ final class EventIngestionService
         return new WP_Error('smai_event_quarantined', 'Event was quarantined.', ['status' => $status, 'reason_code' => $code]);
     }
 
+    /** Never copy unvalidated envelope identities into quarantine rows or audit logs. */
+    private static function safeEvidenceIdentifier(mixed $value, string $kind): ?string
+    {
+        if (!is_string($value)) { return null; }
+        $pattern = match ($kind) {
+            'uuid' => '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD',
+            'symbol' => '/^[a-z][a-z0-9_.-]{2,189}$/D',
+            'version' => '/^[0-9]+\.[0-9]+\.[0-9]+$/D',
+            'module' => '/^[a-z0-9][a-z0-9_.-]{1,99}$/D',
+            default => null,
+        };
+        return $pattern !== null && preg_match($pattern, $value) === 1 ? $value : null;
+    }
+
     private function isUuid4(string $value): bool
     {
         return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $value) === 1;
@@ -332,7 +348,7 @@ final class EventIngestionService
 
     private function strictTimestamp(string $value): ?int
     {
-        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
             return null;
         }
         $timestamp = strtotime($value);
