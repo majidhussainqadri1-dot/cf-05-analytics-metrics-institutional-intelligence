@@ -29,6 +29,52 @@ for i in range(1,36):
  rid=f'CF05-FR-{i:03d}'
  if rid not in trace: errors.append(f'missing_requirement:{rid}')
 
+# Freeze the governing 2026-09-16 CF-05 plan IDs, not just their existence.
+# Otherwise a complete-looking ID table can silently associate requirements
+# with the wrong architectural owner, implementation and acceptance test.
+GOVERNING_PLAN_SUBJECTS = {
+    1: "Event schema registry",
+    2: "Minimum event envelope",
+    3: "Purpose/consent gate",
+    4: "Field redaction/tokenization",
+    5: "Dedupe/order/late events",
+    6: "Quarantine and feedback",
+    7: "Canonical derivative modeling",
+    8: "Slowly changing definitions",
+    9: "Data lineage",
+    10: "Backfill/rebuild",
+    11: "Data quality rules",
+    12: "Region/provider control",
+    13: "Metric definition",
+    14: "Metric lifecycle",
+    15: "Dimension allowlist",
+    16: "Freshness and confidence",
+    17: "Attribution and funnels",
+    18: "Financial/clinical metric limits",
+    19: "Role/project-scoped dashboards",
+    20: "Metric presentation",
+    21: "Drilldown safety",
+    22: "Scheduled reports",
+    23: "Secure exports",
+    24: "Narrative insights",
+    25: "Experiment registry",
+    26: "Assignment separation",
+    27: "Guardrail monitoring",
+    28: "Statistical integrity",
+    29: "Decision record",
+    30: "Retention tiers",
+    31: "Deletion/anonymization propagation",
+    32: "Access projects and expiry",
+    33: "Query and export audit",
+    34: "Provider/warehouse exit",
+    35: "Restore and reproducibility",
+}
+for number, subject in GOVERNING_PLAN_SUBJECTS.items():
+ rid=f'CF05-FR-{number:03d}'
+ pattern=rf'^\\| {rid} \\| {re.escape(subject)} \\|'
+ if re.search(pattern, trace, re.M) is None:
+  errors.append(f'governing_plan_subject_mismatch:{rid}:{subject}')
+
 future=(root/'docs/FUTURE-40.md').read_text(encoding='utf-8') if (root/'docs/FUTURE-40.md').is_file() else ''
 for i in range(1,41):
  fid=f'CF05-FUT-{i:03d}'
