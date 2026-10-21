@@ -252,6 +252,14 @@ final class DashboardService
         if (!is_array($widgets)) {
             return new WP_Error('smai_dashboard_widgets_unavailable', 'Dashboard widgets could not be verified.', ['status' => 503]);
         }
+        // An audience entry alone never overrides purpose-scoped project access.
+        $viewerAccess = new AccessProjectService($this->db);
+        foreach ($widgets as $widget) {
+            if (!$viewerAccess->authorizesViewer((string) $dashboard['project_uuid'], $actorUserId,
+                'metric:' . (string) ($widget['metric_id'] ?? '') . '@' . (string) ($widget['metric_version'] ?? ''))) {
+                return new WP_Error('smai_dashboard_project_access_denied', 'Dashboard requires a separately approved per-viewer metric grant.', ['status' => 403]);
+            }
+        }
         $out = ['dashboard_id' => $dashboardId, 'dashboard_version' => $version, 'name' => $dashboard['name'], 'generated_at' => gmdate('c'), 'widgets' => []];
         foreach (is_array($widgets) ? $widgets : [] as $widget) {
             $config = Json::object((string) $widget['config_json']);
@@ -259,12 +267,9 @@ final class DashboardService
             ksort($dimensions);
             $metricId = (string) $widget['metric_id'];
             $metricVersion = (string) $widget['metric_version'];
-            $authorized = (new AccessProjectService($this->db))->authorize(
-                (string) $dashboard['project_uuid'],
-                (int) $dashboard['owner_user_id'],
-                'metric:' . $metricId . '@' . $metricVersion,
-                [],
-                (string) $project['purpose']
+            $authorized = $viewerAccess->authorizesViewer(
+                (string) $dashboard['project_uuid'], $actorUserId,
+                'metric:' . $metricId . '@' . $metricVersion
             );
             $row = $authorized && (new MetricCatalog($this->db))->active($metricId, $metricVersion) !== null
                 ? $this->db->wpdb()->get_row($this->db->wpdb()->prepare(

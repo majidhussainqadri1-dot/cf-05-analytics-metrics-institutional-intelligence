@@ -345,10 +345,25 @@ final class ReportService
             || !user_can($actorUserId, 'smai_view_insights')) {
             return new WP_Error('smai_report_delivery_unavailable', 'Report delivery is unavailable.', ['status' => 404]);
         }
-        $report = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT project_uuid,state,expires_at FROM `{$this->db->table('reports')}` WHERE report_uuid=%s", $delivery['report_uuid']), ARRAY_A);
+        $report = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT project_uuid,state,expires_at,definition_json FROM `{$this->db->table('reports')}` WHERE report_uuid=%s", $delivery['report_uuid']), ARRAY_A);
         $project = is_array($report) ? (new AccessProjectService($this->db))->get((string) $report['project_uuid']) : null;
         if (!is_array($report) || (string) $report['state'] !== 'active' || ($report['expires_at'] !== null && strtotime((string) $report['expires_at']) <= time()) || !is_array($project) || (string) $project['state'] !== 'active' || strtotime((string) $project['expires_at']) <= time()) {
             return new WP_Error('smai_report_delivery_revoked', 'Report delivery is no longer authorized.', ['status' => 404]);
+        }
+        // A delivery token proves recipient identity, not access to source metrics.
+        $recipientAccess = new AccessProjectService($this->db);
+        $reportDefinition = Json::object((string) ($report['definition_json'] ?? ''));
+        $reportMetrics = $reportDefinition['metrics'] ?? null;
+        if (!is_array($reportMetrics) || $reportMetrics === []) {
+            return new WP_Error('smai_report_delivery_scope_denied', 'Report recipient grant cannot be verified.', ['status' => 403]);
+        }
+        foreach ($reportMetrics as $spec) {
+            if (!is_array($spec) || !$recipientAccess->authorizesViewer(
+                (string) $report['project_uuid'], $actorUserId,
+                'metric:' . (string) ($spec['metric_id'] ?? '') . '@' . (string) ($spec['metric_version'] ?? '')
+            )) {
+                return new WP_Error('smai_report_delivery_scope_denied', 'Report recipient metric access has not been approved.', ['status' => 403]);
+            }
         }
         $wpdb=$this->db->wpdb();
         if($wpdb->query('START TRANSACTION')===false){return new WP_Error('smai_report_delivery_unavailable','Report delivery audit is unavailable.',['status'=>503]);}
