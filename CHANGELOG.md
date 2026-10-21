@@ -1,3 +1,9 @@
+## 1.0.0-rc.13 — 2026-10-21
+- Conducted a distinct new forty-round CF-05 plan/source review, SR-230..SR-269, after freezing HEAD `70a65806e014` and the full eight-file companion/central planning boundary. Review traces and externally pending gates are in `docs/SEQUENTIAL-REVIEW-ROUNDS-230-269.md`.
+- Corrected eight source-level issues: three metric-output paths bypassed privacy query-accounting; export SQL failure was silently converted to an empty result; snapshot and quality worker idempotency keys omitted actor context; same-time conversion channels caused order-dependent attribution; and privacy differencing budgets were per viewer rather than shared within the same approved project.
+- Added an eleven-assertion adversarial source/measurement gate to the mandatory CI. Default runtime remains disabled, and database/public contract versions remain `1.4.1`/`1.4.0`.
+- This is a source-only release candidate. Companion runtime contracts, staging, installed plugin/database checksums/migrations, provider checks, Founder approval, rollback and live tests must still be independently proved.
+
 ## 1.0.0-rc.12 — 2026-10-21
 - Forty fresh governed source checks SR-190..SR-229 completed against the amended CF-05 master plan, three central plans, public traffic architecture and companion module boundaries. Thirty-five FR subjects plus five cross-file gates are recorded in docs/SEQUENTIAL-REVIEW-ROUNDS-190-229.md; these are scoped reviews, not live certifications.
 - Eight newly reproduced defects were corrected: five background-authority rechecks (snapshot, quality, backfill, export, scheduled report), strict dataset/funnel timestamps, and deterministic fail-closed conflicting first-touch attribution.
