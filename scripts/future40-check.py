@@ -91,7 +91,7 @@ if "Json::canonical($this->clean($input))" in artifact or "Json::canonical($this
     errors.append('scenario_artifact_uses_lossy_evidence_persistence')
 for token in ['CF05-FUT-021','scenario_models','CF05-FUT-025','privacy_budgets','CF05-FUT-029','research_workspaces','CF05-FUT-038','transparency_records','FOR UPDATE','budget_row_version']:
     if token not in artifact: errors.append(f'review6_artifact_persistence_missing:{token}')
-if manifest.get('version')!='1.0.0-rc.15': errors.append('manifest_version_not_rc15')
+if manifest.get('version')!='1.0.0-rc.16': errors.append('manifest_version_not_rc16')
 if manifest.get('schema_version')!='1.4.1': errors.append('manifest_schema_not_1_4_1')
 if manifest.get('contract_version')!='1.4.0': errors.append('manifest_contract_not_1_4_0')
 if 'contracts/future-feature.schema.json' not in manifest.get('public_contracts',[]): errors.append('future_contract_not_manifested')

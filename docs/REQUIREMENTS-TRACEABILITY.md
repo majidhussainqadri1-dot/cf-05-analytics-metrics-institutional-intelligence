@@ -1,4 +1,4 @@
-# CF-05 Requirements Traceability — 1.0.0-rc.15
+# CF-05 Requirements Traceability — 1.0.0-rc.16
 
 **Canonical specification:** CF-05 Conditional Complete Master Plan 2026 v1.1 (Future-40 amended 2026-09-16), Section 5. Earlier repository mapping assigned several CF05-FR IDs to different subjects; those labels were not the governing plan. This table restores the original requirement identities. A referenced PHP class establishes source intent, **not** staging, live, or cross-file operational acceptance.
 
