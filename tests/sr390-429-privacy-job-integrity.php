@@ -63,7 +63,7 @@ $r=(new JobQueue(new Database($db)))->enqueue('quality.run',['sample'=>1],'dupli
 check390($r instanceof WP_Error && $r->get_error_code()==='smai_job_idempotency_conflict',
     'Malformed duplicate ID/state cannot report success');
 $db=new wpdb();$db->insertResult=0;
-$db->existing=['job_uuid'=>'11111111-1111-4111-8111-111111111111','state'=>'queued','job_type'=>'quality.run','payload_json'=>'{"sample":1}'];
+$db->existing=['job_uuid'=>'11111111-1111-4111-8111-111111111111','state'=>'queued','job_type'=>'quality.run','payload_json'=>'{"sample":1}','max_attempts'=>'5'];
 $r=(new JobQueue(new Database($db)))->enqueue('quality.run',['sample'=>1],'duplicate-case-abcdef');
 check390(is_array($r) && ($r['duplicate']??false) && ($r['job_uuid']??'')==='11111111-1111-4111-8111-111111111111',
     'Genuine duplicate job is returned unchanged');
