@@ -268,7 +268,7 @@ final class ReportService
             $datasetRef = 'metric:' . $metricId . '@' . $metricVersion;
             $authorized = (new AccessProjectService($this->db))->authorize((string) $report['project_uuid'], (int) $report['owner_user_id'], $datasetRef, [], (string) $project['purpose']);
             $snapshot = $authorized && (new MetricCatalog($this->db))->active($metricId, $metricVersion) !== null
-                ? $this->latestSnapshot($metricId, $metricVersion, is_array($metricSpec['dimensions'] ?? null) ? $metricSpec['dimensions'] : [])
+                ? $this->latestSnapshot($metricId, $metricVersion, is_array($metricSpec['dimensions'] ?? null) ? $metricSpec['dimensions'] : [], (string) $report['project_uuid'], (int) $report['owner_user_id'], (string) $project['purpose'])
                 : null;
             $bundle['metrics'][] = $snapshot ?? [
                 'metric_id' => $metricSpec['metric_id'] ?? null,
@@ -359,7 +359,7 @@ final class ReportService
     }
 
     /** @param array<string,mixed> $dimensions @return array<string,mixed>|null */
-    private function latestSnapshot(string $metricId, string $version, array $dimensions): ?array
+    private function latestSnapshot(string $metricId, string $version, array $dimensions, string $projectUuid, int $actorUserId, string $purpose): ?array
     {
         ksort($dimensions);
         $metric = (new MetricCatalog($this->db))->active($metricId, $version);
@@ -374,6 +374,12 @@ final class ReportService
         if (!is_array($row) || (int) $row['cohort_size'] < $minimum) {
             return null;
         }
+        $checked = (new QueryPrivacyGuard($this->db))->evaluateAndRecord(
+            $metricId, $version, $projectUuid, $actorUserId, $purpose,
+            (string) $row['window_start'], (string) $row['window_end'],
+            $dimensions, (array) $metric['definition'], (int) $row['cohort_size'], $minimum
+        );
+        if (is_wp_error($checked)) { return null; }
         $disclosure = SnapshotDisclosurePolicy::evaluate(
             (string) $row['quality_status'],
             $row['data_through'] ?? null,

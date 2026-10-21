@@ -64,6 +64,16 @@ final class FunnelAttributionCalculator
                 $firstEntryChannels[$channel] = true;
             }
             if (count($firstEntryChannels) > 1) { continue; }
+            $firstConversionAt = null;
+            $firstConversionChannels = [];
+            foreach ($events as [$at, $step, $channel]) {
+                if ($firstEntryAt === null || $at <= $firstEntryAt || $at - $firstEntryAt > $maxSeconds) { continue; }
+                if ($step !== $conversion) { continue; }
+                if ($firstConversionAt === null) { $firstConversionAt = $at; }
+                if ($at !== $firstConversionAt) { break; }
+                $firstConversionChannels[$channel] = true;
+            }
+            if (count($firstConversionChannels) > 1) { continue; }
             $entryTime = null;
             $conversionTime = null;
             $path = [];

@@ -179,7 +179,11 @@ final class ExportService
             }
         }
         try {
-            $rows = $this->metricRows($definition, (int) $export['row_limit']);
+            $rows = $this->metricRows(
+                $definition, (int) $export['row_limit'],
+                (string) $export['project_uuid'], (int) $export['requester_user_id'],
+                (string) $export['purpose']
+            );
             $csv = CsvSafe::render($rows, $columns);
             $sha = hash('sha256', $csv);
             $encrypted = (new CryptoBox(SMAI_EXPORT_KEY))->encrypt($csv, $uuid);
@@ -264,7 +268,7 @@ final class ExportService
     }
 
     /** @param array<string,mixed> $definition @return array<int,array<string,mixed>> */
-    private function metricRows(array $definition, int $limit): array
+    private function metricRows(array $definition, int $limit, string $projectUuid, int $actorUserId, string $purpose): array
     {
         $metric = (new MetricCatalog($this->db))->active((string) $definition['metric_id'], (string) $definition['metric_version']);
         if ($metric === null) { return []; }
@@ -279,7 +283,7 @@ final class ExportService
         $args[] = $scanLimit;
         $sql = "SELECT s.metric_id,s.metric_version,s.window_start,s.window_end,s.dimensions_json AS dimensions,s.value_decimal AS value,s.numerator_decimal AS numerator,s.denominator_decimal AS denominator,s.cohort_size,s.quality_status,s.data_through,s.caveats_json AS caveats FROM `{$table}` s INNER JOIN (SELECT metric_id,metric_version,window_start,window_end,dimensions_hash,MAX(snapshot_revision) AS revision FROM `{$table}` WHERE state='published' GROUP BY metric_id,metric_version,window_start,window_end,dimensions_hash) latest ON latest.metric_id=s.metric_id AND latest.metric_version=s.metric_version AND latest.window_start=s.window_start AND latest.window_end=s.window_end AND latest.dimensions_hash=s.dimensions_hash AND latest.revision=s.snapshot_revision WHERE " . implode(' AND ', $where) . ' ORDER BY s.window_end DESC LIMIT %d';
         $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare($sql, ...$args), ARRAY_A);
-        if (!is_array($rows)) { return []; }
+        if (!is_array($rows)) { throw new \RuntimeException('Export metric snapshot query failed.'); }
         $safe = [];
         foreach ($rows as $row) {
             $dimensions = Json::object((string) $row['dimensions']);
@@ -292,6 +296,15 @@ final class ExportService
                 Json::list((string) $row['caveats']),
                 $metricDefinition
             );
+            $checked = (new QueryPrivacyGuard($this->db))->evaluateAndRecord(
+                (string) $definition['metric_id'], (string) $definition['metric_version'],
+                $projectUuid, $actorUserId, $purpose,
+                (string) $row['window_start'], (string) $row['window_end'],
+                $dimensions, $metricDefinition, (int) $row['cohort_size'], $minimum
+            );
+            if (is_wp_error($checked)) {
+                throw new \RuntimeException('Export denied by the bounded query privacy safeguards.');
+            }
             $row['dimensions'] = $dimensions;
             $row['quality_status'] = $disclosure['quality_status'];
             $row['data_through'] = $disclosure['data_through'];

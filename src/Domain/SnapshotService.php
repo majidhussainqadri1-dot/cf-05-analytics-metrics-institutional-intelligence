@@ -61,7 +61,7 @@ final class SnapshotService
             'window_end' => gmdate('c', $endTs),
             'dimensions' => $dimensions,
             'actor_user_id' => $actorUserId,
-        ], 'snapshot|' . $metricId . '|' . $version . '|' . gmdate('c', $startTs) . '|' . gmdate('c', $endTs) . '|' . hash('sha256', Json::canonical($dimensions)));
+        ], 'actor|' . $actorUserId . '|snapshot|' . $metricId . '|' . $version . '|' . gmdate('c', $startTs) . '|' . gmdate('c', $endTs) . '|' . hash('sha256', Json::canonical($dimensions)));
     }
 
     /** @param array<string,mixed> $payload @return array<string,mixed> */

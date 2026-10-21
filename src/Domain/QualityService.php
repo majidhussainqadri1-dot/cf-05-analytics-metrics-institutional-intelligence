@@ -110,7 +110,7 @@ final class QualityService
         return (new JobQueue($this->db))->enqueue(
             'quality.run',
             ['dataset_ref' => $datasetRef, 'build_uuid' => $buildUuid, 'actor_user_id' => $actorUserId],
-            'quality|' . $datasetRef . '|' . ($buildUuid ?: 'active') . '|' . gmdate('Y-m-d-H')
+            'actor|' . $actorUserId . '|quality|' . $datasetRef . '|' . ($buildUuid ?: 'active') . '|' . gmdate('Y-m-d-H')
         );
     }
 

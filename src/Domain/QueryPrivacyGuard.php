@@ -70,7 +70,8 @@ final class QueryPrivacyGuard
             'privacy_cost' => $cost,
         ];
 
-        $actorRef = hash_hmac('sha256', 'query|' . $actorUserId . '|' . $projectUuid . '|' . $metricId . '@' . $metricVersion, $privacyKey);
+        // Share slice/differencing budgets across viewers of a governed project; actor identity remains in the audit trail.
+        $actorRef = hash_hmac('sha256', 'query|project|' . $projectUuid . '|' . $metricId . '@' . $metricVersion, $privacyKey);
         $table = $this->db->table('idempotency_keys');
         $wpdb = $this->db->wpdb();
         $lockName = 'smai_privacy_' . substr(hash_hmac('sha256', $actorRef, $privacyKey), 0, 48);
