@@ -6,12 +6,12 @@ use Sabri\AnalyticsIntelligence\Domain\FunnelAttributionCalculator;
 
 $checks = [
  'SR230: Dashboard must account for query privacy' => ['src/Domain/DashboardService.php', 'new QueryPrivacyGuard($this->db)'],
- 'SR230: Suppressed dashboard never reveals a value' => ['src/Domain/DashboardService.php', "($suppressed || $privacyBlocked)"],
+ 'SR230: Suppressed dashboard never reveals a value' => ['src/Domain/DashboardService.php', "(\$suppressed || \$privacyBlocked)"],
  'SR230: Reports cannot bypass privacy budgets' => ['src/Domain/ReportService.php', 'new QueryPrivacyGuard($this->db)'],
  'SR230: CSV exports cannot bypass privacy budgets' => ['src/Domain/ExportService.php', 'new QueryPrivacyGuard($this->db)'],
  'SR230: Failed export SQL reads fail closed' => ['src/Domain/ExportService.php', 'Export metric snapshot query failed.'],
- 'SR230: Snapshot enqueue is actor-scoped' => ['src/Domain/SnapshotService.php', "'actor|' . $actorUserId . '|snapshot|'"],
- 'SR230: Quality enqueue is actor-scoped' => ['src/Domain/QualityService.php', "'actor|' . $actorUserId . '|quality|'"],
+ 'SR230: Snapshot enqueue is actor-scoped' => ['src/Domain/SnapshotService.php', "'actor|' . \$actorUserId . '|snapshot|'"],
+ 'SR230: Quality enqueue is actor-scoped' => ['src/Domain/QualityService.php', "'actor|' . \$actorUserId . '|quality|'"],
  'SR230: Differencing ledger is project-scoped' => ['src/Domain/QueryPrivacyGuard.php', "'query|project|' . $projectUuid"],
  'SR230: Conversion time conflict is explicitly bounded' => ['src/Domain/FunnelAttributionCalculator.php','count($firstConversionChannels) > 1'],
 ];
