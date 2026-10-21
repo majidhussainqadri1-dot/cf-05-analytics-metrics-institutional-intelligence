@@ -1,4 +1,6 @@
-# CF-05 Requirements Traceability — exact attached CF-05 master plan (21 October 2026)
+# CF-05 Requirements Traceability — 1.0.0-rc.10
+
+**Fresh plan-accurate reconciliation: 21 October 2026.**
 
 The 35 identifiers and labels below follow **the attached 52-page CF-05 v1.1 Future40 amended governing Word document**, sections 5.1–5.6, rather than the earlier repository's mismatched ID-to-label table. The linked source anchor shows a plausible implementation owner; **file presence or a CI static check does not prove the entire clinical/privacy/warehouse journey has been implemented or accepted**. Runtime/provider/warehouse/security acceptance remains a separate gate. The companion `scripts/fresh40-plan-parity-20261021.py` checks 35 owner anchors plus five governing contract boundaries.
 
