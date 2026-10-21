@@ -71,7 +71,7 @@ GOVERNING_PLAN_SUBJECTS = {
 }
 for number, subject in GOVERNING_PLAN_SUBJECTS.items():
  rid=f'CF05-FR-{number:03d}'
- pattern=rf'^\\| {rid} \\| {re.escape(subject)} \\|'
+ pattern=rf'^\| {rid} \| {re.escape(subject)} \|'
  if re.search(pattern, trace, re.M) is None:
   errors.append(f'governing_plan_subject_mismatch:{rid}:{subject}')
 
