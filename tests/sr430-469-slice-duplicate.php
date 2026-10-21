@@ -11,7 +11,7 @@ if (!class_exists('WP_Error')) {
 if (!class_exists('wpdb')) {
  class wpdb {
   public string $prefix='wp_';
-  public array $stored=['job_uuid'=>'11111111-1111-4111-8111-111111111111','state'=>'queued','job_type'=>'quality.run','payload_json'=>'{"sample":1}'];
+  public array $stored=['job_uuid'=>'11111111-1111-4111-8111-111111111111','state'=>'queued','job_type'=>'quality.run','payload_json'=>'{"sample":1}','max_attempts'=>'5'];
   public function prepare(string $s,mixed ...$args):string{return $s;}
   public function query(string $sql):int{return 0;}
   public function get_row(string $sql,mixed $format=null):array{return $this->stored;}
