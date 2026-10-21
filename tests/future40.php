@@ -95,4 +95,24 @@ $r=Future40Engine::evaluate('CF05-FUT-032',['value'=>INF,'benchmark'=>1]); f40_t
 
 echo "Round-4 semantic regressions passed.\n";
 
+// Regression: finite numeric strings are allowed, but overflow must never
+// become INF/NaN, claim an approved privacy budget, or break JSON evidence.
+foreach (['1e309', '-1e309'] as $overflow) {
+    $rejected = false;
+    try {
+        Future40Engine::evaluate('CF05-FUT-025', [
+            'allocated' => $overflow, 'spent' => 0, 'request' => 1,
+        ]);
+    } catch (\InvalidArgumentException $error) {
+        $rejected = true;
+    }
+    f40_truth($rejected, 'Overflowing numeric strings must fail closed.');
+}
+$finiteBudget = Future40Engine::evaluate('CF05-FUT-025', [
+    'allocated' => '1e3', 'spent' => 1, 'request' => 1,
+]);
+f40_truth(($finiteBudget['allowed'] ?? false) === true
+    && is_finite((float) ($finiteBudget['remaining_after'] ?? INF)),
+    'Valid finite numeric strings must preserve bounded budget behavior.');
+
 echo "All 40 Future-40 executable feature handlers passed.\n";
