@@ -4,7 +4,7 @@ Report suspected CF-05 security or privacy defects privately to the platform own
 
 ## Supported candidate
 
-`1.0.0-rc.14` receives source-level corrections. Runtime remains conditional, disabled by default and schema/evidence/environment gated.
+`1.0.0-rc.15` receives source-level corrections. Runtime remains conditional, disabled by default and schema/evidence/environment gated.
 
 ## Invariants
 
