@@ -57,7 +57,7 @@ final class JobQueue
         }
         if ($inserted === 0) {
             $existing = $wpdb->get_row($wpdb->prepare(
-                "SELECT job_uuid,state FROM `{$table}` WHERE idempotency_key=%s",
+                "SELECT job_uuid,state,job_type,payload_json FROM `{$table}` WHERE idempotency_key=%s",
                 hash('sha256', $idempotencyKey)
             ), ARRAY_A);
             // An INSERT IGNORE collision does not prove that a readable
@@ -69,6 +69,17 @@ final class JobQueue
                 || !is_string($existingState)
                 || !in_array($existingState, ['queued','running','retrying','completed','dead_letter'], true)) {
                 return new WP_Error('smai_job_idempotency_conflict', 'Existing queued job identity could not be verified.', ['status' => 503]);
+            }
+            // A reused idempotency key must point to the same immutable
+            // operation and canonical payload, not merely a valid old UUID.
+            $existingType = is_array($existing) ? ($existing['job_type'] ?? null) : null;
+            $storedPayload = is_array($existing) ? ($existing['payload_json'] ?? null) : null;
+            $decodedPayload = is_string($storedPayload) ? json_decode($storedPayload, true) : null;
+            if (!is_string($existingType) || $existingType !== $type
+                || !is_array($decodedPayload) || json_last_error() !== JSON_ERROR_NONE
+                || !hash_equals(Json::canonical($payload), Json::canonical($decodedPayload))) {
+                return new WP_Error('smai_job_idempotency_payload_conflict',
+                    'An existing job has incompatible operation details.', ['status' => 409]);
             }
             return ['job_uuid' => $existingUuid, 'state' => $existingState, 'duplicate' => true];
         }

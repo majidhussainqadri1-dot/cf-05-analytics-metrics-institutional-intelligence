@@ -13,6 +13,7 @@ php tests/sr270-309-privacy-ledger.php
 php tests/sr310-349-dashboard-privacy.php
 php tests/sr350-389-viewer-access-contract.php
 php tests/sr390-429-privacy-job-integrity.php
+php tests/sr430-469-slice-duplicate.php
 php tests/fresh-privacy-rate-boundary-20261021.php
 php tests/fresh-four-parser-parity-20261021.php
 python3 scripts/validate-json.py

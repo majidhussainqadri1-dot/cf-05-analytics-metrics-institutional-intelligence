@@ -95,11 +95,12 @@ final class PrivacyQueryPolicy
         $currentHashes = is_array($current['dimension_hashes']) ? $current['dimension_hashes'] : [];
         $previousHashes = is_array($previous['dimension_hashes'] ?? null) ? $previous['dimension_hashes'] : [];
 
-        if ($sameWindow && $currentNames === $previousNames && $currentHashes === $previousHashes) {
-            return false;
-        }
-
         $difference = abs((int) $current['cohort_size'] - (int) ($previous['cohort_size'] ?? 0));
+        // A corrected snapshot for an otherwise identical slice can disclose
+        // a small cohort delta. Only an unchanged cohort is a safe replay.
+        if ($sameWindow && $currentNames === $previousNames && $currentHashes === $previousHashes) {
+            return $difference > 0 && $difference < max(1, $floor);
+        }
         if ($difference >= max(1, $floor)) {
             return false;
         }
