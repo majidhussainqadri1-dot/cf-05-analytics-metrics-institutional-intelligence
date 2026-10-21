@@ -3,7 +3,7 @@ Contributors: majidhussainqadri1-dot
 Tags: analytics, metrics, privacy, governance, institutional intelligence
 Requires at least: 6.0
 Requires PHP: 8.1
-Stable tag: 1.0.0-rc.16
+Stable tag: 1.0.0-rc.17
 License: Proprietary
 
 Conditional, privacy-safe derivative analytics, semantic metrics and institutional decision-support for the Sabri Social Homeopathy Platform.
@@ -16,7 +16,7 @@ Runtime is disabled by default. Installation never authorizes production use.
 
 == Changelog ==
 
-= 1.0.0-rc.16 =
+= 1.0.0-rc.17 =
 * Current source candidate; contract/schema parity, sequential-review evidence, release-governance and repository hygiene hardened through the current exact HEAD.
 * Runtime remains conditional and disabled by default; staging/live/operational acceptance requires separate evidence.
 
