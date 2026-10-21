@@ -162,6 +162,17 @@ final class MetricCatalog
                 $errors[] = 'non_numeric_calculation_field';
             }
         }
+        if ($type === 'funnel') {
+            $needed = ['subject_field'=>'pseudonymous_ref','step_field'=>'string','time_field'=>'timestamp',
+                'eligible_field'=>'boolean','channel_field'=>'string'];
+            foreach ($needed as $key => $typeRequired) {
+                $field = (string) ($calculation[$key] ?? '');
+                $actualType = (string) (($datasetFields[$field] ?? [])['type'] ?? '');
+                if ($actualType !== $typeRequired) {
+                    $errors[] = 'funnel_field_type_mismatch_' . $key;
+                }
+            }
+        }
         foreach (['filters','numerator_filters','denominator_filters'] as $key) {
             foreach ((array) ($calculation[$key] ?? []) as $filter) {
                 if (!is_array($filter)) {
@@ -212,6 +223,13 @@ final class MetricCatalog
         $fields = [];
         if (isset($calculation['field']) && is_string($calculation['field'])) {
             $fields[] = $calculation['field'];
+        }
+        if (($calculation['type'] ?? '') === 'funnel') {
+            foreach (['subject_field','step_field','time_field','eligible_field','channel_field'] as $key) {
+                if (isset($calculation[$key]) && is_string($calculation[$key])) {
+                    $fields[] = $calculation[$key];
+                }
+            }
         }
         foreach (['filters','numerator_filters','denominator_filters'] as $key) {
             foreach ((array) ($calculation[$key] ?? []) as $filter) {
