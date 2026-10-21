@@ -262,6 +262,7 @@ final class FutureFeatureService
         if ($depth > 8) return 'Future-40 input nesting exceeds the governed depth limit.';
         if (is_string($value)) {
             if (strlen($value) > 4000 || wp_strip_all_tags($value) !== $value) return 'Future-40 string input is over-length or requires lossy sanitization.';
+            if (is_numeric($value) && !is_finite((float) $value)) return 'Future-40 numeric strings must be finite.';
             return null;
         }
         if (is_float($value) && !is_finite($value)) return 'Future-40 numeric input must be finite.';
