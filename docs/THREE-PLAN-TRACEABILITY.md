@@ -1,0 +1,41 @@
+# CF-05 Three-Plan Traceability — 1.0.0-rc.9
+
+## Governing sources
+
+1. **Sabri Social Homeopathy Platform Definitive Integrated Master Plan 2026 v3.0 (`SSH-PMP-2026-v3.0`)** — canonical ownership, evidence-only lifecycle status, staging-first deployment, cross-file integration, security/privacy, accessibility, migration and rollback.
+2. **Consolidated All-Chats Recovered Directive Register 2.1** — Islamic supremacy, anti-surveillance and dignity controls, central green identity, Master-Plan-first workflow, visible evidence, repeated review/fix until zero known defects, comprehensive GitHub review and truthful status separation.
+3. **CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended — Analytics, Metrics and Institutional Intelligence** — conditional activation, event governance, derivative warehouse, lineage, quality, metric semantics, privacy-safe queries, reports, experiments, deletion, provider exit and restore. Functional requirement range: `CF05-FR-001` through `CF05-FR-035`.
+
+## Cross-plan implementation map
+
+| Governing concern | Source implementation/evidence |
+|---|---|
+| Canonical derivative ownership; no native-domain takeover | `MANIFEST.json`, `IntegrationRegistry`, `docs/REQUIREMENTS-TRACEABILITY.md` |
+| Conditional and evidence-bound activation | `RuntimeActivationService`, `RuntimeGate`, schema-version and migration-error gates |
+| Islamic privacy, dignity and anti-surveillance | allowlist ingestion, pseudonymization, purpose-bound access, minimum cohorts, query privacy budget, differencing guard, short retention |
+| No raw clinical/message/identity/payment-secret analytics | validators, `SensitiveValueDetector`, `PrivacyGateway`, static secret/prohibited-data tests |
+| Event contracts, corrections, late facts, replay/idempotency | `EventSchemaRegistry`, `EventIngestionService`, `ServiceAuthenticator`, source sequence uniqueness |
+| Derivative models, historical semantics and lineage | `DatasetCatalog`, `PipelineService`, `TransformationEngine`, `LineageService`, `CheckpointService` |
+| Quality, backfill, rollback and reproducibility | `QualityService`, `BackfillService`, `SnapshotService`, `RestoreService` |
+| Metric definition closure and privacy-safe queries | `MetricDefinitionValidator`, `MetricCatalog`, `MetricQueryService`, `PrivacyQueryPolicy`, `QueryPrivacyGuard` |
+| Reports/exports revocation and expiry | `ReportService`, `ReportControlService`, `ExportService`, `ExportControlService`, `RetentionRunner` |
+| Human-governed experiments and decisions | `ExperimentService`, `NarrativeService`; no automatic native action command |
+| Deletion/provider exit/restore | `DeletionService`, `ProviderService`, `RestoreService`; legacy missing keys block migration until governed rebuild |
+| Accessibility and central green identity | `InsightsShortcode`, `assets/css/insights.css`, unique IDs, keyboard focus and reduced motion |
+| Least privilege and separation of duties | dedicated analytics roles plus independent-actor checks and row-version concurrency |
+| Evidence-only completion status | health/manifest/PR distinguish coded, packaged, Automated-QA Green, Staging-Accepted, Live-Deployed and Operational states |
+| Forty fresh review/fix rounds | `docs/REVIEW-ROUNDS-07-46.md` and exact-head CI evidence |
+| Staging acceptance boundary | **Hostinger staging** (or formally approved equivalent) remains an external acceptance gate; repository code and CI cannot substitute for staging evidence |
+
+## Exact trace markers
+
+- Central governing plan: `SSH-PMP-2026-v3.0`.
+- CF-05 functional requirement range: `CF05-FR-001` … `CF05-FR-035`.
+- Staging environment acceptance reference: `Hostinger staging`.
+- Source completion is not a claim of live deployment or operation.
+
+No source document authorizes a claim of staging acceptance, live deployment or operational completion merely from code or CI; those gates remain external.
+
+## Future-40 expansion
+
+`CF05-FUT-001..CF05-FUT-040` extend only the approved CF-05 derivative/aggregate analytics boundary. They do not acquire native domain truth, individual surveillance, unrestricted raw-data authority or autonomous clinical/financial/moderation decisions. Activation remains evidence-bound and separate from source coding.
