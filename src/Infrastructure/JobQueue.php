@@ -60,7 +60,17 @@ final class JobQueue
                 "SELECT job_uuid,state FROM `{$table}` WHERE idempotency_key=%s",
                 hash('sha256', $idempotencyKey)
             ), ARRAY_A);
-            return ['job_uuid' => (string) ($existing['job_uuid'] ?? ''), 'state' => (string) ($existing['state'] ?? 'unknown'), 'duplicate' => true];
+            // An INSERT IGNORE collision does not prove that a readable
+            // committed job exists. Never return empty IDs as successful jobs.
+            $existingUuid = is_array($existing) ? ($existing['job_uuid'] ?? null) : null;
+            $existingState = is_array($existing) ? ($existing['state'] ?? null) : null;
+            if (!is_string($existingUuid)
+                || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD', $existingUuid) !== 1
+                || !is_string($existingState)
+                || !in_array($existingState, ['queued','running','retrying','completed','dead_letter'], true)) {
+                return new WP_Error('smai_job_idempotency_conflict', 'Existing queued job identity could not be verified.', ['status' => 503]);
+            }
+            return ['job_uuid' => $existingUuid, 'state' => $existingState, 'duplicate' => true];
         }
         return ['job_uuid' => $uuid, 'state' => 'queued', 'duplicate' => false];
     }

@@ -34,6 +34,20 @@ final class QueryPrivacyGuard
         int $cohortSize,
         int $globalMinimum
     ): bool|WP_Error {
+        // Downstream snapshots and queries must have immutable, ordered UTC
+        // windows; relative or corrupt dates must not disable differencing.
+        $utcFormat = '/^[0-9]{4}-[0-9]{2}-[0-9]{2} (?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/D';
+        if (preg_match($utcFormat, $windowStart) !== 1 || preg_match($utcFormat, $windowEnd) !== 1) {
+            return new WP_Error('smai_privacy_window_invalid', 'A canonical ordered UTC privacy window is required.', ['status' => 503]);
+        }
+        $startUtc = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $windowStart, new \DateTimeZone('UTC'));
+        $endUtc = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $windowEnd, new \DateTimeZone('UTC'));
+        if ($startUtc === false || $endUtc === false
+            || $startUtc->format('Y-m-d H:i:s') !== $windowStart
+            || $endUtc->format('Y-m-d H:i:s') !== $windowEnd
+            || $startUtc->getTimestamp() >= $endUtc->getTimestamp()) {
+            return new WP_Error('smai_privacy_window_invalid', 'A canonical ordered UTC privacy window is required.', ['status' => 503]);
+        }
         $violations = PrivacyQueryPolicy::violations($definition, $dimensions);
         if ($violations !== []) {
             return $this->deny('smai_query_privacy_policy', 'Requested dimensions violate the metric privacy policy.', $metricId, $metricVersion, $projectUuid, $actorUserId, $purpose, ['violations' => $violations]);
