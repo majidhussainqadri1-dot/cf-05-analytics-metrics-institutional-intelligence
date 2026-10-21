@@ -89,6 +89,13 @@ final class ReportService
                 || !user_can($recipient['user_id'], 'smai_view_insights')) {
                 return new WP_Error('smai_invalid_report_recipient', 'Report recipient is invalid.', ['status' => 400]);
             }
+            // An approved recipient must also own a current project for every metric.
+            foreach ($metrics as $candidateMetric) {
+                $ref = 'metric:' . (string) $candidateMetric['metric_id'] . '@' . (string) $candidateMetric['metric_version'];
+                if (!$access->authorizesViewer($projectUuid, (int) $recipient['user_id'], $ref)) {
+                    return new WP_Error('smai_report_recipient_scope_denied', 'Report recipient lacks an independently approved metric access project.', ['status' => 403]);
+                }
+            }
             $recipientIds[(int) $recipient['user_id']] = true;
         }
         if (count($recipientIds) !== count($recipients)) {
@@ -283,6 +290,15 @@ final class ReportService
             if (!is_array($recipient) || (int) ($recipient['user_id'] ?? 0) < 1) { continue; }
             $userId = (int) $recipient['user_id'];
             if (!user_can($userId, 'smai_view_insights')) { continue; }
+            $recipientScoped = true;
+            foreach ((array) ($definition['metrics'] ?? []) as $candidateMetric) {
+                if (!is_array($candidateMetric) || !(new AccessProjectService($this->db))->authorizesViewer(
+                    (string) $report['project_uuid'], $userId,
+                    'metric:' . (string) ($candidateMetric['metric_id'] ?? '') . '@' . (string) ($candidateMetric['metric_version'] ?? '')
+                )) { $recipientScoped = false; break; }
+            }
+            // Do not send a token after a recipient's metric grants are revoked.
+            if (!$recipientScoped || empty($definition['metrics'])) { continue; }
             $runKey = hash_hmac('sha256', $uuid . '|' . $runRef . '|user:' . $userId, $this->privacyKey());
             $existing = $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
                 "SELECT delivery_uuid,state,expires_at FROM `{$this->db->table('report_deliveries')}` WHERE run_key=%s",
@@ -451,6 +467,14 @@ final class ReportService
         foreach ($recipients as $recipient) { if (!is_array($recipient) || (string)($recipient['type']??'') !== 'user' || (int)($recipient['user_id']??0) < 1 || !user_can((int)$recipient['user_id'],'smai_view_insights')) { return false; } }
         $metrics = is_array($definition['metrics'] ?? null) ? $definition['metrics'] : [];
         if ($metrics === []) { return false; }
+        foreach ($recipients as $recipient) {
+            foreach ($metrics as $candidateMetric) {
+                if (!is_array($candidateMetric) || !$access->authorizesViewer(
+                    (string) $report['project_uuid'], (int) $recipient['user_id'],
+                    'metric:' . (string) ($candidateMetric['metric_id'] ?? '') . '@' . (string) ($candidateMetric['metric_version'] ?? '')
+                )) { return false; }
+            }
+        }
         foreach ($metrics as $metricSpec) {
             if (!is_array($metricSpec)) { return false; }
             $metricId=(string)($metricSpec['metric_id']??'');$metricVersion=(string)($metricSpec['metric_version']??'');$dimensions=is_array($metricSpec['dimensions']??null)?$metricSpec['dimensions']:[];
