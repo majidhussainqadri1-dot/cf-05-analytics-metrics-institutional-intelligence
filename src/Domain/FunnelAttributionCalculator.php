@@ -40,8 +40,10 @@ final class FunnelAttributionCalculator
                 || !is_string($time)) {
                 continue;
             }
-            $timestamp = strtotime($time);
-            if ($timestamp === false) {
+            // Date-dependent strings such as "tomorrow" and invalid Gregorian
+            // dates must not change an institutional metric between reruns.
+            $timestamp = self::strictEventTimestamp($time);
+            if ($timestamp === null) {
                 continue;
             }
             $channel = $row[$channelField] ?? 'unknown';
@@ -97,5 +99,17 @@ final class FunnelAttributionCalculator
             $numerator += $weight;
         }
         return [$denominator > 0 ? $numerator / $denominator : null, $numerator, $denominator];
+    }
+
+    /** Accept only reproducible RFC 3339 event instants with explicit offsets. */
+    private static function strictEventTimestamp(string $time): ?int
+    {
+        if (strlen($time) > 35
+            || preg_match('/^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D', $time, $parts) !== 1
+            || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])) {
+            return null;
+        }
+        $timestamp = strtotime($time);
+        return $timestamp === false ? null : $timestamp;
     }
 }
