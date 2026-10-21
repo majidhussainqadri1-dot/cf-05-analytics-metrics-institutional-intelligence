@@ -1,3 +1,9 @@
+## 1.0.0-rc.14 — 2026-10-21
+- Completed fresh requirement-scoped review rounds SR-270..309: 35 governing CF-05 functional requirements and five central/companion/activation boundaries. Evidence: `docs/SEQUENTIAL-REVIEW-ROUNDS-270-309.md`.
+- Fixed three confirmed project-scoped privacy accounting defects in `QueryPrivacyGuard`: fail closed on failed/overlarge ledger reads, reject corrupted evidence with compatible legacy fingerprint handling, and prevent expired unpurged idempotency keys from suppressing fresh hourly evidence.
+- Added four dedicated red/green PHP regression assertions as mandatory CI; unchanged schema target `1.4.1`, contract `1.4.0`, separate Future-40 activation.
+- No claim of deployed runtime parity, staging acceptance, operational status or companion integration acceptance.
+
 ## 1.0.0-rc.13 — 2026-10-21
 - Conducted a distinct new forty-round CF-05 plan/source review, SR-230..SR-269, after freezing HEAD `70a65806e014` and the full eight-file companion/central planning boundary. Review traces and externally pending gates are in `docs/SEQUENTIAL-REVIEW-ROUNDS-230-269.md`.
 - Corrected eight source-level issues: three metric-output paths bypassed privacy query-accounting; export SQL failure was silently converted to an empty result; snapshot and quality worker idempotency keys omitted actor context; same-time conversion channels caused order-dependent attribution; and privacy differencing budgets were per viewer rather than shared within the same approved project.
