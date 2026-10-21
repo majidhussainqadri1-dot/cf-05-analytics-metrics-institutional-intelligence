@@ -10,6 +10,7 @@ php tests/funnel-attribution.php
 php tests/fresh-completeness-regression.php
 php tests/sr230-269-privacy-measurement.php
 php tests/sr270-309-privacy-ledger.php
+php tests/sr310-349-dashboard-privacy.php
 php tests/fresh-privacy-rate-boundary-20261021.php
 php tests/fresh-four-parser-parity-20261021.php
 python3 scripts/validate-json.py
