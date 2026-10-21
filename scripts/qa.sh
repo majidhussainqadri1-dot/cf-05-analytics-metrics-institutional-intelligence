@@ -16,6 +16,7 @@ php tests/fresh-four-parser-parity-20261021.php
 python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/fresh40-plan-parity-20261021.py
+python3 scripts/sr310-349-source-trace-check.py
 python3 scripts/cross-plan-check.py
 python3 scripts/schema-contract-check.py
 python3 scripts/public-contract-parity-check.py

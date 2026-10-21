@@ -1,3 +1,9 @@
+## 1.0.0-rc.15 — 2026-10-21
+- Added fresh SR-310..349 source-scoped reviews across 35 CF-05 functional requirements and five central/companion/release areas; see `docs/SEQUENTIAL-REVIEW-ROUNDS-310-349.md`.
+- Patched four proven defects in dashboard widget read/activation and historical privacy query ledger integrity. Five baseline-failing PHP assertions now pass and are mandatory in CI.
+- Registered a 40-source-target drift check without making false end-to-end or live claims; schema target `1.4.1`, contract `1.4.0`, default feature activation still conditional.
+- All actual staging/live/provider/consent/deletion and deployment parity gates remain open until independent evidence.
+
 ## 1.0.0-rc.14 — 2026-10-21
 - Completed fresh requirement-scoped review rounds SR-270..309: 35 governing CF-05 functional requirements and five central/companion/activation boundaries. Evidence: `docs/SEQUENTIAL-REVIEW-ROUNDS-270-309.md`.
 - Fixed three confirmed project-scoped privacy accounting defects in `QueryPrivacyGuard`: fail closed on failed/overlarge ledger reads, reject corrupted evidence with compatible legacy fingerprint handling, and prevent expired unpurged idempotency keys from suppressing fresh hourly evidence.
