@@ -96,13 +96,14 @@ final class MetricDefinitionValidator
 
         $calculation = $definition['calculation'] ?? null;
         $type = is_array($calculation) ? (string) ($calculation['type'] ?? '') : '';
-        if (!is_array($calculation) || !in_array($type, ['count','sum','average','ratio'], true)) {
+        if (!is_array($calculation) || !in_array($type, ['count','sum','average','ratio','funnel'], true)) {
             $errors[] = 'invalid_calculation';
         } else {
             $allowedCalculationKeys = match ($type) {
                 'count' => ['type','filters'],
                 'sum','average' => ['type','field','filters'],
                 'ratio' => ['type','numerator_filters','denominator_filters'],
+                'funnel' => ['type','subject_field','step_field','time_field','eligible_field','channel_field','entry_step','conversion_step','window_seconds','attribution_policy'],
                 default => ['type'],
             };
             if (array_diff(array_keys($calculation), $allowedCalculationKeys) !== []) {
@@ -112,7 +113,32 @@ final class MetricDefinitionValidator
                 && preg_match('/^[a-z][a-z0-9_]{0,63}$/', (string) ($calculation['field'] ?? '')) !== 1) {
                 $errors[] = 'invalid_calculation_field';
             }
-            if ($type === 'ratio') {
+            if ($type === 'funnel') {
+                foreach (['subject_field','step_field','time_field','eligible_field','channel_field'] as $fieldKey) {
+                    if (preg_match('/^[a-z][a-z0-9_]{0,63}$/', (string) ($calculation[$fieldKey] ?? '')) !== 1) {
+                        $errors[] = 'invalid_funnel_' . $fieldKey;
+                    }
+                }
+                foreach (['entry_step','conversion_step'] as $stepKey) {
+                    if (!is_string($calculation[$stepKey] ?? null)
+                        || preg_match('/^[a-z][a-z0-9_.-]{1,99}$/', (string) $calculation[$stepKey]) !== 1) {
+                        $errors[] = 'invalid_funnel_' . $stepKey;
+                    }
+                }
+                if (($calculation['entry_step'] ?? null) === ($calculation['conversion_step'] ?? null)) {
+                    $errors[] = 'funnel_steps_must_differ';
+                }
+                $seconds = filter_var($calculation['window_seconds'] ?? null, FILTER_VALIDATE_INT);
+                if ($seconds === false || $seconds < 60 || $seconds > 30 * DAY_IN_SECONDS) {
+                    $errors[] = 'invalid_funnel_window_seconds';
+                }
+                if (!in_array((string) ($calculation['attribution_policy'] ?? ''), ['first_touch','last_touch','linear'], true)) {
+                    $errors[] = 'invalid_funnel_attribution_policy';
+                }
+                if (($definition['cohort_field'] ?? null) !== ($calculation['subject_field'] ?? null)) {
+                    $errors[] = 'funnel_requires_distinct_subject_cohort';
+                }
+            } elseif ($type === 'ratio') {
                 foreach (['numerator_filters','denominator_filters'] as $key) {
                     if (!is_array($calculation[$key] ?? null)) {
                         $errors[] = 'invalid_' . $key;
@@ -129,6 +155,17 @@ final class MetricDefinitionValidator
             }
         }
 
+        // Do not silently accept non-executable free-form metric semantics.
+        // Executable attribution must use the bounded funnel calculation contract.
+        if (!empty($definition['attribution'])) {
+            $errors[] = 'unsupported_freeform_attribution';
+        }
+        if (!empty($definition['exclusions'])) {
+            $errors[] = 'unsupported_freeform_exclusions';
+        }
+        if (!empty($definition['rounding'])) {
+            $errors[] = 'unsupported_freeform_rounding';
+        }
         if (isset($definition['cohort_field']) && preg_match('/^[a-z][a-z0-9_]{0,63}$/', (string) $definition['cohort_field']) !== 1) {
             $errors[] = 'invalid_cohort_field';
         }
