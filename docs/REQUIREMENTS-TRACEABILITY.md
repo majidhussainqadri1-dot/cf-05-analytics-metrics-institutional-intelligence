@@ -1,39 +1,54 @@
 # CF-05 Requirements Traceability — 1.0.0-rc.10
 
-| Requirement | Primary implementation | Acceptance evidence |
-|---|---|---|
-| CF05-FR-001 | `EventSchemaRegistry`, `EventSchemaValidator` | immutable semantic versions and closed schema |
-| CF05-FR-002 | `EventIngestionService` | canonical envelope, owner/version/purpose checks |
-| CF05-FR-003 | `ServiceAuthenticator`, replay nonce table | HMAC, timestamp and atomic replay rejection |
-| CF05-FR-004 | `PrivacyGateway`, `SensitiveValueDetector` | allowlist minimization and prohibited-data rejection |
-| CF05-FR-005 | event correction and sequence controls | correction owner validation, late/out-of-order evidence |
-| CF05-FR-006 | quarantine workflow | redacted samples, reason codes and payload hashes |
-| CF05-FR-007 | `DatasetCatalog`, `DatasetDefinitionValidator` | versioned derivative definitions and source contracts |
-| CF05-FR-008 | `TransformationEngine`, `PipelineService` | strict typed deterministic transformations |
-| CF05-FR-009 | `CheckpointService` | serialized watermarks and source sequence checkpoints |
-| CF05-FR-010 | `LineageService` | source-to-dataset-to-metric lineage and code/job evidence |
-| CF05-FR-011 | `QualityService` | freshness/completeness/uniqueness/validity/reconciliation rules |
-| CF05-FR-012 | `BackfillService` | dry-run, shadow build, comparison and atomic activation |
-| CF05-FR-013 | backfill rollback | previous-build pointer and governed rollback |
-| CF05-FR-014 | `MetricCatalog`, `MetricDefinitionValidator` | immutable metric versions and semantic closure |
-| CF05-FR-015 | `SnapshotService` | reproducible revisioned snapshots and supersession |
-| CF05-FR-016 | quality/freshness response contract | normalized public quality states and caveats |
-| CF05-FR-017 | historical semantics | current/as-occurred declaration in datasets and metrics |
-| CF05-FR-018 | `AccessProjectService` | purpose, datasets/fields, training, expiry and approval |
-| CF05-FR-019 | `DashboardService` | project/audience/metric reauthorization at query time |
-| CF05-FR-020 | `MetricQueryService` | exact version/window/dimensions and audit |
-| CF05-FR-021 | `PrivacyQueryPolicy`, `QueryPrivacyGuard` | dimension floors, cardinality, prohibited combinations, privacy budget and differencing defense |
-| CF05-FR-022 | `ReportService`, `ReportControlService` | create/update/pause/resume/revoke/unsubscribe and delivery expiry |
-| CF05-FR-023 | `ExportService`, `ExportControlService` | encrypted bounded export, safe CSV, explicit revoke and payload purge |
-| CF05-FR-024 | `NarrativeService` | observation/inference/recommendation separation and snapshot citations |
-| CF05-FR-025 | `ExperimentDefinitionValidator`, `ExperimentService` | hypothesis, audience, variants, metrics and guardrails |
-| CF05-FR-026 | assignment facts | native assignment owner, one subject/experiment, deletion key and immutable fact hash |
-| CF05-FR-027 | `Statistics`, experiment analysis | uncertainty, practical effect, protocol deviation and guardrail evidence |
-| CF05-FR-028 | analysis publication | independent reviewer and immutable published analysis |
-| CF05-FR-029 | decision records | human approver, alternatives, risks, owner and review outcome |
-| CF05-FR-030 | `RetentionRunner` | bounded retention, expiry, token clearing and auditable batches |
-| CF05-FR-031 | `DeletionService` | scoped deletion/anonymization and affected aggregate invalidation |
-| CF05-FR-032 | `ProviderService` | evidence-bound provider approval, exit and credential revocation |
-| CF05-FR-033 | query/output privacy | cohort suppression, repeated-query controls and minimized audit values |
-| CF05-FR-034 | `RestoreService` | code/schema/catalog/checkpoint/deletion/access/provider invariants |
-| CF05-FR-035 | `HealthService`, `RepairService`, CLI/REST/admin | fail-closed health, audit verification, safe repair and truthful status |
+**Canonical specification:** CF-05 Conditional Complete Master Plan 2026 v1.1 (Future-40 amended 2026-09-16), Section 5. Earlier repository mapping assigned several CF05-FR IDs to different subjects; those labels were not the governing plan. This table restores the original requirement identities. A referenced PHP class establishes source intent, **not** staging, live, or cross-file operational acceptance.
+
+| Governing ID | Exact plan subject | Primary code linkage | Evidence / remaining gate |
+|---|---|---|---|
+| CF05-FR-001 | Event schema registry | `EventSchemaRegistry`, `EventSchemaValidator` | Schema-version and owner/privacy gate |
+| CF05-FR-002 | Minimum event envelope | `EventSchemaValidator`, `EventIngestionService` | Required identity/time/source/consent fields |
+| CF05-FR-003 | Purpose/consent gate | `EventIngestionService`, `PrivacyGateway` | Consent, minor/guardian, purpose and region checks |
+| CF05-FR-004 | Field redaction/tokenization | `PrivacyGateway`, `SensitiveValueDetector` | Allowlist, secret rejection, pseudonymization |
+| CF05-FR-005 | Dedupe/order/late events | `EventIngestionService`, `CheckpointService` | Replay, source order, late-window and correction evidence |
+| CF05-FR-006 | Quarantine and feedback | `EventIngestionService`, `QualityService` | Safe quarantine and governed replay |
+| CF05-FR-007 | Canonical derivative modeling | `DatasetCatalog`, `DatasetDefinitionValidator`, `PipelineService` | Published source ownership and derivative-only model |
+| CF05-FR-008 | Slowly changing definitions | `DatasetDefinitionValidator`, `SnapshotService`, `PipelineService` | Current/as-occurred historical policy |
+| CF05-FR-009 | Data lineage | `LineageService`, `PipelineService` | Event/build/metric linkage and provenance |
+| CF05-FR-010 | Backfill/rebuild | `BackfillService`, `CheckpointService` | Dry-run, shadow-build, reconcile and rollback |
+| CF05-FR-011 | Data quality rules | `QualityService`, `SnapshotService` | Freshness, violations and suppression |
+| CF05-FR-012 | Region/provider control | `DatasetCatalog`, `EventIngestionService`, `ProviderService` | Approved region/provider contract; staging provider evidence pending |
+| CF05-FR-013 | Metric definition | `MetricDefinitionValidator`, `MetricCatalog` | Numerator/denominator/window/timezone/version validation |
+| CF05-FR-014 | Metric lifecycle | `CatalogLifecycleService`, `MetricCatalog` | Versioned transition and invalidation |
+| CF05-FR-015 | Dimension allowlist | `MetricDefinitionValidator`, `MetricQueryService` | Cardinality/privacy/allowlisted filters |
+| CF05-FR-016 | Freshness and confidence | `MetricQueryService`, `SnapshotService` | Freshness/caveats/unknown-vs-green |
+| CF05-FR-017 | Attribution and funnels | `FunnelAttributionCalculator`, `MetricDefinitionValidator`, `MetricCatalog`, `SnapshotService` | Bounded subject-deduplicated first/last/linear fixtures; source/staging integration pending |
+| CF05-FR-018 | Financial/clinical metric limits | `PrivacyGateway`, `SensitiveValueDetector`, `MetricCatalog` | No raw clinical/payment secret data; native CF-03/clinical aggregate contract pending |
+| CF05-FR-019 | Role/project-scoped dashboards | `DashboardService`, `AccessProjectService` | Purpose-scoped authorization and expiry |
+| CF05-FR-020 | Metric presentation | `InsightsShortcode`, `DashboardService`, `MetricQueryService` | Version/quality/caveats/accessible disclosure |
+| CF05-FR-021 | Drilldown safety | `PrivacyQueryPolicy`, `QueryPrivacyGuard` | Cohort thresholds, differencing and budgets |
+| CF05-FR-022 | Scheduled reports | `ReportService`, `ReportControlService` | Recipient authorization, expiry and revocation |
+| CF05-FR-023 | Secure exports | `ExportService`, `ExportControlService`, `CryptoBox`, `CsvSafe` | Bounded encrypted export and revoke |
+| CF05-FR-024 | Narrative insights | `NarrativeService` | Evidence citations, inference/recommendation distinction |
+| CF05-FR-025 | Experiment registry | `ExperimentService`, `ExperimentDefinitionValidator` | Hypothesis/metrics/guardrails/approval |
+| CF05-FR-026 | Assignment separation | `ExperimentService`, `IntegrationRegistry` | Native owner remains assignment authority |
+| CF05-FR-027 | Guardrail monitoring | `ExperimentService` | Analysis and breach/stop rules |
+| CF05-FR-028 | Statistical integrity | `Statistics`, `ExperimentService` | Confidence and guarded comparisons |
+| CF05-FR-029 | Decision record | `ExperimentService`, `NarrativeService` | Human approval and decision audit |
+| CF05-FR-030 | Retention tiers | `RetentionRunner`, `Activator` | Raw/derivative expiration and audit |
+| CF05-FR-031 | Deletion/anonymization propagation | `DeletionService`, `RetentionRunner` | Delete/revoke derived reports and exports |
+| CF05-FR-032 | Access projects and expiry | `AccessProjectService` | Object/field/purpose authorization and expiry |
+| CF05-FR-033 | Query and export audit | `MetricQueryService`, `AuditLogger`, `ExportService` | Minimized query/export trace and result-size |
+| CF05-FR-034 | Provider/warehouse exit | `ProviderService`, `RestoreService` | Provider handoff, purge and reconciliation evidence |
+| CF05-FR-035 | Restore and reproducibility | `RestoreService`, `AuditVerifier` | Schema/catalog/deletion-floor/access parity check |
+
+## Independent acceptance boundaries
+
+- **CF05-FR-017:** The prior candidate silently accepted a freeform `attribution` field while providing only row-level count/sum/average/ratio, not a subject-deduplicated ordered funnel. The review adds a bounded `funnel` calculation with time windows, explicitly eligible source events, pseudonymous subjects, first/last/linear channel attribution and fail-closed validation. Source fixtures do **not** substitute for genuine File 00/05/26 producer contracts and staging cohort verification.
+- **CF05-FR-018:** Rejecting raw clinical/payment material is necessary but not sufficient evidence that the separate clinical and CF-03 financial domain owners emit safe, consented aggregate contracts. Those external integrations are pending.
+- **CF05-FR-012, -026 and -034:** Provider/region, assignment authority and provider exit require real companion services and staging acceptance; repository markers alone do not satisfy end-to-end integration.
+- **CF05-FR-003 and -031:** Consent, minor safety, right-to-delete and downstream correction must be tested on deployment data and actual integrations.
+- The **public Traffic Analytics & Transparency** plan retains its own first-party traffic definition and public privacy methodology. CF-05 may consume approved aggregate/event contracts; it must not silently become a second canonical visitor counter or the File 26 ranking authority.
+- Future-40 `CF05-FUT-001..040` remains separately disabled and activation-gated. This table does not reassign or erase that scope.
+
+## Lifecycle truth
+
+Repository code/CI/package evidence must be tied to the exact new branch HEAD. Live deployed source, DB version, migrations, provider contracts, Hostinger-equivalent staging, production verification and Founder release approval are **not established** by this document. Unknown means unverified—not zero defects.
