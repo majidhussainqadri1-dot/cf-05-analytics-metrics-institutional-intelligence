@@ -1,3 +1,9 @@
+## 1.0.0-rc.16 — 2026-10-21
+- Forty further source-scoped reviews SR350..389 (35 CF05 requirements and five cross-file release boundaries) plus independent authorized/unauthorized recipient behavior verification.
+- Corrected three related access-control defects affecting dashboard audience metric reads, shared report delivery read-time scope and unscoped report recipients at creation/activation/scheduled delivery.
+- Added six behavioral regression assertions, forty source mapping assertions and five explicit actor-grant code guards. Only independently approved same-purpose metric Access Projects permit delegated viewing; no schema or public contract change.
+- Conditional runtime remains disabled and external provider/staging/deployment evidence pending.
+
 ## 1.0.0-rc.15 — 2026-10-21
 - Added fresh SR-310..349 source-scoped reviews across 35 CF-05 functional requirements and five central/companion/release areas; see `docs/SEQUENTIAL-REVIEW-ROUNDS-310-349.md`.
 - Patched four proven defects in dashboard widget read/activation and historical privacy query ledger integrity. Five baseline-failing PHP assertions now pass and are mandatory in CI.
