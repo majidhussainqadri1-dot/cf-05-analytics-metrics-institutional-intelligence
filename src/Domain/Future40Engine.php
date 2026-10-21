@@ -468,9 +468,6 @@ final class Future40Engine
             if (is_string($value) && is_numeric($value) && !is_finite((float) $value)) {
                 throw new \InvalidArgumentException('Future feature numeric strings must be finite.');
             }
-            if (is_float($value) && !is_finite($value)) {
-                throw new \InvalidArgumentException('Future feature numeric values must be finite.');
-            }
             if (!is_array($value)) return;
             foreach ($value as $k => $v) {
                 $key = strtolower((string) $k);
