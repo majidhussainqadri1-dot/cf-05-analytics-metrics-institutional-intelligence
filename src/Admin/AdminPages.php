@@ -72,8 +72,8 @@ final class AdminPages
         $this->card(__('Published Datasets', 'sabri-analytics-institutional-intelligence'), $this->formatCount($this->countWhere('datasets', "state='published'")), __('Versioned derivative models only.', 'sabri-analytics-institutional-intelligence'));
         $this->card(__('Active Metrics', 'sabri-analytics-institutional-intelligence'), $this->formatCount($this->countWhere('metrics', "state='active'")), __('Every result remains pinned to a metric version.', 'sabri-analytics-institutional-intelligence'));
         $this->card(__('Published Snapshots', 'sabri-analytics-institutional-intelligence'), $this->formatCount($this->countWhere('metric_snapshots', "state='published'")), __('Cohort and quality controls apply.', 'sabri-analytics-institutional-intelligence'));
-        $this->card(__('Open Quality Issues', 'sabri-analytics-institutional-intelligence'), (string) ($health['quality']['open_issues'] ?? 0), __('High/critical issues block affected publication.', 'sabri-analytics-institutional-intelligence'));
-        $this->card(__('Dead-letter Jobs', 'sabri-analytics-institutional-intelligence'), (string) ($health['queue']['dead_letter'] ?? 0), __('No silent pipeline failure.', 'sabri-analytics-institutional-intelligence'));
+        $this->card(__('Open Quality Issues', 'sabri-analytics-institutional-intelligence'), $this->healthCount($health, 'quality', 'open_issues'), __('High/critical issues block affected publication.', 'sabri-analytics-institutional-intelligence'));
+        $this->card(__('Dead-letter Jobs', 'sabri-analytics-institutional-intelligence'), $this->healthCount($health, 'queue', 'dead_letter'), __('No silent pipeline failure.', 'sabri-analytics-institutional-intelligence'));
         echo '</div>';
         echo '<section class="smai-panel"><h2>' . esc_html__('Constitutional boundaries', 'sabri-analytics-institutional-intelligence') . '</h2><ul>';
         foreach ([
@@ -272,6 +272,13 @@ final class AdminPages
         }
         $count = filter_var((string) $raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
         return $count === false ? null : $count;
+    }
+
+    /** @param array<string,mixed> $health */
+    private function healthCount(array $health, string $section, string $field): string
+    {
+        $value = $health[$section][$field] ?? null;
+        return is_int($value) && $value >= 0 ? (string) $value : 'Unavailable';
     }
 
     private function formatCount(?int $value): string
