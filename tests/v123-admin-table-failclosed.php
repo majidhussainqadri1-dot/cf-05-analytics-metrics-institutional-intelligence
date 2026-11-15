@@ -68,6 +68,12 @@ function render_admin(ReflectionMethod $method, AdminPages $controller, string $
  $method->invoke($controller,$title,$rows);
  return (string)ob_get_clean();
 }
+$healthCount=$ref->getMethod('healthCount');
+admin_expect($healthCount->invoke($controller,['queue'=>['status'=>'unavailable']],'queue','dead_letter')==='Unavailable', 'missing queue evidence never renders 0');
+admin_expect($healthCount->invoke($controller,['quality'=>['status'=>'unavailable']],'quality','open_issues')==='Unavailable', 'missing quality evidence never renders 0');
+admin_expect($healthCount->invoke($controller,['queue'=>['dead_letter'=>0]],'queue','dead_letter')==='0', 'verified empty dead-letter count remains zero');
+admin_expect($healthCount->invoke($controller,['quality'=>['open_issues'=>12]],'quality','open_issues')==='12', 'verified open quality issue count displayed');
+
 $table=$methods['table'];
 $out=render_admin($table,$controller,'Governed Metrics',[]);
 admin_expect(str_contains($out,'No records were returned')&&!str_contains($out,'Unavailable'),'verified empty result visibly distinct from SQL failure');
