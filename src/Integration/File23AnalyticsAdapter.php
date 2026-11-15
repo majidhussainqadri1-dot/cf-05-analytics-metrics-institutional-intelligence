@@ -163,18 +163,23 @@ final class File23AnalyticsAdapter implements \SPDB_Provider_Adapter, \SPDB_Anal
             return new WP_Error('smai_file23_grants_invalid', 'The approved metric registry is unavailable or exceeds policy.', ['status' => 503]);
         }
 
-        $entries = [];
-        $duplicates = [];
+        // Validate every grant before the first read: a malformed later grant
+        // must not cause earlier privacy-budget consumption or partial output.
+        $validated = [];
         foreach ($grants as $grant) {
             $checked = self::approvedGrant($grant);
             if ($checked === null) {
                 return new WP_Error('smai_file23_grant_invalid', 'An institutional metric grant is incomplete or invalid.', ['status' => 503]);
             }
             $identity = $checked['metric_id'] . '@' . $checked['metric_version'];
-            if (isset($duplicates[$identity])) {
+            if (isset($validated[$identity])) {
                 return new WP_Error('smai_file23_duplicate_grant', 'An institutional metric was granted more than once.', ['status' => 503]);
             }
-            $duplicates[$identity] = true;
+            $validated[$identity] = $checked;
+        }
+
+        $entries = [];
+        foreach ($validated as $checked) {
             $result = (new MetricQueryService($this->db))->query(
                 $checked['metric_id'],
                 $checked['metric_version'],
