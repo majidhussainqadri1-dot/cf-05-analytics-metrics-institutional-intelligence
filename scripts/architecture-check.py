@@ -84,8 +84,18 @@ reviews=(root/'docs/REVIEW-ROUNDS-07-46.md').read_text(encoding='utf-8') if (roo
 for i in range(7,47):
  if f'REV-{i:02d}' not in reviews: errors.append(f'missing_review:REV-{i:02d}')
 manifest=json.loads((root/'MANIFEST.json').read_text(encoding='utf-8'))
-if (manifest.get('version'),manifest.get('schema_version'),manifest.get('contract_version')) != ('1.0.0-rc.18','1.4.1','1.4.0'):
+plugin=(root/'sabri-analytics-institutional-intelligence.php').read_text(encoding='utf-8')
+pver=re.search(r"define\('SMAI_VERSION',\s*'([^']+)'\);",plugin)
+pschema=re.search(r"define\('SMAI_SCHEMA_VERSION',\s*'([^']+)'\);",plugin)
+pcontract=re.search(r"define\('SMAI_CONTRACT_VERSION',\s*'([^']+)'\);",plugin)
+if not pver or not pschema or not pcontract:
+ errors.append('plugin_release_identity_unreadable')
+elif (manifest.get('version'),manifest.get('schema_version'),manifest.get('contract_version')) != (pver.group(1),pschema.group(1),pcontract.group(1)):
  errors.append('release_identity_mismatch')
+if pschema and pschema.group(1) != '1.4.1':
+ errors.append('unexpected_schema_contract_change')
+if pcontract and pcontract.group(1) != '1.4.0':
+ errors.append('unexpected_public_contract_change')
 db=(root/'src/Infrastructure/Database.php').read_text(encoding='utf-8')
 schema=(root/'src/Infrastructure/SchemaMigrator.php').read_text(encoding='utf-8')
 tables=re.findall(r"'([a-z_]+)'", re.search(r'private const TABLES = \[(.*?)\];',db,re.S).group(1))
