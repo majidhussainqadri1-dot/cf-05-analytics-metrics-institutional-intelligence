@@ -9,6 +9,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # Candidate QA must not contaminate source/package with __pycache__.
 ROOT = Path(__file__).resolve().parents[1]
 path = ROOT / "scripts/v123-acceptance-gate.py"
 spec = importlib.util.spec_from_file_location("cf05_v123_acceptance", path)
