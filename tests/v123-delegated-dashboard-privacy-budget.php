@@ -176,7 +176,7 @@ namespace {
     $blocked=$dash->bundle('institution.traffic','1.0.0',7);
     $checks['Unavailable privacy ledger cannot disclose aggregate']=
         is_array($blocked)&&($blocked['widgets'][0]['status']??null)==='suppressed'
-        &&($blocked['widgets'][0]['value']??'not-null')===null;
+        &&array_key_exists('value',$blocked['widgets'][0]) && $blocked['widgets'][0]['value']===null;
     $checks['Broken privacy ledger creates no new allowance']=$wpdb->privacyWrites===[];
 
     $failed=0;
