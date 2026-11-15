@@ -8,6 +8,7 @@ declare(strict_types=1);
  * verify actual staging plugin versions before using these in production.
  */
 require __DIR__ . '/bootstrap.php';
+if (!defined('ARRAY_A')) { define('ARRAY_A', 'ARRAY_A'); }
 
 if (!defined('SMAI_VERSION')) { define('SMAI_VERSION', '1.0.0-rc.19'); }
 if (!defined('SMAI_SCHEMA_VERSION')) { define('SMAI_SCHEMA_VERSION', '1.4.1'); }
