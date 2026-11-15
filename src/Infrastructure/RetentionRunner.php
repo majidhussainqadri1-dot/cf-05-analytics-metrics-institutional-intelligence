@@ -60,7 +60,8 @@ final class RetentionRunner
             "SELECT export_uuid FROM `{$this->db->table('exports')}` WHERE expires_at<%s AND state IN ('requested','building','ready','revoked')",
             $now
         ));
-        foreach (is_array($expiredExports) ? $expiredExports : [] as $uuid) {
+        if (!is_array($expiredExports)) { throw new \RuntimeException('Retention expired-export inventory SQL read failed.'); }
+        foreach ($expiredExports as $uuid) {
             if ($wpdb->delete($this->db->table('export_payloads'), ['export_uuid' => $uuid]) === false) { throw new \RuntimeException('Retention export payload purge failed.'); }
         }
         $this->mustQuery($wpdb, $wpdb->prepare(
