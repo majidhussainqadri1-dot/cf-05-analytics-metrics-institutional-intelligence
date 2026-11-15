@@ -259,7 +259,7 @@ final class SnapshotService
                 $end,
                 $dimensionsHash
             ), ARRAY_A);
-            $revision = is_array($previous) ? (int) $previous['snapshot_revision'] + 1 : 1;
+            $revision = $this->nextSnapshotRevision($previous);
             $semantic = $base;
             unset($semantic['created_at']);
             $candidateHash = hash('sha256', Json::canonical($semantic));
@@ -366,7 +366,8 @@ final class SnapshotService
             || $date->getTimestamp() > time() + 300) {
             throw new \RuntimeException('Snapshot source row timestamp is invalid or in the future.');
         }
-        if (ltrim($item['row_json'])[0] !== '{') {
+        $trimmed = ltrim($item['row_json']);
+        if ($trimmed === '' || $trimmed[0] !== '{') {
             throw new \RuntimeException('Snapshot source row must be a named object.');
         }
         try {
@@ -385,6 +386,33 @@ final class SnapshotService
             }
         }
         return $row;
+    }
+
+    /**
+     * A failed "latest snapshot FOR UPDATE" query is never equivalent to
+     * "no previous revision". That confusion can fork correction history.
+     */
+    private function nextSnapshotRevision(mixed $previous): int
+    {
+        if ($previous === null) {
+            if ((string) ($this->db->wpdb()->last_error ?? '') !== '') {
+                throw new \RuntimeException('Previous snapshot lookup failed; revision identity is unknown.');
+            }
+            return 1;
+        }
+        if (!is_array($previous)) {
+            throw new \RuntimeException('Previous snapshot evidence has an invalid SQL result shape.');
+        }
+        $raw = $previous['snapshot_revision'] ?? null;
+        if ((!is_string($raw) && !is_int($raw))
+            || preg_match('/^[1-9][0-9]*$/D', (string) $raw) !== 1) {
+            throw new \RuntimeException('Previous snapshot revision is corrupt.');
+        }
+        $parsed = filter_var((string) $raw, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+        if ($parsed === false || $parsed >= PHP_INT_MAX) {
+            throw new \RuntimeException('Previous snapshot revision exceeds supported range.');
+        }
+        return $parsed + 1;
     }
 
     private function coverage(int $cohort,int $minimum,string $quality):float{if($quality==='suppressed'){return 0.0;}return min(1.0,$cohort/max(1,$minimum));}
