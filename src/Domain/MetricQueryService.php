@@ -162,21 +162,15 @@ final class MetricQueryService
             return $privacy;
         }
 
-        $quality = in_array($storedQuality, ['green','warning','degraded','unknown'], true) ? $storedQuality : 'unknown';
-        $caveats = Json::list((string) ($row['caveats_json'] ?? '[]'));
-        $dataThroughTimestamp = $row['data_through'] ? strtotime((string) $row['data_through']) : false;
-        $freshnessSeconds = $dataThroughTimestamp !== false ? max(0, time() - $dataThroughTimestamp) : null;
-        $declaredFreshness = max(60, (int) ($definition['freshness_seconds'] ?? DAY_IN_SECONDS));
-        if ($freshnessSeconds === null) {
-            $quality = 'unknown';
-            $caveats[] = 'Data-through time is unavailable.';
-        } elseif ($freshnessSeconds > $declaredFreshness) {
-            if ($quality === 'green') {
-                $quality = 'warning';
-            }
-            $caveats[] = 'Data is older than the declared freshness threshold.';
-        }
-        $caveats = array_values(array_unique(array_map('strval', $caveats)));
+        $disclosure = SnapshotDisclosurePolicy::evaluate(
+            $storedQuality,
+            $row['data_through'] ?? null,
+            Json::list((string) ($row['caveats_json'] ?? '[]')),
+            $definition
+        );
+        $quality = $disclosure['quality_status'];
+        $caveats = $disclosure['caveats'];
+        $freshnessSeconds = $disclosure['freshness_seconds'];
 
         if (!defined('SMAI_PSEUDONYM_KEY') || !is_string(SMAI_PSEUDONYM_KEY) || strlen(SMAI_PSEUDONYM_KEY) < 32) {
             return new WP_Error('smai_query_privacy_key_missing', 'Metric result was withheld because keyed privacy evidence is unavailable.', ['status' => 503]);
@@ -209,7 +203,7 @@ final class MetricQueryService
             'cohort_size' => (int) $row['cohort_size'],
             'minimum_cohort' => $minimum,
             'quality_status' => $quality,
-            'data_through' => $dataThroughTimestamp !== false ? gmdate('c', $dataThroughTimestamp) : null,
+            'data_through' => $disclosure['data_through'],
             'freshness_seconds' => $freshnessSeconds,
             'coverage' => $row['coverage_decimal'] !== null ? (float) $row['coverage_decimal'] : null,
             'uncertainty' => Json::object((string) ($row['uncertainty_json'] ?? '{}')),
