@@ -124,7 +124,11 @@ final class BackfillService
             return new WP_Error('smai_dataset_not_found', 'Dataset was not found.', ['status' => 404]);
         }
         $sources = (array) (($dataset['definition']['sources'] ?? []));
-        $count = $this->sourceCount($sources, (string) $row['date_start'], (string) $row['date_end']);
+        try {
+            $count = $this->sourceCount($sources, (string) $row['date_start'], (string) $row['date_end']);
+        } catch (\RuntimeException $error) {
+            return new WP_Error('smai_backfill_source_unavailable', 'Backfill dry-run source evidence is unavailable.', ['status' => 503]);
+        }
         $definition = Json::object((string) $row['definition_json']);
         $estimate = [
             'source_events' => $count,
@@ -311,7 +315,7 @@ final class BackfillService
             if ($ok === 1) {$inserted++;}
             if (!$this->lineage->link('event', (string) $event['event_id'], (string) $event['event_version'], 'build', $buildUuid, (string) $row['dataset_version'], (string) $dataset['owner_module'], null, defined('SMAI_CODE_SHA') ? SMAI_CODE_SHA : null)) { throw new \RuntimeException('Backfill lineage evidence could not be recorded.'); }
         }
-        $count = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$rowTable}` WHERE build_uuid=%s", $buildUuid));
+        $count = $this->checkedCount($this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$rowTable}` WHERE build_uuid=%s", $buildUuid)), 'Backfill build row COUNT');
         $checkpoint = ['cursor_id' => $lastId, 'processed' => $count, 'updated_at' => gmdate('c')];
         if ($this->db->wpdb()->update($this->db->table('dataset_builds'), ['row_count' => $count, 'checkpoint_json' => Json::encode($checkpoint), 'updated_at' => $this->db->now()], ['build_uuid' => $buildUuid, 'state' => 'building']) !== 1) { throw new \RuntimeException('Backfill checkpoint could not be persisted.'); }
         if (count($events) === 1000) {
@@ -436,18 +440,45 @@ final class BackfillService
     private function sourceCount(array $sources, string $start, string $end): int
     {
         [$where, $args] = $this->sourceWhere($sources, $start, $end, 0);
-        if ($where === '') {return 0;}
-        return max(0, (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('events')}` WHERE {$where}", ...$args)));
+        if ($where === '') { return 0; }
+        $raw = $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+            "SELECT COUNT(*) FROM `{$this->db->table('events')}` WHERE {$where}",
+            ...$args
+        ));
+        return $this->checkedCount($raw, 'Backfill source COUNT');
     }
 
     /** @param array<int,mixed> $sources @return array<int,array<string,mixed>> */
     private function sourceEventsBatch(array $sources, string $start, string $end, int $cursor, int $limit): array
     {
         [$where, $args] = $this->sourceWhere($sources, $start, $end, $cursor);
-        if ($where === '') {return [];}
+        if ($where === '') { return []; }
         $args[] = max(1, min(5000, $limit));
-        $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT * FROM `{$this->db->table('events')}` WHERE {$where} ORDER BY id LIMIT %d", ...$args), ARRAY_A);
-        return is_array($rows) ? $rows : [];
+        $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare(
+            "SELECT * FROM `{$this->db->table('events')}` WHERE {$where} ORDER BY id LIMIT %d",
+            ...$args
+        ), ARRAY_A);
+        if (!is_array($rows)) {
+            throw new \RuntimeException('Backfill source event read failed; an unavailable SQL result is not an empty batch.');
+        }
+        return $rows;
+    }
+
+    /**
+     * MySQL COUNT must be an actual, bounded non-negative integer.
+     * A failed query (false/null) must never become an apparently valid zero.
+     */
+    private function checkedCount(mixed $raw, string $context): int
+    {
+        if ((!is_int($raw) && !is_string($raw))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $raw) !== 1) {
+            throw new \RuntimeException($context . ' is unavailable or invalid.');
+        }
+        $count = filter_var((string) $raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($count === false) {
+            throw new \RuntimeException($context . ' is outside the supported integer range.');
+        }
+        return $count;
     }
 
     /** @param array<int,mixed> $sources @return array{0:string,1:array<int,mixed>} */
@@ -469,9 +500,27 @@ final class BackfillService
         $cursor = 0;
         $context = hash_init('sha256');
         do {
-            $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT id,row_hash FROM `{$this->db->table('dataset_rows')}` WHERE build_uuid=%s AND id>%d ORDER BY id LIMIT 5000", $buildUuid, $cursor), ARRAY_A);
-            foreach (is_array($rows) ? $rows : [] as $row) {$cursor = (int) $row['id']; hash_update($context, (string) $row['row_hash'] . "\n");}
-        } while (is_array($rows) && count($rows) === 5000);
+            $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare(
+                "SELECT id,row_hash FROM `{$this->db->table('dataset_rows')}` WHERE build_uuid=%s AND id>%d ORDER BY id LIMIT 5000",
+                $buildUuid,
+                $cursor
+            ), ARRAY_A);
+            if (!is_array($rows)) {
+                throw new \RuntimeException('Backfill integrity hash could not read complete dataset rows.');
+            }
+            foreach ($rows as $row) {
+                if (!is_array($row)) {
+                    throw new \RuntimeException('Backfill integrity hash encountered an invalid row.');
+                }
+                $id = $this->checkedCount($row['id'] ?? null, 'Backfill build row ID');
+                $hash = $row['row_hash'] ?? null;
+                if ($id <= $cursor || !is_string($hash) || preg_match('/^[a-f0-9]{64}$/D', $hash) !== 1) {
+                    throw new \RuntimeException('Backfill integrity hash encountered missing, reordered, or corrupt row evidence.');
+                }
+                $cursor = $id;
+                hash_update($context, $hash . "\n");
+            }
+        } while (count($rows) === 5000);
         return hash_final($context);
     }
 
