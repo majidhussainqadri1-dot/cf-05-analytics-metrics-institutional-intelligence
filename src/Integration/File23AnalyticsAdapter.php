@@ -6,7 +6,6 @@ namespace Sabri\AnalyticsIntelligence\Integration;
 
 use Sabri\AnalyticsIntelligence\Domain\MetricQueryService;
 use Sabri\AnalyticsIntelligence\Domain\MetricCatalog;
-use Sabri\AnalyticsIntelligence\Infrastructure\Json;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate;
 use WP_Error;
@@ -261,6 +260,9 @@ final class File23AnalyticsAdapter implements \SPDB_Provider_Adapter, \SPDB_Anal
                 }
                 $metric = $catalog->active($match[1], $match[2]);
                 if ($metric === null) {
+                    if (trim((string) ($wpdb->last_error ?? '')) !== '') {
+                        return new WP_Error('smai_file23_metric_catalog_unavailable', 'Approved metric catalog could not be read safely.', ['status' => 503]);
+                    }
                     // An inactive/deprecated metric is never rediscovered.
                     continue;
                 }
