@@ -286,6 +286,14 @@ final class DashboardService
                     hash('sha256', Json::canonical($dimensions))
                 ), ARRAY_A)
                 : null;
+            // Dashboard cards are a disclosure path, not a weaker alternative
+            // to the metric API's numeric/cohort integrity requirements.
+            if ($row === false || ($row === null && (string) ($this->db->wpdb()->last_error ?? '') !== '')) {
+                return new WP_Error('smai_dashboard_snapshot_read_failed', 'Dashboard snapshot evidence is unavailable.', ['status' => 503]);
+            }
+            if ($row !== null && (!is_array($row) || !SnapshotEvidence::validPublishedRow($row))) {
+                return new WP_Error('smai_dashboard_snapshot_invalid', 'Dashboard snapshot evidence is corrupt; no values were disclosed.', ['status' => 503]);
+            }
             $metric = (new MetricCatalog($this->db))->active($metricId, $metricVersion);
             $policyViolations = is_array($metric) ? PrivacyQueryPolicy::violations((array) $metric['definition'], $dimensions) : ['metric_unavailable'];
             $minimum = is_array($metric) ? PrivacyQueryPolicy::effectiveMinimum(
