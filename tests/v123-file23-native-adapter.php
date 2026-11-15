@@ -9,7 +9,7 @@ declare(strict_types=1);
  */
 require __DIR__ . '/bootstrap.php';
 
-if (!defined('SMAI_VERSION')) { define('SMAI_VERSION', '1.0.0-rc.18'); }
+if (!defined('SMAI_VERSION')) { define('SMAI_VERSION', '1.0.0-rc.19'); }
 if (!defined('SMAI_SCHEMA_VERSION')) { define('SMAI_SCHEMA_VERSION', '1.4.1'); }
 if (!defined('SMAI_CONTRACT_VERSION')) { define('SMAI_CONTRACT_VERSION', '1.4.0'); }
 if (!defined('SMAI_ACTIVATION_EVIDENCE_SHA256')) { define('SMAI_ACTIVATION_EVIDENCE_SHA256', str_repeat('a', 64)); }
