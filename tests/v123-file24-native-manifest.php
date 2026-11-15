@@ -7,7 +7,7 @@ declare(strict_types=1);
  * shape, plus strict prohibition on self-declared production acceptance.
  */
 require __DIR__ . '/bootstrap.php';
-if (!defined('SMAI_VERSION')) { define('SMAI_VERSION', '1.0.0-rc.18'); }
+if (!defined('SMAI_VERSION')) { define('SMAI_VERSION', '1.0.0-rc.19'); }
 if (!defined('SMAI_SCHEMA_VERSION')) { define('SMAI_SCHEMA_VERSION', '1.4.1'); }
 if (!defined('SMAI_CONTRACT_VERSION')) { define('SMAI_CONTRACT_VERSION', '1.4.0'); }
 if (!class_exists('wpdb')) { class wpdb { public string $prefix = 'wp_'; } }
