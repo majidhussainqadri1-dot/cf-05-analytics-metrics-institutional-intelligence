@@ -171,11 +171,14 @@ final class EventIngestionService
         $sequenceKey = null;
         if (isset($event['source_sequence'])) {
             $sequenceKey = hash('sha256', implode('|', [(string) $event['source_module'], (string) $event['source_environment'], (string) $event['source_sequence']]));
-            $maximum = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+            $maximum = $this->sourceSequenceMaximum($this->db->wpdb()->get_var($this->db->wpdb()->prepare(
                 "SELECT COALESCE(MAX(source_sequence),0) FROM `{$this->db->table('events')}` WHERE source_module=%s AND source_environment=%s",
                 (string) $event['source_module'],
                 (string) $event['source_environment']
-            ));
+            )));
+            if ($maximum === null) {
+                return new WP_Error('smai_source_watermark_unavailable', 'Event sequence watermark could not be verified.', ['status' => 503]);
+            }
             $outOfOrder = (int) $event['source_sequence'] < $maximum;
         }
         $lateWindow = max(0, min(90 * DAY_IN_SECONDS, (int) ($schema['late_window_seconds'] ?? DAY_IN_SECONDS)));
@@ -344,6 +347,17 @@ final class EventIngestionService
     private function isUuid4(string $value): bool
     {
         return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $value) === 1;
+    }
+
+    /** Validate the SQL MAX waterline; failed reads cannot masquerade as zero. */
+    private function sourceSequenceMaximum(mixed $value): ?int
+    {
+        if ((!is_int($value) && !is_string($value))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $value) !== 1) {
+            return null;
+        }
+        $parsed = filter_var((string) $value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        return $parsed === false ? null : $parsed;
     }
 
     private function strictTimestamp(string $value): ?int
