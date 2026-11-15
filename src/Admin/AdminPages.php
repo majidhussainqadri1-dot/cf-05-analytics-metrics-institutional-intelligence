@@ -69,9 +69,9 @@ final class AdminPages
         $this->statusNotice($health);
         echo '<div class="smai-grid">';
         $this->card(__('Runtime State', 'sabri-analytics-institutional-intelligence'), (string) $health['runtime_state'], __('Fail-closed until evidence-bound activation.', 'sabri-analytics-institutional-intelligence'));
-        $this->card(__('Published Datasets', 'sabri-analytics-institutional-intelligence'), (string) $this->countWhere('datasets', "state='published'"), __('Versioned derivative models only.', 'sabri-analytics-institutional-intelligence'));
-        $this->card(__('Active Metrics', 'sabri-analytics-institutional-intelligence'), (string) $this->countWhere('metrics', "state='active'"), __('Every result remains pinned to a metric version.', 'sabri-analytics-institutional-intelligence'));
-        $this->card(__('Published Snapshots', 'sabri-analytics-institutional-intelligence'), (string) $this->countWhere('metric_snapshots', "state='published'"), __('Cohort and quality controls apply.', 'sabri-analytics-institutional-intelligence'));
+        $this->card(__('Published Datasets', 'sabri-analytics-institutional-intelligence'), $this->formatCount($this->countWhere('datasets', "state='published'")), __('Versioned derivative models only.', 'sabri-analytics-institutional-intelligence'));
+        $this->card(__('Active Metrics', 'sabri-analytics-institutional-intelligence'), $this->formatCount($this->countWhere('metrics', "state='active'")), __('Every result remains pinned to a metric version.', 'sabri-analytics-institutional-intelligence'));
+        $this->card(__('Published Snapshots', 'sabri-analytics-institutional-intelligence'), $this->formatCount($this->countWhere('metric_snapshots', "state='published'")), __('Cohort and quality controls apply.', 'sabri-analytics-institutional-intelligence'));
         $this->card(__('Open Quality Issues', 'sabri-analytics-institutional-intelligence'), (string) ($health['quality']['open_issues'] ?? 0), __('High/critical issues block affected publication.', 'sabri-analytics-institutional-intelligence'));
         $this->card(__('Dead-letter Jobs', 'sabri-analytics-institutional-intelligence'), (string) ($health['queue']['dead_letter'] ?? 0), __('No silent pipeline failure.', 'sabri-analytics-institutional-intelligence'));
         echo '</div>';
@@ -227,39 +227,116 @@ final class AdminPages
         echo '<section class="smai-card"><h2>' . esc_html($title) . '</h2><div class="smai-value">' . esc_html($value) . '</div><p>' . esc_html($description) . '</p></section>';
     }
 
-    /** @return array<int,array<string,mixed>> */
-    private function rows(string $table, string $columns, string $where = '1=1'): array
+    /** A failed SQL or unavailable schema is not a truthful empty table. */
+    private function rows(string $table, string $columns, string $where = '1=1'): array|\WP_Error
     {
-        if (!$this->db->exists($table)) {
-            return [];
+        if (preg_match('/^[a-z0-9_,]+$/D', $columns) !== 1
+            || !in_array($where, ['1=1', "state='open'"], true)) {
+            return new \WP_Error('smai_admin_query_invalid', 'A restricted analytics admin query was not approved.', ['status' => 400]);
         }
-        $allowedColumns = preg_match('/^[a-z0-9_,]+$/', $columns) === 1;
-        $allowedWhere = in_array($where, ['1=1', "state='open'"], true);
-        if (!$allowedColumns || !$allowedWhere) {
-            return [];
+        if (!$this->db->exists($table)) {
+            return new \WP_Error('smai_admin_source_unavailable', 'Analytics table availability is unverified.', ['status' => 503]);
         }
         $physical = $this->db->table($table);
         $result = $this->db->wpdb()->get_results("SELECT {$columns} FROM `{$physical}` WHERE {$where} ORDER BY id DESC LIMIT 100", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        return is_array($result) ? $result : [];
+        if (!is_array($result)) {
+            return new \WP_Error('smai_admin_sql_unavailable', 'Analytics table records could not be verified.', ['status' => 503]);
+        }
+        return $result;
     }
 
-    /** @return array<int,array<string,mixed>> */
-    private function groupedQuarantine(): array
+    private function groupedQuarantine(): array|\WP_Error
     {
         if (!$this->db->exists('quarantine')) {
-            return [];
+            return new \WP_Error('smai_admin_source_unavailable', 'Analytics quarantine table availability is unverified.', ['status' => 503]);
         }
         $table = $this->db->table('quarantine');
         $rows = $this->db->wpdb()->get_results("SELECT reason_code,status,COUNT(*) AS total,MAX(updated_at) AS latest FROM `{$table}` GROUP BY reason_code,status ORDER BY total DESC LIMIT 100", ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        return is_array($rows) ? $rows : [];
+        if (!is_array($rows)) {
+            return new \WP_Error('smai_admin_sql_unavailable', 'Analytics quarantine summary could not be verified.', ['status' => 503]);
+        }
+        return $rows;
     }
 
-    private function countWhere(string $table, string $where): int
+    /** A database connection error is Unknown, never zero published metrics. */
+    private function countWhere(string $table, string $where): ?int
     {
-        if (!$this->db->exists($table) || !in_array($where, ["state='published'", "state='active'"], true)) {
-            return 0;
+        if (!in_array($where, ["state='published'", "state='active'"], true) || !$this->db->exists($table)) {
+            return null;
         }
         $physical = $this->db->table($table);
-        return max(0, (int) $this->db->wpdb()->get_var("SELECT COUNT(*) FROM `{$physical}` WHERE {$where}")); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        $raw = $this->db->wpdb()->get_var("SELECT COUNT(*) FROM `{$physical}` WHERE {$where}"); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+        if ((!is_int($raw) && !is_string($raw))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $raw) !== 1) {
+            return null;
+        }
+        $count = filter_var((string) $raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        return $count === false ? null : $count;
     }
+
+    private function formatCount(?int $value): string
+    {
+        return $value === null ? 'Unavailable' : (string) $value;
+    }
+
+    /**
+     * Accessible, stable, output-escaped admin table presenter.
+     * A WP_Error is a degraded view, not a verified zero-row state.
+     *
+     * @param array<int,array<string,mixed>>|\WP_Error $rows
+     */
+    private function table(string $title, array|\WP_Error $rows): void
+    {
+        $tableId = wp_unique_id('smai-admin-table-');
+        echo '<section class="smai-panel" aria-labelledby="' . esc_attr($tableId) . '">';
+        echo '<h2 id="' . esc_attr($tableId) . '">' . esc_html($title) . '</h2>';
+        if (is_wp_error($rows)) {
+            echo '<p class="smai-state smai-state--warning" role="alert">';
+            echo esc_html__('Unavailable: table evidence could not be verified. This is not a zero count.', 'sabri-analytics-institutional-intelligence');
+            echo '</p></section>';
+            return;
+        }
+        if ($rows === []) {
+            echo '<p class="smai-state" role="status">';
+            echo esc_html__('No records were returned by the verified query.', 'sabri-analytics-institutional-intelligence');
+            echo '</p></section>';
+            return;
+        }
+        if (!is_array($rows[0])) {
+            echo '<p class="smai-state smai-state--warning" role="alert">';
+            echo esc_html__('Unavailable: analytics rows are malformed.', 'sabri-analytics-institutional-intelligence');
+            echo '</p></section>';
+            return;
+        }
+        $headings = array_keys($rows[0]);
+        if ($headings === [] || count($headings) > 24) {
+            echo '<p class="smai-state smai-state--warning" role="alert">';
+            echo esc_html__('Unavailable: analytics columns are malformed or exceed the limit.', 'sabri-analytics-institutional-intelligence');
+            echo '</p></section>';
+            return;
+        }
+        echo '<div class="smai-table-scroll" role="region" tabindex="0" aria-label="' . esc_attr($title) . '">';
+        echo '<table class="widefat striped smai-data-table"><thead><tr>';
+        foreach ($headings as $heading) {
+            echo '<th scope="col">' . esc_html((string) $heading) . '</th>';
+        }
+        echo '</tr></thead><tbody>';
+        foreach (array_slice($rows, 0, 100) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            echo '<tr>';
+            foreach ($headings as $heading) {
+                $value = $row[$heading] ?? null;
+                $text = $value === null ? '—'
+                    : (is_scalar($value) ? (string) $value : '[unavailable]');
+                echo '<td>' . esc_html($text) . '</td>';
+            }
+            echo '</tr>';
+        }
+        echo '</tbody></table></div>';
+        echo '<p class="description">' . esc_html__('Showing at most 100 current query rows; additional records require an authorized scoped view.', 'sabri-analytics-institutional-intelligence') . '</p>';
+        echo '</section>';
+    }
+
 }
