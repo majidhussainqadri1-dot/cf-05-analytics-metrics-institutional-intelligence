@@ -35,6 +35,7 @@ php tests/v123-admin-table-failclosed.php
 php tests/v123-operational-health-retention.php
 php tests/v123-metric-snapshot-integrity.php
 php tests/v123-delegated-dashboard-privacy-budget.php
+php tests/v123-snapshot-freshness-policy.php
 python3 scripts/validate-json.py
 python3 scripts/v123-acceptance-gate.py --validate
 python3 tests/v123-acceptance-gate-tests.py
