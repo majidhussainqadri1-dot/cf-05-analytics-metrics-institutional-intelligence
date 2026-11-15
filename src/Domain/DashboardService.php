@@ -254,22 +254,29 @@ final class DashboardService
         }
         // An audience entry alone never overrides purpose-scoped project access.
         $viewerAccess = new AccessProjectService($this->db);
-        foreach ($widgets as $widget) {
-            if (!$viewerAccess->authorizesViewer((string) $dashboard['project_uuid'], $actorUserId,
-                'metric:' . (string) ($widget['metric_id'] ?? '') . '@' . (string) ($widget['metric_version'] ?? ''))) {
+        $viewerProjectUuids = [];
+        foreach ($widgets as $widgetPosition => $widget) {
+            $viewerProjectUuids[$widgetPosition] = $viewerAccess->authorizedViewerProject(
+                (string) $dashboard['project_uuid'], $actorUserId,
+                'metric:' . (string) ($widget['metric_id'] ?? '') . '@' . (string) ($widget['metric_version'] ?? '')
+            );
+            if ($viewerProjectUuids[$widgetPosition] === null) {
                 return new WP_Error('smai_dashboard_project_access_denied', 'Dashboard requires a separately approved per-viewer metric grant.', ['status' => 403]);
             }
         }
         $out = ['dashboard_id' => $dashboardId, 'dashboard_version' => $version, 'name' => $dashboard['name'], 'generated_at' => gmdate('c'), 'widgets' => []];
-        foreach (is_array($widgets) ? $widgets : [] as $widget) {
+        foreach ($widgets as $widgetPosition => $widget) {
             $config = Json::object((string) $widget['config_json']);
             $dimensions = is_array($config['dimensions'] ?? null) ? $config['dimensions'] : [];
             ksort($dimensions);
             $metricId = (string) $widget['metric_id'];
             $metricVersion = (string) $widget['metric_version'];
-            $authorized = $viewerAccess->authorizesViewer(
-                (string) $dashboard['project_uuid'], $actorUserId,
-                'metric:' . $metricId . '@' . $metricVersion
+            $viewerProjectUuid = $viewerProjectUuids[$widgetPosition];
+            // Recheck the actual viewer grant just before disclosure, while
+            // keeping the same project identity for the privacy ledger.
+            $authorized = $viewerAccess->authorize(
+                $viewerProjectUuid, $actorUserId,
+                'metric:' . $metricId . '@' . $metricVersion, [], (string) $project['purpose']
             );
             $row = $authorized && (new MetricCatalog($this->db))->active($metricId, $metricVersion) !== null
                 ? $this->db->wpdb()->get_row($this->db->wpdb()->prepare(
@@ -292,7 +299,7 @@ final class DashboardService
             $privacyBlocked = false;
             if (is_array($row) && !$suppressed && !$invalidated && is_array($metric)) {
                 $checked = (new QueryPrivacyGuard($this->db))->evaluateAndRecord(
-                    $metricId, $metricVersion, (string) $dashboard['project_uuid'],
+                    $metricId, $metricVersion, $viewerProjectUuid,
                     $actorUserId, (string) $project['purpose'],
                     (string) $row['window_start'], (string) $row['window_end'],
                     $dimensions, (array) $metric['definition'],
