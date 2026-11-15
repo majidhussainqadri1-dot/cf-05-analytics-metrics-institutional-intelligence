@@ -1,0 +1,855 @@
+{
+  "schema": "cf05-v12.3-acceptance-evidence-1.0.0",
+  "governing_plan": "Sabri-Website-Master-Plan-V12.3.docx",
+  "source_claim": "Source code and automated QA are candidate evidence, not staging/live acceptance.",
+  "core": [
+    {
+      "id": "CF05-FR-001",
+      "requirement": "Event schema registry",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-002",
+      "requirement": "Minimum event envelope",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-003",
+      "requirement": "Purpose and consent gate",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-004",
+      "requirement": "Field redaction and tokenization",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-005",
+      "requirement": "Dedupe order late events",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-006",
+      "requirement": "Quarantine and owner feedback",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-007",
+      "requirement": "Canonical derivative modeling",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-008",
+      "requirement": "Slowly changing definitions",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-009",
+      "requirement": "Data lineage",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-010",
+      "requirement": "Backfill and shadow rebuild",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-011",
+      "requirement": "Data quality rules",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-012",
+      "requirement": "Region and provider control",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-013",
+      "requirement": "Metric definition",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-014",
+      "requirement": "Metric lifecycle",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-015",
+      "requirement": "Dimension allowlist",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-016",
+      "requirement": "Freshness and confidence",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-017",
+      "requirement": "Attribution and funnels",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-018",
+      "requirement": "Financial and clinical metric limits",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-019",
+      "requirement": "Role and project dashboards",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-020",
+      "requirement": "Metric presentation",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-021",
+      "requirement": "Drilldown safety",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-022",
+      "requirement": "Scheduled reports",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-023",
+      "requirement": "Secure exports",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-024",
+      "requirement": "Narrative insights",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-025",
+      "requirement": "Experiment registry",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-026",
+      "requirement": "Assignment separation",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-027",
+      "requirement": "Guardrail monitoring",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-028",
+      "requirement": "Statistical integrity",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-029",
+      "requirement": "Decision record",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-030",
+      "requirement": "Retention tiers",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-031",
+      "requirement": "Deletion propagation",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-032",
+      "requirement": "Access projects and expiry",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-033",
+      "requirement": "Query and export audit",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-034",
+      "requirement": "Provider and warehouse exit",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FR-035",
+      "requirement": "Restore and reproducibility",
+      "source_status": "candidate",
+      "acceptance_status": "pending",
+      "evidence": []
+    }
+  ],
+  "future": [
+    {
+      "id": "CF05-FUT-001",
+      "requirement": "Metric Certification Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-002",
+      "requirement": "Metric Dependency Graph",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-003",
+      "requirement": "Metric Impact Analyzer",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-004",
+      "requirement": "Metric Comparison Lab",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-005",
+      "requirement": "Data Lineage Visual Explorer",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-006",
+      "requirement": "Institutional Data Catalog",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-007",
+      "requirement": "Data Contract Control Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-008",
+      "requirement": "Schema Evolution Simulator",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-009",
+      "requirement": "Historical Replay Lab",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-010",
+      "requirement": "Data Quality Command Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-011",
+      "requirement": "Automatic Anomaly Detection",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-012",
+      "requirement": "Root-Cause Analytics Assistant",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-013",
+      "requirement": "Pipeline Health Map",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-014",
+      "requirement": "Data Freshness SLO Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-015",
+      "requirement": "Analytics Incident Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-016",
+      "requirement": "Trusted Executive Scorecards",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-017",
+      "requirement": "Domain Intelligence Packs",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-018",
+      "requirement": "Cross-Domain Intelligence",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-019",
+      "requirement": "Trend Detection Engine",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-020",
+      "requirement": "Forecasting Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-021",
+      "requirement": "Scenario Planning Lab",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-022",
+      "requirement": "Capacity Planning Intelligence",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-023",
+      "requirement": "Cost Intelligence Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-024",
+      "requirement": "Cost Anomaly Detection",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-025",
+      "requirement": "Privacy Budget Manager",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-026",
+      "requirement": "Differential Privacy Toolkit",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-027",
+      "requirement": "Re-identification Risk Simulator",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-028",
+      "requirement": "Privacy-Safe Cohort Builder",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-029",
+      "requirement": "Institutional Research Workspace",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-030",
+      "requirement": "Experiment Analysis Studio",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-031",
+      "requirement": "Causal Analysis Lab",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-032",
+      "requirement": "Benchmarking System",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-033",
+      "requirement": "Natural-Language Metric Query",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-034",
+      "requirement": "AI Analytics Copilot",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-035",
+      "requirement": "AI Narrative Review Workflow",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-036",
+      "requirement": "Proactive Intelligence Alerts",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-037",
+      "requirement": "Scheduled Intelligence Briefs",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-038",
+      "requirement": "Analytics Transparency Center",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-039",
+      "requirement": "Synthetic Data & Simulation Lab",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    },
+    {
+      "id": "CF05-FUT-040",
+      "requirement": "Analytics Disaster-Recovery Simulator",
+      "source_status": "coded_conditional",
+      "runtime_state": "disabled_pending_separate_approval",
+      "evidence": []
+    }
+  ],
+  "journeys": [
+    {
+      "id": "CF05-NJ-001",
+      "requirement": "Approved event through privacy gate to governed snapshot/dashboard",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-NJ-002",
+      "requirement": "Sensitive field quarantine and owner review",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-NJ-003",
+      "requirement": "Late/duplicate event idempotent reconciliation",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-NJ-004",
+      "requirement": "Deletion or consent withdrawal propagation",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-NJ-005",
+      "requirement": "Guardrail-controlled experiment and decision",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "CF05-NJ-006",
+      "requirement": "Warehouse outage restore checkpoints replay and no false fresh",
+      "acceptance_status": "pending",
+      "evidence": []
+    }
+  ],
+  "traffic": [
+    {
+      "id": "AT-TA-001",
+      "requirement": "Rapid reload deduplication",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-002",
+      "requirement": "Known bot exclusion",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-003",
+      "requirement": "Cache/CDN measurement gap",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-004",
+      "requirement": "JS disabled no duplicate",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-005",
+      "requirement": "Consent denied and withdrawn",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-006",
+      "requirement": "Private clinical URL never tracked",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-007",
+      "requirement": "Low-count geographic slice suppression",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-008",
+      "requirement": "Queue outage nonblocking page",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-009",
+      "requirement": "Late event correction after day close",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-010",
+      "requirement": "All-time before source start not invented",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-011",
+      "requirement": "Admin IDOR/export denied",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-TA-012",
+      "requirement": "100M-event synthetic performance",
+      "acceptance_status": "pending",
+      "evidence": []
+    }
+  ],
+  "disease": [
+    {
+      "id": "AT-DI-001",
+      "requirement": "Disease alias merge citation continuity",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-002",
+      "requirement": "Bot spike does not change epidemiological ranking",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-003",
+      "requirement": "Unknown pain evidence not zero",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-004",
+      "requirement": "Subtype treatment not universal cure",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-005",
+      "requirement": "Retracted source rebuild and past label",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-006",
+      "requirement": "Rare disease privacy and confidence",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-007",
+      "requirement": "Remedy citation required for evidence badge",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-008",
+      "requirement": "Patient query no personal prescription",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-009",
+      "requirement": "Top-1000 stable rank pagination",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-010",
+      "requirement": "Stale source labeled and fallback",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-011",
+      "requirement": "Unauthorized admin import/recompute denied",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-012",
+      "requirement": "RTL 320px and 400pct zoom accessible",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-013",
+      "requirement": "Composite weights version rollback",
+      "acceptance_status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "AT-DI-014",
+      "requirement": "Restore disease citations and rank rebuild",
+      "acceptance_status": "pending",
+      "evidence": []
+    }
+  ],
+  "release_gates": [
+    {
+      "id": "exact_deployed_runtime",
+      "requirement": "Real active plugin runtime and package checksum",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "db_schema_migration",
+      "requirement": "Database schema and migration state independently verified",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "deployment_parity",
+      "requirement": "Exact deployed artifact parity with reviewed candidate",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "file00_consent",
+      "requirement": "Native File00 identity age guardian consent revocation acceptance",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "file23_native",
+      "requirement": "File23 installed native analytics adapter accepted",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "file24_assurance",
+      "requirement": "File24 independent assurance approval and privacy dispatch",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "file20_shell",
+      "requirement": "File20 exact deployed shell routing and error-state integration",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "file25_visual",
+      "requirement": "File25 RTL mobile keyboard tables and WCAG browser acceptance",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "native_education",
+      "requirement": "File05 approved educational outcomes and fact provenance",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "finance_clinical",
+      "requirement": "CF03 financial and clinical source owner approvals",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "other_owner_contracts",
+      "requirement": "Other File16/17/18/19/26 CF01/02/04/06 owners approved",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "traffic_at",
+      "requirement": "Traffic Analytics AT-TA end-to-end acceptance",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "disease_at",
+      "requirement": "Disease Intelligence AT-DI owner and end-to-end acceptance",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "privacy_erasure",
+      "requirement": "Deletion and consent propagation to every real producer and vendor",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "performance",
+      "requirement": "Load lab 100M-event budget and p75 field evidence",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "security",
+      "requirement": "Role BOLA IDOR pentest secrets transport and audit evidence",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "restore",
+      "requirement": "Real staging restore replay rollback and deleted subject nonresurrection",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "founder_signoff",
+      "requirement": "Founder approval of exact candidate and deployed change",
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "live_retest",
+      "requirement": "Monitored live re-test and checksum parity confirmation",
+      "status": "pending",
+      "evidence": []
+    }
+  ],
+  "live_truth": {
+    "deployed_version": null,
+    "db_version": null,
+    "migration_state": null,
+    "artifact_checksum": null,
+    "live_retest": null
+  }
+}
