@@ -326,7 +326,7 @@ final class BackfillService
 
         $buildHash = $this->buildHash($buildUuid);
         $buildTable = $this->db->table('dataset_builds');
-        $active = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT build_uuid,row_count,build_hash,source_start,source_end FROM `{$buildTable}` WHERE dataset_id=%s AND dataset_version=%s AND is_active=1 LIMIT 1", $row['dataset_id'], $row['dataset_version']), ARRAY_A);
+        $active = $this->activeBuildForComparison((string) $row['dataset_id'], (string) $row['dataset_version']);
         $comparison = [
             'shadow_count' => $count,
             'active_count' => is_array($active) ? (int) $active['row_count'] : 0,
@@ -434,6 +434,36 @@ final class BackfillService
     {
         $row = $this->db->wpdb()->get_row($this->db->wpdb()->prepare("SELECT * FROM `{$this->db->table('backfills')}` WHERE backfill_uuid=%s", $uuid), ARRAY_A);
         return is_array($row) ? $row : null;
+    }
+
+    /**
+     * An SQL failure is not evidence that no previous active build exists.
+     * Active streaming builds can legitimately have NULL historical hash and
+     * source-window fields; only identity/count are mandatory here.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function activeBuildForComparison(string $datasetId, string $version): ?array
+    {
+        $wpdb = $this->db->wpdb();
+        $buildTable = $this->db->table('dataset_builds');
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT build_uuid,row_count,build_hash,source_start,source_end FROM `{$buildTable}` WHERE dataset_id=%s AND dataset_version=%s AND is_active=1 LIMIT 1",
+            $datasetId,
+            $version
+        ), ARRAY_A);
+        if ($row === null) {
+            if (trim((string) ($wpdb->last_error ?? '')) !== '') {
+                throw new \RuntimeException('Active build comparison read failed; absence of a build was not proven.');
+            }
+            return null;
+        }
+        if (!is_array($row) || !is_string($row['build_uuid'] ?? null)
+            || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD', $row['build_uuid']) !== 1) {
+            throw new \RuntimeException('Active build comparison identity is unavailable or corrupt.');
+        }
+        $row['row_count'] = $this->checkedCount($row['row_count'] ?? null, 'Active build comparison COUNT');
+        return $row;
     }
 
     /** @param array<int,mixed> $sources */
