@@ -37,6 +37,7 @@ php tests/v123-metric-snapshot-integrity.php
 php tests/v123-delegated-dashboard-privacy-budget.php
 php tests/v123-snapshot-freshness-policy.php
 php tests/v123-published-snapshot-evidence.php
+php tests/v123-snapshot-source-and-revision.php
 python3 scripts/validate-json.py
 python3 scripts/v123-acceptance-gate.py --validate
 python3 tests/v123-acceptance-gate-tests.py
