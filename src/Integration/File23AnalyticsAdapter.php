@@ -334,12 +334,25 @@ final class File23AnalyticsAdapter implements \SPDB_Provider_Adapter, \SPDB_Anal
         if (preg_match('/^[a-z][a-z0-9_.-]{2,189}$/D', $grant['metric_id']) !== 1
             || preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/D', $grant['metric_version']) !== 1
             || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD', $grant['project_uuid']) !== 1
-            || preg_match('/^[A-Za-z0-9 _.,:-]{12,160}$/D', $grant['purpose']) !== 1
+            || !self::approvedPurpose($grant['purpose'])
             || preg_match('/^[a-z0-9][a-z0-9_.-]{1,99}$/D', $grant['source_owner']) !== 1
             || preg_match('/^[a-z][a-z0-9_-]{0,31}$/D', $grant['unit']) !== 1) {
             return null;
         }
         return $grant;
+    }
+
+    /** Unicode/RTL is native to the Sabri platform. Project purpose already
+     * originates from independently approved CF-05 storage, so do not
+     * exclude legitimate Urdu and Arabic research purpose statements.
+     */
+    private static function approvedPurpose(string $purpose): bool
+    {
+        return strlen($purpose) >= 12
+            && strlen($purpose) <= 500
+            && $purpose === trim($purpose)
+            && preg_match('//u', $purpose) === 1
+            && preg_match('/[\x00-\x1f\x7f<>]/', $purpose) !== 1;
     }
 
     /**
