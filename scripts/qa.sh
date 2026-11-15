@@ -23,6 +23,7 @@ php tests/v123-backfill-failclosed.php
 php tests/v123-privacy-ledger-integrity.php
 php tests/v123-pipeline-read-safety.php
 php tests/v123-provider-retirement-failclosed.php
+php tests/v123-restore-proof-integrity.php
 python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/fresh40-plan-parity-20261021.py
