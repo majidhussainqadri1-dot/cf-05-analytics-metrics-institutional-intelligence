@@ -11,9 +11,32 @@ final class IntegrationRegistry
         add_action('init', [$this, 'announce'], 20);
         add_filter('sabri_file20_module_manifests', [$this, 'appendManifest']);
         add_filter('sabri_file23_analytics_providers', [$this, 'appendMetricProvider']);
+        add_action('spdb/register_adapters', [$this, 'registerNativeFile23Adapter'], 10, 1);
         add_filter('sabri_file26_analytics_providers', [$this, 'appendMetricProvider']);
         add_filter('sabri_file24_assurance_evidence', [$this, 'appendAssurance']);
         add_filter('sabri_file25_component_providers', [$this, 'appendVisualProvider']);
+    }
+
+    /**
+     * File 23's real adapter registry is the owner contract. The historical
+     * sabri_file23_analytics_providers filter is metadata, not registration.
+     * Missing or incompatible File 23 interfaces cause a safe no-op.
+     */
+    public function registerNativeFile23Adapter(mixed $registry): void
+    {
+        if (!class_exists('\SPDB_Adapter_Registry')
+            || !$registry instanceof \SPDB_Adapter_Registry
+            || !interface_exists('\SPDB_Provider_Adapter')
+            || !interface_exists('\SPDB_Analytics_Provider')
+            || !isset($GLOBALS['wpdb'])
+            || !$GLOBALS['wpdb'] instanceof \wpdb) {
+            return;
+        }
+        // The File 23 registry enforces its own exact adapter contract and
+        // environment acceptance independently of CF-05.
+        $registry->register(new \Sabri\AnalyticsIntelligence\Integration\File23AnalyticsAdapter(
+            new Database($GLOBALS['wpdb'])
+        ));
     }
 
     public function announce(): void
