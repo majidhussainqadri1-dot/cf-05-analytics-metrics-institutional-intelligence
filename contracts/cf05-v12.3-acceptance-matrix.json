@@ -533,37 +533,37 @@
   ],
   "journeys": [
     {
-      "id": "CF05-NJ-001",
+      "id": "CF05-NJ-01",
       "requirement": "Approved event through privacy gate to governed snapshot/dashboard",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "CF05-NJ-002",
+      "id": "CF05-NJ-02",
       "requirement": "Sensitive field quarantine and owner review",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "CF05-NJ-003",
+      "id": "CF05-NJ-03",
       "requirement": "Late/duplicate event idempotent reconciliation",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "CF05-NJ-004",
+      "id": "CF05-NJ-04",
       "requirement": "Deletion or consent withdrawal propagation",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "CF05-NJ-005",
+      "id": "CF05-NJ-05",
       "requirement": "Guardrail-controlled experiment and decision",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "CF05-NJ-006",
+      "id": "CF05-NJ-06",
       "requirement": "Warehouse outage restore checkpoints replay and no false fresh",
       "acceptance_status": "pending",
       "evidence": []
@@ -571,73 +571,73 @@
   ],
   "traffic": [
     {
-      "id": "AT-TA-001",
+      "id": "AT-TA-01",
       "requirement": "Rapid reload deduplication",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-002",
+      "id": "AT-TA-02",
       "requirement": "Known bot exclusion",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-003",
+      "id": "AT-TA-03",
       "requirement": "Cache/CDN measurement gap",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-004",
+      "id": "AT-TA-04",
       "requirement": "JS disabled no duplicate",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-005",
+      "id": "AT-TA-05",
       "requirement": "Consent denied and withdrawn",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-006",
+      "id": "AT-TA-06",
       "requirement": "Private clinical URL never tracked",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-007",
+      "id": "AT-TA-07",
       "requirement": "Low-count geographic slice suppression",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-008",
+      "id": "AT-TA-08",
       "requirement": "Queue outage nonblocking page",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-009",
+      "id": "AT-TA-09",
       "requirement": "Late event correction after day close",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-010",
+      "id": "AT-TA-10",
       "requirement": "All-time before source start not invented",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-011",
+      "id": "AT-TA-11",
       "requirement": "Admin IDOR/export denied",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-TA-012",
+      "id": "AT-TA-12",
       "requirement": "100M-event synthetic performance",
       "acceptance_status": "pending",
       "evidence": []
@@ -645,85 +645,85 @@
   ],
   "disease": [
     {
-      "id": "AT-DI-001",
+      "id": "AT-DI-01",
       "requirement": "Disease alias merge citation continuity",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-002",
+      "id": "AT-DI-02",
       "requirement": "Bot spike does not change epidemiological ranking",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-003",
+      "id": "AT-DI-03",
       "requirement": "Unknown pain evidence not zero",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-004",
+      "id": "AT-DI-04",
       "requirement": "Subtype treatment not universal cure",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-005",
+      "id": "AT-DI-05",
       "requirement": "Retracted source rebuild and past label",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-006",
+      "id": "AT-DI-06",
       "requirement": "Rare disease privacy and confidence",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-007",
+      "id": "AT-DI-07",
       "requirement": "Remedy citation required for evidence badge",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-008",
+      "id": "AT-DI-08",
       "requirement": "Patient query no personal prescription",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-009",
+      "id": "AT-DI-09",
       "requirement": "Top-1000 stable rank pagination",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-010",
+      "id": "AT-DI-10",
       "requirement": "Stale source labeled and fallback",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-011",
+      "id": "AT-DI-11",
       "requirement": "Unauthorized admin import/recompute denied",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-012",
+      "id": "AT-DI-12",
       "requirement": "RTL 320px and 400pct zoom accessible",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-013",
+      "id": "AT-DI-13",
       "requirement": "Composite weights version rollback",
       "acceptance_status": "pending",
       "evidence": []
     },
     {
-      "id": "AT-DI-014",
+      "id": "AT-DI-14",
       "requirement": "Restore disease citations and rank rebuild",
       "acceptance_status": "pending",
       "evidence": []
