@@ -21,6 +21,7 @@ php tests/fresh-four-parser-parity-20261021.php
 php tests/v123-canonical-time-regression.php
 php tests/v123-backfill-failclosed.php
 php tests/v123-privacy-ledger-integrity.php
+php tests/v123-pipeline-read-safety.php
 python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/fresh40-plan-parity-20261021.py
