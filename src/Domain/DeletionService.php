@@ -109,6 +109,7 @@ final class DeletionService
             $affectedBuilds = [];
             if (($scope['datasets'] ?? false) === true) {
                 $affectedBuilds = $wpdb->get_col($wpdb->prepare("SELECT DISTINCT build_uuid FROM `{$this->db->table('dataset_rows')}` WHERE deletion_key=%s", $key));
+                if (!is_array($affectedBuilds)) { throw new \RuntimeException('Deletion source-build inventory SQL read failed.'); }
                 $before = $this->eligibleCount('dataset_rows', $key);
                 $results['dataset_rows'] = $this->deleteWhere('dataset_rows', 'deletion_key', $key);
                 $this->reconcileLocal((int) $job['id'], 'dataset_rows', $before, $this->eligibleCount('dataset_rows', $key), $reconciliation);
@@ -118,9 +119,10 @@ final class DeletionService
                 $results['experiment_facts'] = $this->deleteWhere('experiment_facts', 'deletion_key', $key);
                 $this->reconcileLocal((int) $job['id'], 'experiment_facts', $before, $this->eligibleCount('experiment_facts', $key), $reconciliation);
             }
-            foreach (is_array($affectedBuilds) ? $affectedBuilds : [] as $buildUuid) {
+            foreach ($affectedBuilds as $buildUuid) {
                 $snapshots = $wpdb->get_results($wpdb->prepare("SELECT metric_id,metric_version FROM `{$this->db->table('metric_snapshots')}` WHERE build_uuid=%s AND state='published'", $buildUuid), ARRAY_A);
-                foreach (is_array($snapshots) ? $snapshots : [] as $snapshot) {
+                if (!is_array($snapshots)) { throw new \RuntimeException('Deletion affected-metric inventory SQL read failed.'); }
+                foreach ($snapshots as $snapshot) {
                     $invalidatedMetrics[(string) $snapshot['metric_id'] . '@' . (string) $snapshot['metric_version']] = true;
                 }
                 if ($wpdb->query($wpdb->prepare("UPDATE `{$this->db->table('metric_snapshots')}` SET state='invalidated',quality_status='invalidated',caveats_json=%s WHERE build_uuid=%s AND state='published'", Json::encode(['Source rows were removed by a privacy deletion; recomputation is required.']), $buildUuid)) === false) {
@@ -197,7 +199,8 @@ final class DeletionService
     private function activeProviders(): array
     {
         $rows = $this->db->wpdb()->get_results("SELECT provider_id,provider_version FROM `{$this->db->table('providers')}` WHERE state IN ('active','draining','purge_pending')", ARRAY_A);
-        return is_array($rows) ? $rows : [];
+        if (!is_array($rows)) { throw new \RuntimeException('Deletion external-provider inventory SQL read failed.'); }
+        return $rows;
     }
 
     /** @param array<string,mixed> $scope @return array<string,mixed> */
@@ -236,7 +239,7 @@ final class DeletionService
     {
         $column = match ($store) { 'events','dataset_rows','experiment_facts' => 'deletion_key', default => null };
         if ($column === null) { return 0; }
-        return (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table($store)}` WHERE `{$column}`=%s", $key));
+        return $this->requiredCount($this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table($store)}` WHERE `{$column}`=%s", $key)), 'Deletion eligible ' . $store);
     }
 
     /** @param array<string,array<string,mixed>> $reconciliation */
@@ -253,17 +256,20 @@ final class DeletionService
         if ($metricRefs === []) { return 0; } $count=0;
         while (true) {
             $rows=$this->db->wpdb()->get_results("SELECT id,export_uuid,definition_json FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') ORDER BY id LIMIT 500",ARRAY_A);
-            if (!is_array($rows) || $rows===[]) break; $matched=0;
+            if (!is_array($rows)) { throw new \RuntimeException('Deletion export inventory SQL read failed.'); }
+            if ($rows === []) { break; }
+            $matched=0;
             foreach ($rows as $row) { $definition=Json::object((string)$row['definition_json']);$ref=(string)($definition['metric_id']??'').'@'.(string)($definition['metric_version']??''); if(!in_array($ref,$metricRefs,true)) continue; $matched++;
                 if($this->db->wpdb()->update($this->db->table('exports'),['state'=>'revoked','token_hash'=>null,'revoked_at'=>$now,'expires_at'=>$now,'updated_at'=>$now],['id'=>(int)$row['id']])!==1) throw new \RuntimeException('Deletion export revocation failed.');
                 if($this->db->wpdb()->delete($this->db->table('export_payloads'),['export_uuid'=>$row['export_uuid']])===false) throw new \RuntimeException('Deletion export payload purge failed.'); $count++;
             }
             if (count($rows)<500) break;
             if ($matched===0) {
-                $ids=array_map(static fn(array $row):int=>(int)$row['id'],$rows); $max=max($ids); $remaining=(int)$this->db->wpdb()->get_var("SELECT COUNT(*) FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') AND id>{$max}"); if($remaining===0) break;
+                $ids=array_map(static fn(array $row):int=>(int)$row['id'],$rows); $max=max($ids); $remaining=$this->requiredCount($this->db->wpdb()->get_var("SELECT COUNT(*) FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') AND id>{$max}"), 'Deletion remaining export COUNT'); if($remaining===0) break;
                 // Avoid re-reading the same unrelated first page by scanning all remaining candidates in the next fallback query.
                 $all=$this->db->wpdb()->get_results("SELECT id,export_uuid,definition_json FROM `{$this->db->table('exports')}` WHERE state IN ('requested','building','ready') AND id>{$max} ORDER BY id",ARRAY_A);
-                foreach(is_array($all)?$all:[] as $row){$definition=Json::object((string)$row['definition_json']);$ref=(string)($definition['metric_id']??'').'@'.(string)($definition['metric_version']??'');if(!in_array($ref,$metricRefs,true))continue;if($this->db->wpdb()->update($this->db->table('exports'),['state'=>'revoked','token_hash'=>null,'revoked_at'=>$now,'expires_at'=>$now,'updated_at'=>$now],['id'=>(int)$row['id']])!==1)throw new \RuntimeException('Deletion export revocation failed.');if($this->db->wpdb()->delete($this->db->table('export_payloads'),['export_uuid'=>$row['export_uuid']])===false)throw new \RuntimeException('Deletion export payload purge failed.');$count++;} break;
+                if (!is_array($all)) { throw new \RuntimeException('Deletion remaining export inventory SQL read failed.'); }
+                foreach($all as $row){$definition=Json::object((string)$row['definition_json']);$ref=(string)($definition['metric_id']??'').'@'.(string)($definition['metric_version']??'');if(!in_array($ref,$metricRefs,true))continue;if($this->db->wpdb()->update($this->db->table('exports'),['state'=>'revoked','token_hash'=>null,'revoked_at'=>$now,'expires_at'=>$now,'updated_at'=>$now],['id'=>(int)$row['id']])!==1)throw new \RuntimeException('Deletion export revocation failed.');if($this->db->wpdb()->delete($this->db->table('export_payloads'),['export_uuid'=>$row['export_uuid']])===false)throw new \RuntimeException('Deletion export payload purge failed.');$count++;} break;
             }
         }
         return $count;
@@ -274,10 +280,25 @@ final class DeletionService
     {
         if ($metricRefs === []) { return 0; } $count=0;
         $rows=$this->db->wpdb()->get_results("SELECT id,report_uuid,definition_json FROM `{$this->db->table('reports')}` WHERE state IN ('draft','active','paused') ORDER BY id",ARRAY_A);
-        foreach(is_array($rows)?$rows:[] as $row){$affected=false;foreach((array)(Json::object((string)$row['definition_json'])['metrics']??[]) as $metric){if(is_array($metric)&&in_array((string)($metric['metric_id']??'').'@'.(string)($metric['metric_version']??''),$metricRefs,true)){$affected=true;break;}}if(!$affected)continue;
+        if (!is_array($rows)) { throw new \RuntimeException('Deletion report inventory SQL read failed.'); }
+        foreach($rows as $row){$affected=false;foreach((array)(Json::object((string)$row['definition_json'])['metrics']??[]) as $metric){if(is_array($metric)&&in_array((string)($metric['metric_id']??'').'@'.(string)($metric['metric_version']??''),$metricRefs,true)){$affected=true;break;}}if(!$affected)continue;
             if($this->db->wpdb()->update($this->db->table('reports'),['state'=>'revoked','next_run_at'=>null,'updated_at'=>$now],['id'=>(int)$row['id']])!==1)throw new \RuntimeException('Deletion report revocation failed.');
             $deliveries=$this->db->wpdb()->query($this->db->wpdb()->prepare("UPDATE `{$this->db->table('report_deliveries')}` SET state='revoked',token_hash=NULL,bundle_json=NULL,revoked_at=%s,expires_at=%s,updated_at=%s WHERE report_uuid=%s AND state IN ('queued','ready','sent')",$now,$now,$now,$row['report_uuid']));
             if($deliveries===false)throw new \RuntimeException('Deletion report delivery revocation failed.');$count++;
+        }
+        return $count;
+    }
+
+    /** A failed SQL aggregate cannot certify that all private data is gone. */
+    private function requiredCount(mixed $raw, string $context): int
+    {
+        if ((!is_string($raw) && !is_int($raw))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $raw) !== 1) {
+            throw new \RuntimeException($context . ' is unavailable or invalid.');
+        }
+        $count = filter_var((string) $raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($count === false) {
+            throw new \RuntimeException($context . ' is outside the supported integer range.');
         }
         return $count;
     }
