@@ -30,6 +30,7 @@ php tests/v123-source-sequence-watermark.php
 php tests/v123-experiment-count-integrity.php
 php tests/v123-report-scheduler-sql.php
 php tests/v123-file23-native-adapter.php
+php tests/v123-file24-native-manifest.php
 python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/fresh40-plan-parity-20261021.py
