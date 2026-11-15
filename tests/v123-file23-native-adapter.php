@@ -153,6 +153,15 @@ $ctx=['viewer_user_id'=>7,'scope'=>'institution','date_from'=>'2026-11-01','date
 bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics($ctx),'smai_file23_access_denied'), 'disabled analytics cannot query');
 $GLOBALS['v123_file23_runtime']='staging_active';
 bridge_check($adapter->get_declared_capability_state() === 'read_only', 'staging gate is read only');
+
+$defaultCtx=['viewer_user_id'=>7,'scope'=>'institution','date_from'=>'','date_to'=>''];
+$defaultDay=$adapter->get_spdb_aggregate_metrics($defaultCtx);
+bridge_check(is_array($defaultDay) && ($defaultDay['metrics']??null)===[],
+    'native initial dashboard defaults to bounded UTC seven-day period, never all-time');
+$incompleteDateCtx=array_replace($defaultCtx,['date_from'=>'2026-11-01']);
+bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics($incompleteDateCtx),'smai_file23_window_required'),
+    'partially specified date range is invalid, not silently defaulted');
+
 bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics(array_replace($ctx,['viewer_user_id'=>8])),'smai_file23_viewer_mismatch'), 'other subject cannot use viewer context');
 bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics(array_replace($ctx,['scope'=>'own'])),'smai_file23_own_scope_unavailable'), 'unproven object-owned analytics refused');
 $GLOBALS['v123_file23_allowed']=false;
