@@ -37,7 +37,7 @@ final class RestoreService
             }
         }
         $backupCreatedAt = (string) $evidence['backup_created_at'];
-        if (strlen($backupCreatedAt)>35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/',$backupCreatedAt,$m)!==1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1]) || ($backupTs=strtotime($backupCreatedAt))===false || $backupTs>time()+300) {
+        if (strlen($backupCreatedAt)>35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D',$backupCreatedAt,$m)!==1 || !checkdate((int)$m[2],(int)$m[3],(int)$m[1]) || ($backupTs=strtotime($backupCreatedAt))===false || $backupTs>time()+300) {
             return new WP_Error('smai_invalid_restore_timestamp', 'Backup evidence timestamp is invalid or in the future.', ['status' => 400]);
         }
         $wpdb=$this->db->wpdb();
@@ -46,8 +46,8 @@ final class RestoreService
             $uuid = Uuid::v4();
             $catalogHash = $this->catalogHash();
             $checkpoints = $this->checkpointSnapshot();
-            $deletionFloor = (int) $wpdb->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('deletion_jobs')}`");
-            $accessFloor = (int) $wpdb->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('access_projects')}`");
+            $deletionFloor = $this->requiredCount($wpdb->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('deletion_jobs')}`"), 'Restore deletion floor');
+            $accessFloor = $this->requiredCount($wpdb->get_var("SELECT COALESCE(MAX(id),0) FROM `{$this->db->table('access_projects')}`"), 'Restore access floor');
             $ok = $wpdb->insert($this->db->table('restore_points'), [
             'restore_uuid' => $uuid,
             'state' => 'recorded',
@@ -120,7 +120,8 @@ final class RestoreService
     private function checkpointSnapshot(): array
     {
         $rows = $this->db->wpdb()->get_results("SELECT stream_ref,consumer_ref,contract_version,watermark_at,source_sequence,checkpoint_hash FROM `{$this->db->table('checkpoints')}` ORDER BY stream_ref,consumer_ref", ARRAY_A);
-        return is_array($rows) ? $rows : [];
+        if (!is_array($rows)) { throw new \RuntimeException('Restore checkpoint snapshot SQL read failed.'); }
+        return $rows;
     }
 
     private function catalogHash(): string
@@ -135,7 +136,8 @@ final class RestoreService
             ['dashboard_definitions','dashboard_id,dashboard_version,definition_hash,state,row_version'],
         ] as [$tableName, $columns]) {
             $rows = $this->db->wpdb()->get_results("SELECT {$columns} FROM `{$this->db->table($tableName)}` ORDER BY id", ARRAY_A);
-            $parts[$tableName] = is_array($rows) ? $rows : [];
+            if (!is_array($rows)) { throw new \RuntimeException('Restore catalog snapshot SQL read failed for ' . $tableName); }
+            $parts[$tableName] = $rows;
         }
         return hash('sha256', Json::canonical($parts));
     }
@@ -143,17 +145,18 @@ final class RestoreService
     private function verifyDeletionFloor(int $floor): bool
     {
         if ($floor < 1) {return true;}
-        return (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('deletion_jobs')}` WHERE id<=%d AND state<>'completed'", $floor)) === 0;
+        return $this->requiredCount($this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('deletion_jobs')}` WHERE id<=%d AND state<>'completed'", $floor)), 'Restore incomplete deletion count') === 0;
     }
 
     private function verifyDeletedSubjects(int $floor): bool
     {
         if ($floor < 1) {return true;}
         $jobs = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT deletion_key FROM `{$this->db->table('deletion_jobs')}` WHERE id<=%d AND state='completed'", $floor), ARRAY_A);
-        foreach (is_array($jobs) ? $jobs : [] as $job) {
+        if (!is_array($jobs)) { throw new \RuntimeException('Restore deleted-subject enumeration failed.'); }
+        foreach ($jobs as $job) {
             $key = (string) $job['deletion_key'];
             foreach ([['events','deletion_key'],['dataset_rows','deletion_key'],['experiment_facts','deletion_key']] as [$table,$column]) {
-                $count = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table($table)}` WHERE `{$column}`=%s", $key));
+                $count = $this->requiredCount($this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table($table)}` WHERE `{$column}`=%s", $key)), 'Restore deleted-subject count');
                 if ($count !== 0) {return false;}
             }
         }
@@ -163,22 +166,37 @@ final class RestoreService
     private function verifyAccessFloor(int $floor): bool
     {
         if ($floor < 1) {return true;} $wpdb=$this->db->wpdb();$now=$this->db->now();
-        $staleProjects=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('access_projects')}` WHERE id<=%d AND state='active' AND expires_at<=%s",$floor,$now));
-        $staleExports=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('exports')}` e INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=e.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND e.state IN ('requested','building','ready')",$floor,$now));
-        $staleReports=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('reports')}` r INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND r.state='active'",$floor,$now));
-        $staleDashboards=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('dashboard_definitions')}` d INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=d.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND d.state='active'",$floor,$now));
-        $staleDeliveries=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('report_deliveries')}` d INNER JOIN `{$this->db->table('reports')}` r ON r.report_uuid=d.report_uuid INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND ((p.state<>'active' OR p.expires_at<=%s) OR r.state<>'active' OR (r.expires_at IS NOT NULL AND r.expires_at<=%s)) AND d.state IN ('ready','sent')",$floor,$now,$now));
+        $staleProjects=$this->requiredCount($wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('access_projects')}` WHERE id<=%d AND state='active' AND expires_at<=%s",$floor,$now)), 'Restore staleProjects count');
+        $staleExports=$this->requiredCount($wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('exports')}` e INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=e.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND e.state IN ('requested','building','ready')",$floor,$now)), 'Restore staleExports count');
+        $staleReports=$this->requiredCount($wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('reports')}` r INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND r.state='active'",$floor,$now)), 'Restore staleReports count');
+        $staleDashboards=$this->requiredCount($wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('dashboard_definitions')}` d INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=d.project_uuid WHERE p.id<=%d AND (p.state<>'active' OR p.expires_at<=%s) AND d.state='active'",$floor,$now)), 'Restore staleDashboards count');
+        $staleDeliveries=$this->requiredCount($wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM `{$this->db->table('report_deliveries')}` d INNER JOIN `{$this->db->table('reports')}` r ON r.report_uuid=d.report_uuid INNER JOIN `{$this->db->table('access_projects')}` p ON p.project_uuid=r.project_uuid WHERE p.id<=%d AND ((p.state<>'active' OR p.expires_at<=%s) OR r.state<>'active' OR (r.expires_at IS NOT NULL AND r.expires_at<=%s)) AND d.state IN ('ready','sent')",$floor,$now,$now)), 'Restore staleDeliveries count');
         return $staleProjects===0&&$staleExports===0&&$staleReports===0&&$staleDashboards===0&&$staleDeliveries===0;
     }
 
     private function verifyProviders(string $uuid): bool
     {
         $providers = $this->db->wpdb()->get_results("SELECT provider_id,provider_version FROM `{$this->db->table('providers')}` WHERE state='active'", ARRAY_A);
-        foreach (is_array($providers) ? $providers : [] as $provider) {
+        if (!is_array($providers)) { throw new \RuntimeException('Restore provider inventory SQL read failed.'); }
+        foreach ($providers as $provider) {
             if (in_array((string) $provider['provider_id'], ['local','local-wordpress'], true)) {continue;}
             $result = apply_filters('smai_verify_provider_restore', null, $provider['provider_id'], $provider['provider_version'], $uuid);
             if (!is_array($result) || ($result['verified'] ?? false) !== true || preg_match('/^[a-f0-9]{64}$/', (string) ($result['evidence_hash'] ?? '')) !== 1) {return false;}
         }
         return true;
     }
+    /** Verified integer SQL aggregate; never coerce failed reads to zero. */
+    private function requiredCount(mixed $raw, string $context): int
+    {
+        if ((!is_string($raw) && !is_int($raw))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $raw) !== 1) {
+            throw new \RuntimeException($context . ' is unavailable or invalid.');
+        }
+        $count = filter_var((string) $raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($count === false) {
+            throw new \RuntimeException($context . ' exceeds the supported integer range.');
+        }
+        return $count;
+    }
+
 }
