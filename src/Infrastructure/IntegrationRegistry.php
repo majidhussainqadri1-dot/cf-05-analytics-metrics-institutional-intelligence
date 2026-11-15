@@ -115,7 +115,10 @@ final class IntegrationRegistry
                 'pseudonym-key-reference',
                 'export-key-reference',
             ],
-            'privacy_operations' => ['deletion', 'access-expiry', 'export-revocation'],
+            // File 24 supplies only a WordPress user ID; it cannot derive
+            // CF-05's source-owner deletion key. Claiming deletion here would
+            // misdirect real privacy requests to an unproven handler.
+            'privacy_operations' => [],
             'exporters' => ['aggregate-export'],
             'erasers' => ['deletion-service'],
             'emergency_callbacks' => ['runtime-disable'],
