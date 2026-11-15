@@ -66,9 +66,12 @@ final class RepairService
             "SELECT event_id FROM `{$eventTable}` WHERE processed_at IS NULL AND created_at<%s ORDER BY id LIMIT 500",
             gmdate('Y-m-d H:i:s', time() - 5 * MINUTE_IN_SECONDS)
         ));
+        if (!is_array($unprocessed)) {
+            throw new \RuntimeException('Safe repair cannot enumerate unprocessed events.');
+        }
         $requeued = 0;
         $queue = new JobQueue($this->db);
-        foreach (is_array($unprocessed) ? $unprocessed : [] as $eventId) {
+        foreach ($unprocessed as $eventId) {
             $job = $queue->enqueue('pipeline.process_event', ['event_id' => (string) $eventId], 'pipeline-repair|' . (string) $eventId);
             if (!is_wp_error($job)) {
                 $requeued++;
@@ -78,8 +81,11 @@ final class RepairService
             "SELECT job_uuid FROM `{$this->db->table('deletion_jobs')}` WHERE state IN ('requested','retrying') AND (next_retry_at IS NULL OR next_retry_at<=%s) ORDER BY id LIMIT 100",
             $now
         ), ARRAY_A);
+        if (!is_array($deletions)) {
+            throw new \RuntimeException('Safe repair cannot enumerate outstanding privacy deletions.');
+        }
         $requeuedDeletions = 0;
-        foreach (is_array($deletions) ? $deletions : [] as $deletion) {
+        foreach ($deletions as $deletion) {
             $job = $queue->enqueue('deletion.apply', ['deletion_job_uuid' => (string) $deletion['job_uuid'], 'actor_type' => 'system'], 'deletion-repair|' . (string) $deletion['job_uuid'] . '|' . gmdate('Y-m-d-H'));
             if (!is_wp_error($job)) {
                 $requeuedDeletions++;

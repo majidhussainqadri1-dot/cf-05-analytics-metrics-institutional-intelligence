@@ -201,8 +201,11 @@ final class ReportService
             $now,
             $now
         ), ARRAY_A);
+        if (!is_array($reports)) {
+            throw new \RuntimeException('Scheduled report inventory SQL read failed; unknown due work cannot be reported as zero.');
+        }
         $count = 0;
-        foreach (is_array($reports) ? $reports : [] as $report) {
+        foreach ($reports as $report) {
             $scheduledFor = (string) $report['next_run_at'];
             $next = gmdate('Y-m-d H:i:s', $this->nextTimestamp((string) $report['schedule_rrule'], (int) strtotime($scheduledFor)));
             $wpdb = $this->db->wpdb();
@@ -402,7 +405,13 @@ final class ReportService
             $version,
             hash('sha256', Json::canonical($dimensions))
         ), ARRAY_A);
-        if (!is_array($row) || (int) $row['cohort_size'] < $minimum) {
+        if ($row === false || ($row === null && (string) ($this->db->wpdb()->last_error ?? '') !== '')) {
+            throw new \RuntimeException('Report metric snapshot SQL read failed; no delivery may be created.');
+        }
+        if ($row !== null && (!is_array($row) || !SnapshotEvidence::validPublishedRow($row))) {
+            throw new \RuntimeException('Report metric snapshot evidence is corrupt; no delivery may be created.');
+        }
+        if ($row === null || (int) $row['cohort_size'] < $minimum) {
             return null;
         }
         $checked = (new QueryPrivacyGuard($this->db))->evaluateAndRecord(

@@ -1,4 +1,4 @@
-# CF-05 Requirements Traceability — 1.0.0-rc.18
+# CF-05 Requirements Traceability — 1.0.0-rc.19
 
 **Canonical specification:** CF-05 Conditional Complete Master Plan 2026 v1.1 (Future-40 amended 2026-09-16), Section 5. Earlier repository mapping assigned several CF05-FR IDs to different subjects; those labels were not the governing plan. This table restores the original requirement identities. A referenced PHP class establishes source intent, **not** staging, live, or cross-file operational acceptance.
 
@@ -52,3 +52,7 @@
 ## Lifecycle truth
 
 Repository code/CI/package evidence must be tied to the exact new branch HEAD. Live deployed source, DB version, migrations, provider contracts, Hostinger-equivalent staging, production verification and Founder release approval are **not established** by this document. Unknown means unverified—not zero defects.
+
+## V12.3 source and cross-file acceptance addendum
+
+See `src/Integration/File23AnalyticsAdapter.php`, `src/Infrastructure/IntegrationRegistry.php`, and `contracts/cf05-v12.3-acceptance-matrix.json` for the native read-only File23 interface, the unassessed File24 manifest, and all V12.3 source/owner/live acceptance identifiers. Synthetic source tests do not establish real deployed owner contract or production operational status.

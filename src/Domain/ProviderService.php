@@ -62,13 +62,47 @@ final class ProviderService
 
     public function exitStatus(string $providerId):array
     {
-        $datasets=(int)$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('datasets')}` WHERE provider_id=%s AND state NOT IN ('purged','retired')",$providerId));
-        $jobs=(int)$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('jobs')}` WHERE state IN ('queued','running','retrying') AND payload_json LIKE %s",'%'.$this->db->wpdb()->esc_like($providerId).'%'));
-        $pendingDeletion=(int)$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT COUNT(*) FROM `{$this->db->table('deletion_reconciliations')}` WHERE store_name LIKE %s AND state<>'verified'",'provider:'.$this->db->wpdb()->esc_like($providerId).'@%'));
-        $revocation=apply_filters('smai_provider_credential_revocation_evidence',null,$providerId);
-        $revocationHash=is_array($revocation)?strtolower((string)($revocation['evidence_hash']??'')):'';
-        $revocationVerified=preg_match('/^[a-f0-9]{64}$/',$revocationHash)===1;
-        $safeRevocation=$revocationVerified?['evidence_hash'=>$revocationHash]:null;
-        return['provider_id'=>$providerId,'remaining_datasets'=>$datasets,'active_jobs'=>$jobs,'pending_deletion_reconciliations'=>$pendingDeletion,'ready_to_retire'=>$datasets===0&&$jobs===0&&$pendingDeletion===0&&$revocationVerified,'credential_revocation_evidence'=>$safeRevocation,'generated_at'=>gmdate('c')];
+        // An unavailable SQL count is Unknown, never zero. Retirement cannot
+        // be authorized on a failed provider-exit reconciliation query.
+        $wpdb = $this->db->wpdb();
+        $datasets = $this->checkedExitCount($wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM `{$this->db->table('datasets')}` WHERE provider_id=%s AND state NOT IN ('purged','retired')",
+            $providerId
+        )));
+        $jobs = $this->checkedExitCount($wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM `{$this->db->table('jobs')}` WHERE state IN ('queued','running','retrying') AND payload_json LIKE %s",
+            '%' . $wpdb->esc_like($providerId) . '%'
+        )));
+        $pendingDeletion = $this->checkedExitCount($wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM `{$this->db->table('deletion_reconciliations')}` WHERE store_name LIKE %s AND state<>'verified'",
+            'provider:' . $wpdb->esc_like($providerId) . '@%'
+        )));
+        $revocation = apply_filters('smai_provider_credential_revocation_evidence', null, $providerId);
+        $revocationHash = is_array($revocation) ? strtolower((string) ($revocation['evidence_hash'] ?? '')) : '';
+        $revocationVerified = preg_match('/^[a-f0-9]{64}$/D', $revocationHash) === 1;
+        $safeRevocation = $revocationVerified ? ['evidence_hash' => $revocationHash] : null;
+        $countsVerified = $datasets !== null && $jobs !== null && $pendingDeletion !== null;
+        return [
+            'provider_id' => $providerId,
+            'remaining_datasets' => $datasets,
+            'active_jobs' => $jobs,
+            'pending_deletion_reconciliations' => $pendingDeletion,
+            'counts_verified' => $countsVerified,
+            'ready_to_retire' => $countsVerified
+                && $datasets === 0 && $jobs === 0 && $pendingDeletion === 0 && $revocationVerified,
+            'credential_revocation_evidence' => $safeRevocation,
+            'generated_at' => gmdate('c'),
+        ];
     }
+
+    private function checkedExitCount(mixed $value): ?int
+    {
+        if ((!is_string($value) && !is_int($value))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $value) !== 1) {
+            return null;
+        }
+        $parsed = filter_var((string) $value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        return $parsed === false ? null : $parsed;
+    }
+
 }

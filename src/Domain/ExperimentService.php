@@ -803,9 +803,23 @@ final class ExperimentService
     private function variantCounts(string $uuid): array
     {
         $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare("SELECT variant_key,COUNT(*) AS total FROM `{$this->db->table('experiment_facts')}` WHERE experiment_uuid=%s GROUP BY variant_key ORDER BY variant_key", $uuid), ARRAY_A);
+        if (!is_array($rows)) {
+            throw new \RuntimeException('Experiment variant participation SQL read failed.');
+        }
         $out = [];
-        foreach (is_array($rows) ? $rows : [] as $row) {
-            $out[(string) $row['variant_key']] = (int) $row['total'];
+        foreach ($rows as $row) {
+            $key = is_array($row) ? ($row['variant_key'] ?? null) : null;
+            $total = is_array($row) ? ($row['total'] ?? null) : null;
+            if (!is_string($key) || $key === ''
+                || (!is_int($total) && !is_string($total))
+                || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $total) !== 1) {
+                throw new \RuntimeException('Experiment variant participation SQL aggregate is unavailable or corrupt.');
+            }
+            $parsed = filter_var((string) $total, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+            if ($parsed === false || array_key_exists($key, $out)) {
+                throw new \RuntimeException('Experiment variant participation SQL aggregate is out of range or duplicated.');
+            }
+            $out[$key] = $parsed;
         }
         return $out;
     }

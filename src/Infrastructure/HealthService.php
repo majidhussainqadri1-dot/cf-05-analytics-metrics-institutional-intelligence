@@ -26,9 +26,14 @@ final class HealthService
                 $healthy = false;
                 $degradationReasons[] = 'missing_table:' . $name;
             }
+            $count = $includeCounts && $exists ? $this->db->count($name) : null;
+            if ($includeCounts && $exists && $count === null) {
+                $healthy = false;
+                $degradationReasons[] = 'table_count_unavailable:' . $name;
+            }
             $tables[$name] = [
-                'status' => $exists ? 'available' : 'missing',
-                'count' => $includeCounts && $exists ? $this->db->count($name) : null,
+                'status' => $exists ? ($includeCounts && $count === null ? 'unavailable' : 'available') : 'missing',
+                'count' => $count,
             ];
         }
 
@@ -64,21 +69,35 @@ final class HealthService
         ) : [];
 
         $deletionSloHours = max(1, min(168, (int) get_option('smai_deletion_slo_hours', 24)));
-        $overdueDeletionJobs = 0;
+        $overdueDeletionJobs = null;
         if ($this->db->exists('deletion_jobs')) {
             $cutoff = gmdate('Y-m-d H:i:s', time() - ($deletionSloHours * HOUR_IN_SECONDS));
-            $overdueDeletionJobs = (int) $this->db->wpdb()->get_var($this->db->wpdb()->prepare(
+            $overdueDeletionJobs = $this->checkedAggregate($this->db->wpdb()->get_var($this->db->wpdb()->prepare(
                 "SELECT COUNT(*) FROM `{$this->db->table('deletion_jobs')}` WHERE state NOT IN ('completed','cancelled') AND requested_at < %s",
                 $cutoff
-            ));
-            if ($overdueDeletionJobs > 0) {
+            )));
+            if ($overdueDeletionJobs === null) {
+                $healthy = false;
+                $degradationReasons[] = 'deletion_slo_evidence_unavailable';
+            } elseif ($overdueDeletionJobs > 0) {
                 $healthy = false;
                 $degradationReasons[] = 'overdue_deletion_jobs';
             }
         }
 
-        if (is_array($queue) && (int) ($queue['dead'] ?? 0) > 0) { $healthy = false; $degradationReasons[] = 'dead_letter_jobs_present'; }
-        if (is_array($quality) && (int) ($quality['high_critical'] ?? 0) > 0) {
+        $queueHealth = $this->healthAggregateRow($queue, ['pending','dead']);
+        $qualityHealth = $this->healthAggregateRow($quality, ['open_issues','high_critical']);
+        if ($queueHealth === null) {
+            $healthy = false;
+            $degradationReasons[] = 'job_queue_health_unavailable';
+        } elseif ($queueHealth['dead'] > 0) {
+            $healthy = false;
+            $degradationReasons[] = 'dead_letter_jobs_present';
+        }
+        if ($qualityHealth === null) {
+            $healthy = false;
+            $degradationReasons[] = 'quality_health_unavailable';
+        } elseif ($qualityHealth['high_critical'] > 0) {
             $healthy = false;
             $degradationReasons[] = 'high_or_critical_quality_issue';
         }
@@ -106,15 +125,15 @@ final class HealthService
                 'pseudonymization' => $pseudonymConfigured ? 'configured' : 'missing',
                 'export_encryption' => $exportConfigured ? 'configured' : 'missing',
             ],
-            'queue' => is_array($queue) ? [
-                'pending' => (int) ($queue['pending'] ?? 0),
-                'dead_letter' => (int) ($queue['dead'] ?? 0),
-                'oldest_pending_at' => $queue['oldest'] ?? null,
-            ] : [],
-            'quality' => is_array($quality) ? [
-                'open_issues' => (int) ($quality['open_issues'] ?? 0),
-                'high_critical' => (int) ($quality['high_critical'] ?? 0),
-            ] : [],
+            'queue' => $queueHealth !== null ? [
+                'pending' => $queueHealth['pending'],
+                'dead_letter' => $queueHealth['dead'],
+                'oldest_pending_at' => is_array($queue) ? ($queue['oldest'] ?? null) : null,
+            ] : ['status' => 'unavailable'],
+            'quality' => $qualityHealth !== null ? [
+                'open_issues' => $qualityHealth['open_issues'],
+                'high_critical' => $qualityHealth['high_critical'],
+            ] : ['status' => 'unavailable'],
             'deletion_slo_hours' => $deletionSloHours,
             'overdue_deletion_jobs' => $overdueDeletionJobs,
             'degradation_reasons' => $degradationReasons,
@@ -125,4 +144,42 @@ final class HealthService
             'generated_at' => gmdate('c'),
         ];
     }
+    /** Validate SQL COUNT/SUM without conflating no rows and database errors. */
+    private function checkedAggregate(mixed $raw): ?int
+    {
+        if ((!is_string($raw) && !is_int($raw))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $raw) !== 1) {
+            return null;
+        }
+        $value = filter_var((string) $raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        return $value === false ? null : $value;
+    }
+
+    /**
+     * MySQL SUM on an existing empty table returns NULL. A complete
+     * successful aggregate row may therefore use null for each SUM.
+     *
+     * @param array<int,string> $names
+     * @return array<string,int>|null
+     */
+    private function healthAggregateRow(mixed $row, array $names): ?array
+    {
+        if (!is_array($row)) {
+            return null;
+        }
+        $out = [];
+        foreach ($names as $name) {
+            if (!array_key_exists($name, $row)) {
+                return null;
+            }
+            $raw = $row[$name];
+            $value = $raw === null ? 0 : $this->checkedAggregate($raw);
+            if ($value === null) {
+                return null;
+            }
+            $out[$name] = $value;
+        }
+        return $out;
+    }
+
 }

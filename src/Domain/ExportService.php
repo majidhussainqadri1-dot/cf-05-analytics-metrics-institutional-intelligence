@@ -281,11 +281,23 @@ final class ExportService
         if (!empty($definition['window_end'])) { $where[] = 's.window_end<=%s'; $args[] = (string) $definition['window_end']; }
         $scanLimit = max(1, min(10000, $limit * 5));
         $args[] = $scanLimit;
-        $sql = "SELECT s.metric_id,s.metric_version,s.window_start,s.window_end,s.dimensions_json AS dimensions,s.value_decimal AS value,s.numerator_decimal AS numerator,s.denominator_decimal AS denominator,s.cohort_size,s.quality_status,s.data_through,s.caveats_json AS caveats FROM `{$table}` s INNER JOIN (SELECT metric_id,metric_version,window_start,window_end,dimensions_hash,MAX(snapshot_revision) AS revision FROM `{$table}` WHERE state='published' GROUP BY metric_id,metric_version,window_start,window_end,dimensions_hash) latest ON latest.metric_id=s.metric_id AND latest.metric_version=s.metric_version AND latest.window_start=s.window_start AND latest.window_end=s.window_end AND latest.dimensions_hash=s.dimensions_hash AND latest.revision=s.snapshot_revision WHERE " . implode(' AND ', $where) . ' ORDER BY s.window_end DESC LIMIT %d';
+        $sql = "SELECT s.metric_id,s.metric_version,s.window_start,s.window_end,s.dimensions_json AS dimensions,s.value_decimal AS value,s.numerator_decimal AS numerator,s.denominator_decimal AS denominator,s.coverage_decimal,s.cohort_size,s.quality_status,s.data_through,s.caveats_json AS caveats FROM `{$table}` s INNER JOIN (SELECT metric_id,metric_version,window_start,window_end,dimensions_hash,MAX(snapshot_revision) AS revision FROM `{$table}` WHERE state='published' GROUP BY metric_id,metric_version,window_start,window_end,dimensions_hash) latest ON latest.metric_id=s.metric_id AND latest.metric_version=s.metric_version AND latest.window_start=s.window_start AND latest.window_end=s.window_end AND latest.dimensions_hash=s.dimensions_hash AND latest.revision=s.snapshot_revision WHERE " . implode(' AND ', $where) . ' ORDER BY s.window_end DESC LIMIT %d';
         $rows = $this->db->wpdb()->get_results($this->db->wpdb()->prepare($sql, ...$args), ARRAY_A);
         if (!is_array($rows)) { throw new \RuntimeException('Export metric snapshot query failed.'); }
         $safe = [];
         foreach ($rows as $row) {
+            if (!is_array($row)
+                || array_diff(['value','numerator','denominator','coverage_decimal','cohort_size','quality_status'], array_keys($row)) !== []
+                || !SnapshotEvidence::validPublishedRow([
+                    'value_decimal' => $row['value'],
+                    'numerator_decimal' => $row['numerator'],
+                    'denominator_decimal' => $row['denominator'],
+                    'coverage_decimal' => $row['coverage_decimal'],
+                    'cohort_size' => $row['cohort_size'],
+                    'quality_status' => $row['quality_status'],
+                ])) {
+                throw new \RuntimeException('Export source snapshot values are corrupt; the aggregate was withheld.');
+            }
             $dimensions = Json::object((string) $row['dimensions']);
             if (PrivacyQueryPolicy::violations($metricDefinition, $dimensions) !== []) { continue; }
             $minimum = PrivacyQueryPolicy::effectiveMinimum($metricDefinition, $dimensions, $baseMinimum);
@@ -309,6 +321,7 @@ final class ExportService
             $row['quality_status'] = $disclosure['quality_status'];
             $row['data_through'] = $disclosure['data_through'];
             $row['caveats'] = $disclosure['caveats'];
+            unset($row['coverage_decimal']); // validation-only source evidence; never add an export column
             $safe[] = $row;
             if (count($safe) >= $limit) { break; }
         }
@@ -318,8 +331,8 @@ final class ExportService
     private function optionalDate(mixed $value): ?string
     {
         if ($value === null || $value === '') { return null; }
-        if (!is_string($value) || strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/', $value) !== 1) { return null; }
-        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) { return null; }
+        if (!is_string($value) || strlen($value) > 35 || preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/D', $value) !== 1) { return null; }
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) { return null; }
         $timestamp = strtotime($value);
         return $timestamp === false ? null : gmdate('Y-m-d H:i:s', $timestamp);
     }

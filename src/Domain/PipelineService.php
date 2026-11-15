@@ -37,8 +37,11 @@ final class PipelineService
             "SELECT * FROM `{$this->db->table('datasets')}` WHERE state='published' ORDER BY id",
             ARRAY_A
         );
+        if (!is_array($datasets)) {
+            throw new \RuntimeException('Published dataset enumeration failed; event processing must remain pending.');
+        }
         $projected = 0;
-        foreach (is_array($datasets) ? $datasets : [] as $dataset) {
+        foreach ($datasets as $dataset) {
             $definition = Json::object((string) $dataset['definition_json']);
             if (!$this->matchesSource($event, (array) ($definition['sources'] ?? []))) {
                 continue;
@@ -165,7 +168,17 @@ final class PipelineService
                 $datasetId,
                 $version
             ), ARRAY_A);
+            if ($build === null && is_string($wpdb->last_error ?? null) && trim($wpdb->last_error) !== '') {
+                throw new \RuntimeException('Active build lookup failed; a database error must not create another active build.');
+            }
+            if ($build !== null && !is_array($build)) {
+                throw new \RuntimeException('Active build lookup returned invalid SQL evidence.');
+            }
             if (is_array($build)) {
+                if (!is_string($build['build_uuid'] ?? null)
+                    || preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iD', $build['build_uuid']) !== 1) {
+                    throw new \RuntimeException('Existing active build identity is invalid.');
+                }
                 if ($wpdb->query('COMMIT') === false) { throw new \RuntimeException('Active build reuse could not be committed.'); }
                 return $build;
             }

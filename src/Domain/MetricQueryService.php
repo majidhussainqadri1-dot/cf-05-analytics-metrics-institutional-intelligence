@@ -103,6 +103,15 @@ final class MetricQueryService
             $dimensionsHash
         ), ARRAY_A);
 
+        if ($row === false || ($row === null && $this->db->wpdb()->last_error !== '')) {
+            return new WP_Error('smai_snapshot_read_failed', 'Metric snapshot evidence could not be read; the result was withheld.', ['status' => 503]);
+        }
+        if ($row !== null && !is_array($row)) {
+            return new WP_Error('smai_snapshot_read_invalid', 'Metric snapshot evidence is invalid; the result was withheld.', ['status' => 503]);
+        }
+        if (is_array($row) && !SnapshotEvidence::validPublishedRow($row)) {
+            return new WP_Error('smai_snapshot_evidence_invalid', 'Stored snapshot values are malformed and cannot be disclosed.', ['status' => 503]);
+        }
         if (!is_array($row)) {
             $this->audit->log('metric_query', 'metric_snapshot', $metricId . '@' . $version, 'not_found', [
                 'project_uuid' => $projectUuid,
@@ -146,21 +155,15 @@ final class MetricQueryService
             return $privacy;
         }
 
-        $quality = in_array($storedQuality, ['green','warning','degraded','unknown'], true) ? $storedQuality : 'unknown';
-        $caveats = Json::list((string) ($row['caveats_json'] ?? '[]'));
-        $dataThroughTimestamp = $row['data_through'] ? strtotime((string) $row['data_through']) : false;
-        $freshnessSeconds = $dataThroughTimestamp !== false ? max(0, time() - $dataThroughTimestamp) : null;
-        $declaredFreshness = max(60, (int) ($definition['freshness_seconds'] ?? DAY_IN_SECONDS));
-        if ($freshnessSeconds === null) {
-            $quality = 'unknown';
-            $caveats[] = 'Data-through time is unavailable.';
-        } elseif ($freshnessSeconds > $declaredFreshness) {
-            if ($quality === 'green') {
-                $quality = 'warning';
-            }
-            $caveats[] = 'Data is older than the declared freshness threshold.';
-        }
-        $caveats = array_values(array_unique(array_map('strval', $caveats)));
+        $disclosure = SnapshotDisclosurePolicy::evaluate(
+            $storedQuality,
+            $row['data_through'] ?? null,
+            Json::list((string) ($row['caveats_json'] ?? '[]')),
+            $definition
+        );
+        $quality = $disclosure['quality_status'];
+        $caveats = $disclosure['caveats'];
+        $freshnessSeconds = $disclosure['freshness_seconds'];
 
         if (!defined('SMAI_PSEUDONYM_KEY') || !is_string(SMAI_PSEUDONYM_KEY) || strlen(SMAI_PSEUDONYM_KEY) < 32) {
             return new WP_Error('smai_query_privacy_key_missing', 'Metric result was withheld because keyed privacy evidence is unavailable.', ['status' => 503]);
@@ -193,7 +196,7 @@ final class MetricQueryService
             'cohort_size' => (int) $row['cohort_size'],
             'minimum_cohort' => $minimum,
             'quality_status' => $quality,
-            'data_through' => $dataThroughTimestamp !== false ? gmdate('c', $dataThroughTimestamp) : null,
+            'data_through' => $disclosure['data_through'],
             'freshness_seconds' => $freshnessSeconds,
             'coverage' => $row['coverage_decimal'] !== null ? (float) $row['coverage_decimal'] : null,
             'uncertainty' => Json::object((string) ($row['uncertainty_json'] ?? '{}')),
@@ -201,6 +204,12 @@ final class MetricQueryService
             'source_owner' => $metric['owner_module'],
             'status' => $quality === 'green' ? 'current_within_declared_quality' : 'unknown_or_degraded',
         ];
+    }
+
+    /** A corrupted warehouse decimal must never silently become a plausible metric. */
+    private function validSnapshotDecimal(mixed $value): bool
+    {
+        return SnapshotEvidence::validDecimal($value);
     }
 
     private function bucket(int $count): string
@@ -215,7 +224,7 @@ final class MetricQueryService
 
     private function strictTimestamp(string $value): ?int
     {
-        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+        if (strlen($value) > 35 || preg_match('/^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d{1,6})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/D', $value, $m) !== 1 || !checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
             return null;
         }
         $timestamp = strtotime($value);

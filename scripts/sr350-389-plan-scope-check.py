@@ -17,7 +17,8 @@ print("SR350-389 source target presence: 40/40. Runtime/staging/live parity rema
 # Additional behavioral-boundary implementation checks for this cycle.
 boundary_checks = [
     ('per-viewer bounded grants', 'src/Domain/AccessProjectService.php', 'function authorizesViewer('),
-    ('dashboard no owner identity proxy', 'src/Domain/DashboardService.php', '$viewerAccess->authorizesViewer('),
+    ('dashboard viewer-specific grant', 'src/Domain/DashboardService.php', '$viewerAccess->authorizedViewerProject('),
+    ('dashboard charges actual viewer project', 'src/Domain/DashboardService.php', '$metricId, $metricVersion, $viewerProjectUuid,'),
     ('delivery recipient independent grant', 'src/Domain/ReportService.php', "$recipientAccess->authorizesViewer("),
     ('report creation checks recipient scope', 'src/Domain/ReportService.php', "'smai_report_recipient_scope_denied'"),
     ('report schedule rechecks recipient', 'src/Domain/ReportService.php', 'if (!$recipientScoped'),
@@ -26,4 +27,4 @@ for subject, path, token in boundary_checks:
     s = root / path
     if not s.is_file() or token not in s.read_text(encoding='utf-8'):
         raise SystemExit('Delegated-access guard missing: '+subject)
-print("SR350-389: five delegated-access implementation guards present; real behavior also separately tested.")
+print("SR350-389: six delegated-access implementation guards present; real behavior also separately tested.")

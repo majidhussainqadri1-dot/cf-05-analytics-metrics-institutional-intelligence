@@ -233,25 +233,37 @@ final class AccessProjectService
      */
     public function authorizesViewer(string $sourceProjectUuid, int $viewerUserId, string $metricRef): bool
     {
-        if ($viewerUserId < 1 || !user_can($viewerUserId, 'smai_view_insights')) { return false; }
+        return $this->authorizedViewerProject($sourceProjectUuid, $viewerUserId, $metricRef) !== null;
+    }
+
+    /**
+     * Return the viewer's own authorized project, not merely a yes/no grant.
+     * QueryPrivacyGuard accounts for differencing and privacy budget per
+     * project. Charging a delegated viewer against the source owner's
+     * project incorrectly pools two independently approved subjects.
+     */
+    public function authorizedViewerProject(string $sourceProjectUuid, int $viewerUserId, string $metricRef): ?string
+    {
+        if ($viewerUserId < 1 || !user_can($viewerUserId, 'smai_view_insights')) { return null; }
         $source = $this->get($sourceProjectUuid);
         if (!is_array($source) || (string) ($source['state'] ?? '') !== 'active'
-            || strtotime((string) ($source['expires_at'] ?? '')) <= time()) { return false; }
+            || strtotime((string) ($source['expires_at'] ?? '')) <= time()) { return null; }
         $purpose = (string) ($source['purpose'] ?? '');
         if ((int) ($source['owner_user_id'] ?? 0) === $viewerUserId) {
-            return $this->authorize($sourceProjectUuid, $viewerUserId, $metricRef, [], $purpose);
+            return $this->authorize($sourceProjectUuid, $viewerUserId, $metricRef, [], $purpose)
+                ? $sourceProjectUuid : null;
         }
         $wpdb = $this->db->wpdb();
         $projects = $wpdb->get_results($wpdb->prepare(
             "SELECT project_uuid FROM `{$this->db->table('access_projects')}` WHERE owner_user_id=%d AND state='active' AND expires_at>%s ORDER BY id DESC LIMIT 101",
             $viewerUserId, $this->db->now()
         ), ARRAY_A);
-        if (!is_array($projects) || count($projects) > 100) { return false; }
+        if (!is_array($projects) || count($projects) > 100) { return null; }
         foreach ($projects as $candidate) {
-            $uuid = (string) ($candidate['project_uuid'] ?? '');
-            if ($this->authorize($uuid, $viewerUserId, $metricRef, [], $purpose)) { return true; }
+            $uuid = is_array($candidate) ? (string) ($candidate['project_uuid'] ?? '') : '';
+            if ($this->authorize($uuid, $viewerUserId, $metricRef, [], $purpose)) { return $uuid; }
         }
-        return false;
+        return null;
     }
 
     public function expireDue(): int

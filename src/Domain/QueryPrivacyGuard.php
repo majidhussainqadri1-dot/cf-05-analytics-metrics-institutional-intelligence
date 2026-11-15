@@ -114,22 +114,20 @@ final class QueryPrivacyGuard
             $legacyFingerprintValid = !isset($previous['slice_fingerprint'])
                 && is_string($previous['dimensions_fingerprint'] ?? null)
                 && preg_match('/^[0-9a-f]{64}$/', $previous['dimensions_fingerprint']) === 1
-                && is_string($previous['window_start'] ?? null)
-                && is_string($previous['window_end'] ?? null)
-                && strtotime($previous['window_start']) !== false
-                && strtotime($previous['window_end']) !== false;
+                && self::canonicalHistoryTimestamp($previous['window_start'] ?? null) !== null
+                && self::canonicalHistoryTimestamp($previous['window_end'] ?? null) !== null;
             // An intact fingerprint is insufficient when other required slice
             // dimensions or window evidence is missing. Differencing must
             // never be silently downgraded by corrupted historical records.
             $priorStart = $previous['window_start'] ?? null;
             $priorEnd = $previous['window_end'] ?? null;
-            $priorStartTs = is_string($priorStart) ? strtotime($priorStart) : false;
-            $priorEndTs = is_string($priorEnd) ? strtotime($priorEnd) : false;
+            $priorStartTs = self::canonicalHistoryTimestamp($priorStart);
+            $priorEndTs = self::canonicalHistoryTimestamp($priorEnd);
             $priorNames = $previous['dimension_names'] ?? null;
             $priorHashes = $previous['dimension_hashes'] ?? null;
             $priorShapeValid = is_array($priorNames) && array_is_list($priorNames)
                 && count($priorNames) <= 10 && is_array($priorHashes)
-                && $priorStartTs !== false && $priorEndTs !== false && $priorStartTs < $priorEndTs;
+                && $priorStartTs !== null && $priorEndTs !== null && $priorStartTs < $priorEndTs;
             if ($priorShapeValid) {
                 $distinctNames = [];
                 foreach ($priorNames as $name) {
@@ -151,8 +149,8 @@ final class QueryPrivacyGuard
             }
             if ((!$currentFingerprintValid && !$legacyFingerprintValid)
                 || !isset($previous['cohort_size'], $previous['privacy_cost'])
-                || !is_numeric($previous['cohort_size']) || !is_numeric($previous['privacy_cost'])
-                || (int) $previous['privacy_cost'] < 0) {
+                || !is_int($previous['cohort_size']) || $previous['cohort_size'] < 0
+                || !is_int($previous['privacy_cost']) || $previous['privacy_cost'] < 1) {
                 return new WP_Error('smai_privacy_evidence_unavailable', 'Stored privacy accounting evidence is invalid.', ['status' => 503]);
             }
             $dimensionFingerprint = (string) ($previous['dimensions_fingerprint'] ?? '');
@@ -211,6 +209,24 @@ final class QueryPrivacyGuard
         } finally {
             $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lockName));
         }
+    }
+
+    /**
+     * Only canonical MySQL UTC DATETIME evidence from the privacy ledger
+     * may be compared. strtotime() also accepts relative dates and terminal
+     * whitespace; either could bypass a history/differencing comparison.
+     */
+    private static function canonicalHistoryTimestamp(mixed $value): ?int
+    {
+        if (!is_string($value)
+            || preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2} (?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/D', $value) !== 1) {
+            return null;
+        }
+        $time = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $value, new \DateTimeZone('UTC'));
+        if ($time === false || $time->format('Y-m-d H:i:s') !== $value) {
+            return null;
+        }
+        return $time->getTimestamp();
     }
 
     /** @param array<string,mixed> $context */

@@ -61,11 +61,20 @@ final class Database
         return is_string($found) && hash_equals($table, $found);
     }
 
-    public function count(string $name): int
+    /**
+     * A failed COUNT or malformed numeric result is Unknown, not zero.
+     * Health/assurance callers must distinguish an unavailable table reading.
+     */
+    public function count(string $name): ?int
     {
         $table = $this->table($name);
         $value = $this->wpdb->get_var("SELECT COUNT(*) FROM `{$table}`"); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-        return max(0, (int) $value);
+        if ((!is_string($value) && !is_int($value))
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $value) !== 1) {
+            return null;
+        }
+        $parsed = filter_var((string) $value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        return $parsed === false ? null : $parsed;
     }
 
     public function now(): string
