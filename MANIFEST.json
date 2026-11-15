@@ -1,7 +1,7 @@
 {
   "module": "CF-05",
   "title": "Analytics, Metrics and Institutional Intelligence",
-  "version": "1.0.0-rc.18",
+  "version": "1.0.0-rc.19",
   "schema_version": "1.4.1",
   "contract_version": "1.4.0",
   "runtime_default": "foundation_disabled",
@@ -13,9 +13,11 @@
     "staging_accepted": false,
     "live_deployed": false,
     "operational": false,
-    "future40_features_coded": 40
+    "future40_features_coded": 40,
+    "v123_evidence_gate": "contracts/cf05-v12.3-acceptance-matrix.json; staging/live acceptance pending"
   },
   "governing_sources": [
+    "Sabri-Website-Master-Plan-V12.3",
     "SSH-PMP-2026-v3.0",
     "Consolidated All-Chats Recovered Directive Register 2.1",
     "CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended"
