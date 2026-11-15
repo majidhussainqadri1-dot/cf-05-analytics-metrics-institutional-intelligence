@@ -103,6 +103,22 @@ final class MetricQueryService
             $dimensionsHash
         ), ARRAY_A);
 
+        if ($row === false || ($row === null && $this->db->wpdb()->last_error !== '')) {
+            return new WP_Error('smai_snapshot_read_failed', 'Metric snapshot evidence could not be read; the result was withheld.', ['status' => 503]);
+        }
+        if ($row !== null && !is_array($row)) {
+            return new WP_Error('smai_snapshot_read_invalid', 'Metric snapshot evidence is invalid; the result was withheld.', ['status' => 503]);
+        }
+        if (is_array($row) && (!$this->validSnapshotDecimal($row['value_decimal'] ?? null)
+            || !$this->validSnapshotDecimal($row['numerator_decimal'] ?? null)
+            || !$this->validSnapshotDecimal($row['denominator_decimal'] ?? null)
+            || !$this->validSnapshotDecimal($row['coverage_decimal'] ?? null)
+            || !isset($row['cohort_size'])
+            || !is_scalar($row['cohort_size'])
+            || preg_match('/^(?:0|[1-9][0-9]*)$/D', (string) $row['cohort_size']) !== 1
+            || filter_var((string) $row['cohort_size'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]) === false)) {
+            return new WP_Error('smai_snapshot_evidence_invalid', 'Stored snapshot values are malformed and cannot be disclosed.', ['status' => 503]);
+        }
         if (!is_array($row)) {
             $this->audit->log('metric_query', 'metric_snapshot', $metricId . '@' . $version, 'not_found', [
                 'project_uuid' => $projectUuid,
@@ -201,6 +217,14 @@ final class MetricQueryService
             'source_owner' => $metric['owner_module'],
             'status' => $quality === 'green' ? 'current_within_declared_quality' : 'unknown_or_degraded',
         ];
+    }
+
+    /** A corrupted warehouse decimal must never silently become a plausible metric. */
+    private function validSnapshotDecimal(mixed $value): bool
+    {
+        return $value === null || ((is_string($value) || is_int($value) || is_float($value))
+            && preg_match('/^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$/D', (string) $value) === 1
+            && is_finite((float) $value));
     }
 
     private function bucket(int $count): string
