@@ -63,6 +63,7 @@ namespace {
             public bool $independentGrant=false;
             public bool $snapshotAvailable=true;
             public bool $privacyLedgerBroken=false;
+            public array $snapshotOverrides=[];
             public array $privacyWrites=[];
             public array $privacyReads=[];
             public function prepare(string $sql,mixed ...$args):string{
@@ -77,15 +78,16 @@ namespace {
                 ];
                 if (str_contains($sql,'smai_metric_snapshots')) {
                     if (!$this->snapshotAvailable) return null;
-                    return [
+                    return array_replace([
                         'metric_id'=>'education.rates','metric_version'=>'1.0.0',
                         'window_start'=>gmdate('Y-m-d H:i:s',time()-7200),
                         'window_end'=>gmdate('Y-m-d H:i:s',time()-3600),
                         'cohort_size'=>'65','quality_status'=>'green',
                         'data_through'=>gmdate('Y-m-d H:i:s',time()-1800),
-                        'value_decimal'=>'42.5','uncertainty_json'=>'{}',
+                        'value_decimal'=>'42.5','numerator_decimal'=>'42.5',
+                        'denominator_decimal'=>'65','coverage_decimal'=>'1.0','uncertainty_json'=>'{}',
                         'caveats_json'=>'[]',
-                    ];
+                    ], $this->snapshotOverrides);
                 }
                 if (str_contains($sql,'smai_access_projects')) {
                     $recipient=str_contains($sql,'33333333-3333-4333-8333-333333333333');
@@ -178,6 +180,33 @@ namespace {
         is_array($blocked)&&($blocked['widgets'][0]['status']??null)==='suppressed'
         &&array_key_exists('value',$blocked['widgets'][0]) && $blocked['widgets'][0]['value']===null;
     $checks['Broken privacy ledger creates no new allowance']=$wpdb->privacyWrites===[];
+
+    $wpdb->privacyLedgerBroken=false;
+    $corruptExamples=[
+        'non-numeric value'=>['value_decimal'=>'42junk'],
+        'NaN value'=>['value_decimal'=>'NaN'],
+        'infinite source value'=>['value_decimal'=>'Infinity'],
+        'unverified noncanonical cohort'=>['cohort_size'=>'65junk'],
+        'negative cohort'=>['cohort_size'=>'-65'],
+        'missing cohort'=>['cohort_size'=>null],
+        'coverage above one'=>['coverage_decimal'=>'1.2'],
+        'invalid metric quality'=>['quality_status'=>'current_green'],
+    ];
+    foreach ($corruptExamples as $label=>$override) {
+        $wpdb->snapshotOverrides=$override;
+        $wpdb->privacyWrites=[];
+        $bad=$dash->bundle('institution.traffic','1.0.0',7);
+        $checks['Corrupt snapshot withheld: '.$label]=$bad instanceof WP_Error
+            &&$bad->get_error_code()==='smai_dashboard_snapshot_invalid';
+        $checks['Corrupt snapshot does not spend privacy budget: '.$label]=$wpdb->privacyWrites===[];
+    }
+    $wpdb->snapshotOverrides=[];
+    $wpdb->snapshotAvailable=false;
+    $wpdb->last_error='simulated SQL outage';
+    $unreadable=$dash->bundle('institution.traffic','1.0.0',7);
+    $checks['Database read failure is not a valid missing snapshot']=
+        $unreadable instanceof WP_Error
+        &&$unreadable->get_error_code()==='smai_dashboard_snapshot_read_failed';
 
     $failed=0;
     foreach($checks as $label=>$ok){
