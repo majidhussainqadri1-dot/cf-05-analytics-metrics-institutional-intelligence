@@ -167,6 +167,8 @@ bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics($ctx),'smai_file2
 $GLOBALS['v123_file23_grants']=[['metric_id'=>'metric.done','metric_version'=>'1.0.0','project_uuid'=>'11111111-1111-4111-8111-111111111111','purpose'=>'institutional reporting','source_owner'=>'file-05','unit'=>'count']];
 $GLOBALS['v123_file23_grants'][]=$GLOBALS['v123_file23_grants'][0];
 bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics($ctx),'smai_file23_duplicate_grant'),'duplicate native metric grants rejected before queries');
+$GLOBALS['v123_file23_grants']=[ $GLOBALS['v123_file23_grants'][0] ];
+bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics($ctx),'smai_file23_unapproved_grant'),'external filter cannot enlarge missing native metric grant');
 $GLOBALS['v123_file23_grants']=array_fill(0,21,['invalid']);
 bridge_check(bridge_error($adapter->get_spdb_aggregate_metrics($ctx),'smai_file23_grants_invalid'),'more than 20 metric grants fail closed');
 $GLOBALS['v123_file23_grants']=[];
