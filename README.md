@@ -1,6 +1,6 @@
 # CF-05 — Analytics, Metrics and Institutional Intelligence
 
-CF-05 is the conditional derivative-analytics owner for the Sabri Social Homeopathy Platform. Candidate `1.0.0-rc.18` implements `CF05-FR-001` through `CF05-FR-035`, applicable Definitive Master Plan v3.0 controls and Consolidated All-Chats Directive Register 2.1 controls and the CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended controls, while remaining disabled by default.
+CF-05 is the conditional derivative-analytics owner for the Sabri Social Homeopathy Platform. Candidate `1.0.0-rc.19` implements `CF05-FR-001` through `CF05-FR-035`, applicable Definitive Master Plan v3.0 controls and Consolidated All-Chats Directive Register 2.1 controls and the CF-05 Conditional Complete Master Plan 2026 v1.1 Future40 Amended controls, while remaining disabled by default.
 
 ## Implemented domains
 
@@ -20,3 +20,7 @@ Governed review/fix evidence is preserved under `docs/`, including the historica
 ## Future-40 expansion
 
 `CF05-FUT-001..CF05-FUT-040` are source-coded behind independent approval and exact activation-evidence gates. They remain aggregate-only, advisory, human-governed and disabled by default. See `docs/FUTURE-40.md`.
+
+## V12.3 native contracts and acceptance
+
+File 23's real SPDB_Provider_Adapter/SPDB_Analytics_Provider interface is now source-coded as an institution-only, project-authorized, aggregate-only bridge. File 24 receives an unassessed native module manifest, not fabricated privacy deletion ownership. The 35 FR, 40 FUT, 6 journey, 12 Traffic and 14 Disease acceptance items are tracked in contracts/cf05-v12.3-acceptance-matrix.json. scripts/v123-acceptance-gate.py --release-ready fails closed while source-owner or live evidence is absent.
