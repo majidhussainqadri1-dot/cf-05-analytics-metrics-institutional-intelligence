@@ -405,7 +405,13 @@ final class ReportService
             $version,
             hash('sha256', Json::canonical($dimensions))
         ), ARRAY_A);
-        if (!is_array($row) || (int) $row['cohort_size'] < $minimum) {
+        if ($row === false || ($row === null && (string) ($this->db->wpdb()->last_error ?? '') !== '')) {
+            throw new \RuntimeException('Report metric snapshot SQL read failed; no delivery may be created.');
+        }
+        if ($row !== null && (!is_array($row) || !SnapshotEvidence::validPublishedRow($row))) {
+            throw new \RuntimeException('Report metric snapshot evidence is corrupt; no delivery may be created.');
+        }
+        if ($row === null || (int) $row['cohort_size'] < $minimum) {
             return null;
         }
         $checked = (new QueryPrivacyGuard($this->db))->evaluateAndRecord(
