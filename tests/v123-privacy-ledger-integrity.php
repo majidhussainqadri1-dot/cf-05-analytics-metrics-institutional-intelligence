@@ -71,7 +71,7 @@ foreach ($scenarios as [$name, $overrides, $shouldAllow]) {
     $history = array_replace($valid, $overrides);
     $wpdb->history = [[
         'request_hash' => str_repeat('c', 64),
-        'response_json' => json_encode($history, JSON_THROW_ON_ERROR),
+        'response_json' => json_encode($history, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION),
         'created_at' => '2026-11-15 00:00:00',
     ]];
     $guard = new QueryPrivacyGuard(new Database($wpdb));
