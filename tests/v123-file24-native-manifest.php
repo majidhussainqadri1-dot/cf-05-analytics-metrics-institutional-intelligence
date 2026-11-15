@@ -56,7 +56,7 @@ file24_expect(in_array('events',$manifest['tables'],true) && in_array('deletion_
 file24_expect(is_array($manifest['private_routes']) && count($manifest['private_routes'])===4,'bounded real private REST route set');
 file24_expect(array_reduce($manifest['private_routes'], static fn(bool $carry,string $route): bool =>
     $carry && str_starts_with($route,'/wp-json/sabri-analytics/v1/') && !str_contains($route,'?') && !str_contains($route,'#'),true),'no external or parameter-smuggled URL');
-file24_expect(in_array('deletion',$manifest['privacy_operations'],true) && in_array('export-revocation',$manifest['privacy_operations'],true),'canonical privacy action types disclosed');
+file24_expect($manifest['privacy_operations']===[],'cannot claim native File24 deletion without verified source-owner deletion key');
 file24_expect(in_array('runtime-disable',$manifest['emergency_callbacks'],true),'only code-owned emergency runtime stop declared');
 file24_expect(preg_match('/^[a-z][a-z0-9_-]{1,31}:[A-Za-z0-9][A-Za-z0-9._:-]{2,220}$/D',$manifest['evidence_source'])===1,'opaque source reference format accepted by File24');
 file24_expect(str_contains($manifest['release_gate'],'production parity pending'),'production acceptance still blocked');
