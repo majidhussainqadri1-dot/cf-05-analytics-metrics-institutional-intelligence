@@ -11,6 +11,7 @@ require __DIR__ . '/bootstrap.php';
 use Sabri\AnalyticsIntelligence\Domain\MetricQueryService;
 use Sabri\AnalyticsIntelligence\Domain\BackfillService;
 use Sabri\AnalyticsIntelligence\Domain\ExportService;
+use Sabri\AnalyticsIntelligence\Domain\PrivacyGateway;
 
 $cases = [
     ['2026-10-21T19:44:55Z', '2026-10-21 19:44:55'],
@@ -32,6 +33,7 @@ $targets = [
     [MetricQueryService::class, 'strictTimestamp'],
     [BackfillService::class, 'normalizeDate'],
     [ExportService::class, 'optionalDate'],
+    [PrivacyGateway::class, 'strictTimestamp'],
 ];
 $failed = 0;
 $passed = 0;
