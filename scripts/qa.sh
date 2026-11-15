@@ -18,6 +18,7 @@ php tests/sr470-509-job-immutability.php
 php tests/sr470-509-future40-privacy.php
 php tests/fresh-privacy-rate-boundary-20261021.php
 php tests/fresh-four-parser-parity-20261021.php
+php tests/v123-canonical-time-regression.php
 python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/fresh40-plan-parity-20261021.py
