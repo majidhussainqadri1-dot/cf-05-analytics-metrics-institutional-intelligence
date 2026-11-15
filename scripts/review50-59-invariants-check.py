@@ -41,14 +41,20 @@ for path,needle in checks:
         errors.append(f'{path}:missing:{needle}')
 
 plugin=text('sabri-analytics-institutional-intelligence.php')
-for needle in ["SMAI_VERSION', '1.0.0-rc.18'","SMAI_SCHEMA_VERSION', '1.4.1'","SMAI_CONTRACT_VERSION', '1.4.0'"]:
+for needle in ["SMAI_SCHEMA_VERSION', '1.4.1'","SMAI_CONTRACT_VERSION', '1.4.0'"]:
     if needle not in plugin:
         errors.append('release_identity:'+needle)
 
 manifest=text('MANIFEST.json')
-for needle in ['"version": "1.0.0-rc.18"','v1.1 Future40 Amended']:
+for needle in ['v1.1 Future40 Amended']:
     if needle not in manifest:
         errors.append('manifest:'+needle)
+
+import json
+import re
+identity=re.search(r"define\('SMAI_VERSION',\s*'([^']+)'\);",plugin)
+if identity is None or json.loads(manifest).get('version') != identity.group(1):
+    errors.append('manifest_plugin_current_version_mismatch')
 
 qa=text('scripts/qa.sh')
 if 'python3 scripts/review50-59-invariants-check.py' not in qa:
