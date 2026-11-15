@@ -135,12 +135,14 @@ final class QualityService
         if (!is_array($dataset) || !is_array($build)) {throw new \RuntimeException('Dataset or requested build is unavailable.');}
         $rules = $wpdb->get_results($wpdb->prepare("SELECT * FROM `{$this->db->table('quality_rules')}` WHERE dataset_ref=%s AND state='active' ORDER BY id", $datasetRef), ARRAY_A);
         $rows = $wpdb->get_results($wpdb->prepare("SELECT source_object_ref,row_json,effective_from,row_hash,is_current FROM `{$this->db->table('dataset_rows')}` WHERE build_uuid=%s", $build['build_uuid']), ARRAY_A);
-        $rows = is_array($rows) ? $rows : [];
+        if (!is_array($rules) || !is_array($rows)) {
+            throw new \RuntimeException('Quality rule or dataset row SQL read failed; a failed read is not an empty quality sample.');
+        }
         $decoded = array_map(static fn(array $row): array => Json::object((string) $row['row_json']), $rows);
         $runUuid = Uuid::v4();
         $results = [];
         $worst = 'green';
-        if (!is_array($rules) || $rules === []) {
+        if ($rules === []) {
             $worst = 'unknown';
             $results[] = ['rule_id' => null, 'status' => 'unknown', 'reason' => 'no_active_quality_rules'];
         }
@@ -149,7 +151,7 @@ final class QualityService
             throw new \RuntimeException('Quality-run transaction could not start.');
         }
         try {
-            foreach (is_array($rules) ? $rules : [] as $rule) {
+            foreach ($rules as $rule) {
                 $config = Json::object((string) $rule['config_json']);
                 [$status,$observed,$threshold,$evidence] = $this->evaluate((string) $rule['rule_type'], $config, $rows, $decoded, $datasetRef, (string) $build['build_uuid']);
                 if ($status !== 'pass') {
@@ -230,7 +232,8 @@ final class QualityService
             [$tid,$tver]=$this->splitRef($targetRef);$targetBuild=$this->db->wpdb()->get_var($this->db->wpdb()->prepare("SELECT build_uuid FROM `{$this->db->table('dataset_builds')}` WHERE dataset_id=%s AND dataset_version=%s AND is_active=1",$tid,$tver));
             if(!is_string($targetBuild)){return['fail',1.0,0.0,['reason'=>'target_build_missing']];}
             $targetRows=$this->db->wpdb()->get_col($this->db->wpdb()->prepare("SELECT JSON_UNQUOTE(JSON_EXTRACT(row_json,%s)) FROM `{$this->db->table('dataset_rows')}` WHERE build_uuid=%s AND is_current=1",'$.' . $targetField,$targetBuild));
-            $set=array_fill_keys(array_map('strval',is_array($targetRows)?$targetRows:[]),true);$missing=0;
+            if (!is_array($targetRows)) { throw new \RuntimeException('Referential-integrity target SQL read failed; missing targets cannot be assumed.'); }
+            $set=array_fill_keys(array_map('strval',$targetRows),true);$missing=0;
             foreach($rows as $row){$v=(string)($row[$field]??'');if($v!==''&&!isset($set[$v])){$missing++;}}
             $max=(int)($config['max_missing']??0);return[$missing<=$max?'pass':'fail',(float)$missing,(float)$max,['field'=>$field,'target'=>$targetRef,'target_field'=>$targetField]];
         }
