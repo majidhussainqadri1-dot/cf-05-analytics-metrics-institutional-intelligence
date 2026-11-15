@@ -158,7 +158,9 @@ final class SnapshotService
             $rows = [];
             $dataThrough = null;
             foreach ($stored as $item) {
-                $row = Json::object((string) $item['row_json']);
+                // A corrupt warehouse row cannot become an empty-but-counted
+                // source event and silently inflate an institutional metric.
+                $row = $this->decodeSourceRow($item);
                 if (!$this->dimensionMatch($row, $selectionDimensions)) {
                     continue;
                 }
@@ -344,6 +346,47 @@ final class SnapshotService
 
     /** @param array<string,mixed> $row @param array<string,mixed> $dimensions */
     private function dimensionMatch(array $row,array $dimensions):bool{foreach($dimensions as $key=>$value){if(($row[$key]??null)!==$value){return false;}}return true;}
+    /**
+     * Reject malformed source evidence before any cohort/count computation.
+     * Dataset contracts consist of named scalar fields, not lists or opaque
+     * JSON payloads. Dates in the warehouse are canonical UTC DATETIME.
+     *
+     * @return array<string,mixed>
+     */
+    private function decodeSourceRow(mixed $item): array
+    {
+        if (!is_array($item) || !is_string($item['row_json'] ?? null)
+            || !is_string($item['effective_from'] ?? null)
+            || strlen($item['row_json']) < 2 || strlen($item['row_json']) > 1048576
+            || preg_match('/^[0-9]{4}-[0-9]{2}-[0-9]{2} (?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/D', $item['effective_from']) !== 1) {
+            throw new \RuntimeException('Snapshot source row has invalid identity or time evidence.');
+        }
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $item['effective_from'], new \DateTimeZone('UTC'));
+        if ($date === false || $date->format('Y-m-d H:i:s') !== $item['effective_from']
+            || $date->getTimestamp() > time() + 300) {
+            throw new \RuntimeException('Snapshot source row timestamp is invalid or in the future.');
+        }
+        if (ltrim($item['row_json'])[0] !== '{') {
+            throw new \RuntimeException('Snapshot source row must be a named object.');
+        }
+        try {
+            $row = json_decode($item['row_json'], true, 64, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $error) {
+            throw new \RuntimeException('Snapshot source row JSON could not be verified.', 0, $error);
+        }
+        if (!is_array($row) || $row === [] || array_is_list($row) || count($row) > 100) {
+            throw new \RuntimeException('Snapshot source row fields are missing or malformed.');
+        }
+        foreach ($row as $field => $value) {
+            if (!is_string($field) || preg_match('/^[a-z][a-z0-9_]{0,63}$/D', $field) !== 1
+                || ($value !== null && !is_scalar($value))
+                || (is_float($value) && !is_finite($value))) {
+                throw new \RuntimeException('Snapshot source row contains a prohibited field shape.');
+            }
+        }
+        return $row;
+    }
+
     private function coverage(int $cohort,int $minimum,string $quality):float{if($quality==='suppressed'){return 0.0;}return min(1.0,$cohort/max(1,$minimum));}
     private function bucket(int $count):string{return match(true){$count<20=>'<20',$count<100=>'20-99',$count<1000=>'100-999',default=>'1000+'};}
     private function strictTimestamp(string $value): ?int
