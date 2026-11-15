@@ -203,12 +203,12 @@ final class SnapshotService
                 $quality = 'unknown';
                 $caveats[] = 'No eligible source data was available for the requested window.';
             }
-            $maxFreshness = max(60, (int) ($definition['freshness_seconds'] ?? 86400));
-            if ($dataThrough !== null && time() - (int) strtotime($dataThrough) > $maxFreshness) {
-                if ($quality === 'green') {
-                    $quality = 'warning';
-                }
-                $caveats[] = 'Data is older than the declared freshness threshold.';
+            if ($dataThrough !== null) {
+                // Publishing and reading must agree about freshness: corrupt
+                // or future source watermarks can never publish a green metric.
+                $freshness = SnapshotDisclosurePolicy::evaluate($quality, $dataThrough, $caveats, $definition);
+                $quality = $freshness['quality_status'];
+                $caveats = $freshness['caveats'];
             }
             if (!in_array($quality, ['green','warning','degraded','unknown'], true)) {
                 $quality = 'unknown';
