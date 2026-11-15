@@ -185,6 +185,21 @@ final class File23AnalyticsAdapter implements \SPDB_Provider_Adapter, \SPDB_Anal
             $validated[$identity] = $checked;
         }
 
+        // An extension may narrow the native grant list, never enlarge it.
+        // Project existence and metrics were derived from the exact owner DB;
+        // bypassing that inventory through a filter would reintroduce a
+        // cross-module authorization path without native owner approval.
+        $nativeIndex = [];
+        foreach ($nativeGrants as $granted) {
+            $nativeIndex[$granted['metric_id'] . '@' . $granted['metric_version']] = $granted;
+        }
+        foreach ($validated as $identity => $checked) {
+            $owned = $nativeIndex[$identity] ?? null;
+            if (!is_array($owned) || $owned !== $checked) {
+                return new WP_Error('smai_file23_unapproved_grant', 'A metric grant does not match the current native access-project inventory.', ['status' => 403]);
+            }
+        }
+
         $entries = [];
         foreach ($validated as $checked) {
             $result = (new MetricQueryService($this->db))->query(
