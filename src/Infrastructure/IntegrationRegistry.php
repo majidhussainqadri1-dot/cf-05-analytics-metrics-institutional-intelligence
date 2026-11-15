@@ -14,6 +14,7 @@ final class IntegrationRegistry
         add_action('spdb/register_adapters', [$this, 'registerNativeFile23Adapter'], 10, 1);
         add_filter('sabri_file26_analytics_providers', [$this, 'appendMetricProvider']);
         add_filter('sabri_file24_assurance_evidence', [$this, 'appendAssurance']);
+        add_filter('spcrc/module_manifests', [$this, 'appendNativeFile24Manifest'], 10, 1);
         add_filter('sabri_file25_component_providers', [$this, 'appendVisualProvider']);
     }
 
@@ -62,6 +63,74 @@ final class IntegrationRegistry
             'mutates_consumer' => false,
         ];
         return $providers;
+    }
+
+    /**
+     * File 24 currently consumes spcrc/module_manifests, NOT the older
+     * sabri_file24_assurance_evidence metadata filter. A source-candidate
+     * manifest deliberately remains "unassessed" until independent external
+     * release/security evidence exists; it cannot self-award operational status.
+     */
+    public function appendNativeFile24Manifest(mixed $manifests): array
+    {
+        $manifests = is_array($manifests) ? $manifests : [];
+        $tables = [];
+        if (isset($GLOBALS['wpdb']) && $GLOBALS['wpdb'] instanceof \wpdb) {
+            $tables = array_keys((new Database($GLOBALS['wpdb']))->tables());
+        }
+        $manifests[] = [
+            'module_key' => 'cf-05',
+            'name' => 'Sabri Analytics, Metrics and Institutional Intelligence',
+            'version' => SMAI_VERSION,
+            'owner' => 'CF 05',
+            'posture' => 'unassessed',
+            'data_classes' => [
+                'C1 Internal',
+                'C2 Pseudonymous Analytics',
+                'C5 Audit Evidence References',
+            ],
+            // CF-05 is never an anonymous public metric API.
+            'public_routes' => [],
+            'private_routes' => [
+                '/wp-json/sabri-analytics/v1/health',
+                '/wp-json/sabri-analytics/v1/events',
+                '/wp-json/sabri-analytics/v1/exports',
+                '/wp-json/sabri-analytics/v1/deletions',
+            ],
+            'tables' => $tables,
+            'files' => [],
+            'capabilities' => [
+                'smai_view_insights',
+                'smai_query_metrics',
+                'smai_manage_catalog',
+                'smai_manage_quality',
+                'smai_manage_access',
+                'smai_manage_deletions',
+                'smai_export_metrics',
+                'smai_restore',
+            ],
+            'external_vendors' => [],
+            'secret_classes' => [
+                'ingestion-secret-reference',
+                'pseudonym-key-reference',
+                'export-key-reference',
+            ],
+            'privacy_operations' => ['deletion', 'access-expiry', 'export-revocation'],
+            'exporters' => ['aggregate-export'],
+            'erasers' => ['deletion-service'],
+            'emergency_callbacks' => ['runtime-disable'],
+            // No security-test date is invented. File 24 must keep the manifest
+            // unassessed while this field is empty.
+            'last_security_test' => '',
+            'verification_level' => '',
+            'contract_version' => '1.2.0',
+            'canonical_data_owner' => 'CF 05 derivative analytics only',
+            'canonical_action_owner' => 'Native domain owners control canonical actions',
+            'evidence_source' => 'source:cf05-v123-candidate',
+            'degraded_behavior' => 'No derivative query while schema or approval is unknown; no permissive fallback.',
+            'release_gate' => 'Independent staging security and privacy review, restore test and production parity pending',
+        ];
+        return $manifests;
     }
 
     public function appendAssurance(mixed $evidence): array
