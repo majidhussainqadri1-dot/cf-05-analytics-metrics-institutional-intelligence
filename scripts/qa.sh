@@ -32,6 +32,7 @@ php tests/v123-report-scheduler-sql.php
 php tests/v123-file23-native-adapter.php
 php tests/v123-file24-native-manifest.php
 php tests/v123-admin-table-failclosed.php
+php tests/v123-operational-health-retention.php
 python3 scripts/validate-json.py
 python3 scripts/v123-acceptance-gate.py --validate
 python3 tests/v123-acceptance-gate-tests.py
