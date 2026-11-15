@@ -148,8 +148,20 @@ final class File23AnalyticsAdapter implements \SPDB_Provider_Adapter, \SPDB_Anal
             return new WP_Error('smai_file23_access_denied', 'Governed analytics is unavailable or not authorized.', ['status' => 403]);
         }
 
-        $start = self::strictDay($query['date_from'] ?? null);
-        $last = self::strictDay($query['date_to'] ?? null);
+        $requestedFrom = $query['date_from'] ?? null;
+        $requestedTo = $query['date_to'] ?? null;
+        if (($requestedFrom === null || $requestedFrom === '')
+            && ($requestedTo === null || $requestedTo === '')) {
+            // The native File 23 dashboard supplies blank date fields on its
+            // initial view. A bounded, server-computed complete UTC-day range
+            // is explicit and reproducible; never infer an "all time" backfill.
+            $today = new \DateTimeImmutable('today', new \DateTimeZone('UTC'));
+            $start = $today->modify('-6 days')->format('Y-m-d');
+            $last = $today->format('Y-m-d');
+        } else {
+            $start = self::strictDay($requestedFrom);
+            $last = self::strictDay($requestedTo);
+        }
         if ($start === null || $last === null || $start > $last) {
             return new WP_Error('smai_file23_window_required', 'An exact approved date range is required.', ['status' => 400]);
         }
