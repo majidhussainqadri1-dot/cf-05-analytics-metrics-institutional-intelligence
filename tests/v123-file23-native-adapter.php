@@ -178,6 +178,20 @@ $reflection=new ReflectionClass(File23AnalyticsAdapter::class);
 $grantMethod=$reflection->getMethod('approvedGrant');
 $validGrant=['metric_id'=>'metric.done','metric_version'=>'1.0.0','project_uuid'=>'11111111-1111-4111-8111-111111111111','purpose'=>'institutional reporting','source_owner'=>'file-05','unit'=>'count'];
 bridge_check($grantMethod->invoke(null,$validGrant)===$validGrant,'canonical exact grant accepted');
+
+$rtlGrant = $validGrant;
+$rtlGrant['purpose'] = 'ادارہ جاتی تعلیمی تحقیق';
+bridge_check($grantMethod->invoke(null,$rtlGrant)===$rtlGrant, 'approved Unicode Urdu purpose supported');
+$arabicGrant = $validGrant;
+$arabicGrant['purpose'] = 'البحوث التعليمية المعتمدة';
+bridge_check($grantMethod->invoke(null,$arabicGrant)===$arabicGrant, 'approved Unicode Arabic purpose supported');
+$badControlGrant = $validGrant;
+$badControlGrant['purpose'] = "institutional\nreporting";
+bridge_check($grantMethod->invoke(null,$badControlGrant)===null, 'terminal newline cannot widen grant purpose');
+$badMarkupGrant = $validGrant;
+$badMarkupGrant['purpose'] = '<script>javascript</script>';
+bridge_check($grantMethod->invoke(null,$badMarkupGrant)===null, 'markup in authorized project purpose rejected');
+
 foreach ([['metric_id'=>'metric.done'."\n"],['source_owner'=>'file-05'."\n"],['project_uuid'=>'123'],['purpose'=>'unreviewed'],['unit'=>'count;drop'],['extra'=>'injected'],['metric_version'=>'01'],['metric_id'=>19]] as $bad) {
     bridge_check($grantMethod->invoke(null,array_replace($validGrant,$bad))===null,'noncanonical or additional grant field rejected');
 }
