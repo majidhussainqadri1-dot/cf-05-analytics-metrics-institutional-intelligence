@@ -26,6 +26,7 @@ php tests/v123-provider-retirement-failclosed.php
 php tests/v123-restore-proof-integrity.php
 php tests/v123-deletion-failclosed.php
 php tests/v123-quality-sql-integrity.php
+php tests/v123-source-sequence-watermark.php
 python3 scripts/validate-json.py
 python3 scripts/architecture-check.py
 python3 scripts/fresh40-plan-parity-20261021.py
