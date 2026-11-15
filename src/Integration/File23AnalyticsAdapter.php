@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Sabri\AnalyticsIntelligence\Integration;
 
 use Sabri\AnalyticsIntelligence\Domain\MetricQueryService;
+use Sabri\AnalyticsIntelligence\Domain\MetricCatalog;
+use Sabri\AnalyticsIntelligence\Infrastructure\Json;
 use Sabri\AnalyticsIntelligence\Infrastructure\Database;
 use Sabri\AnalyticsIntelligence\Infrastructure\RuntimeGate;
 use WP_Error;
@@ -158,7 +160,13 @@ final class File23AnalyticsAdapter implements \SPDB_Provider_Adapter, \SPDB_Anal
             return new WP_Error('smai_file23_window_too_large', 'The authorized analytics window is too large.', ['status' => 400]);
         }
 
-        $grants = apply_filters('smai_file23_approved_metric_grants', [], $viewer, 'institution');
+        // Native approved CF-05 access projects are the source of truth;
+        // no external filter is required to discover authorized metrics.
+        $nativeGrants = $this->nativeApprovedGrants($viewer);
+        if (is_wp_error($nativeGrants)) {
+            return $nativeGrants;
+        }
+        $grants = apply_filters('smai_file23_approved_metric_grants', $nativeGrants, $viewer, 'institution');
         if (!is_array($grants) || count($grants) > self::MAX_METRICS) {
             return new WP_Error('smai_file23_grants_invalid', 'The approved metric registry is unavailable or exceeds policy.', ['status' => 503]);
         }
@@ -204,6 +212,77 @@ final class File23AnalyticsAdapter implements \SPDB_Provider_Adapter, \SPDB_Anal
             'metrics' => $entries,
             'generated_at' => gmdate('c'),
         ];
+    }
+
+    /**
+     * Discover only active, independently approved CF-05 access projects
+     * owned by this exact actor. Every discovered grant is still rechecked
+     * by MetricQueryService::query against the canonical project and metric.
+     * Unknown SQL results never mean the user has "zero" projects.
+     *
+     * @return array<int,array<string,string>>|WP_Error
+     */
+    private function nativeApprovedGrants(int $viewer): array|WP_Error
+    {
+        if ($viewer < 1) {
+            return new WP_Error('smai_file23_invalid_viewer', 'The metric owner is invalid.', ['status' => 403]);
+        }
+        $wpdb = $this->db->wpdb();
+        $projects = $wpdb->get_results($wpdb->prepare(
+            "SELECT project_uuid,purpose,datasets_json FROM `{$this->db->table('access_projects')}` WHERE owner_user_id=%d AND state='active' AND expires_at>%s ORDER BY id DESC LIMIT 101",
+            $viewer,
+            $this->db->now()
+        ), ARRAY_A);
+        if (!is_array($projects) || count($projects) > 100) {
+            return new WP_Error('smai_file23_project_inventory_unavailable', 'Authorized metric project inventory cannot be trusted.', ['status' => 503]);
+        }
+        $catalog = new MetricCatalog($this->db);
+        $approved = [];
+        foreach ($projects as $project) {
+            if (!is_array($project) || !is_string($project['project_uuid'] ?? null)
+                || !is_string($project['purpose'] ?? null)
+                || !is_string($project['datasets_json'] ?? null)) {
+                return new WP_Error('smai_file23_project_corrupt', 'Approved analytics project evidence is incomplete.', ['status' => 503]);
+            }
+            $refs = json_decode($project['datasets_json'], true);
+            if (!is_array($refs) || !array_is_list($refs) || count($refs) > 100) {
+                return new WP_Error('smai_file23_project_refs_corrupt', 'Analytics access grants are malformed or unbounded.', ['status' => 503]);
+            }
+            foreach ($refs as $reference) {
+                if (!is_string($reference) || !str_starts_with($reference, 'metric:')) {
+                    continue;
+                }
+                if (preg_match('/^metric:([a-z][a-z0-9_.-]{2,189})@([0-9]+\.[0-9]+\.[0-9]+)$/D', $reference, $match) !== 1) {
+                    return new WP_Error('smai_file23_metric_ref_invalid', 'A stored metric grant has an invalid source reference.', ['status' => 503]);
+                }
+                $key = $match[1] . '@' . $match[2];
+                if (isset($approved[$key])) {
+                    continue;
+                }
+                $metric = $catalog->active($match[1], $match[2]);
+                if ($metric === null) {
+                    // An inactive/deprecated metric is never rediscovered.
+                    continue;
+                }
+                $unit = $metric['definition']['unit'] ?? null;
+                $candidate = [
+                    'metric_id' => $match[1],
+                    'metric_version' => $match[2],
+                    'project_uuid' => $project['project_uuid'],
+                    'purpose' => $project['purpose'],
+                    'source_owner' => (string) ($metric['owner_module'] ?? ''),
+                    'unit' => is_string($unit) ? $unit : '',
+                ];
+                if (self::approvedGrant($candidate) === null) {
+                    return new WP_Error('smai_file23_metric_contract_corrupt', 'Metric project contract cannot be projected safely.', ['status' => 503]);
+                }
+                $approved[$key] = $candidate;
+                if (count($approved) > self::MAX_METRICS) {
+                    return new WP_Error('smai_file23_metric_grants_exceeded', 'Analytics metric scope exceeds a bounded dashboard batch.', ['status' => 503]);
+                }
+            }
+        }
+        return array_values($approved);
     }
 
     private function unsupported(): WP_Error
