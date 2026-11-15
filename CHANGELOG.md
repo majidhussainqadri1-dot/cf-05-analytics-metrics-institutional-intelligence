@@ -1,3 +1,10 @@
+## 1.0.0-rc.19 — 2026-11-15
+- Corrected 11 V12.3 source-level defect families across dates, privacy, backfill, pipeline, deletion, restore, quality, provider exit, watermarks, experiments and scheduled reports. Added 210 synthetic safety regressions.
+- Added real native File23 2.0.0 adapter with institutional capability and approved project grants; own-object scope remains denied without a canonical owner contract.
+- Added File24 1.2.0 unassessed manifest, without claiming unverified canonical privacy-deletion operations.
+- Added a complete V12.3 machine-validated acceptance matrix and fail-closed release evidence gate. 35 core requirements, 40 conditional FUTs, 6 journeys, 12 traffic and 14 disease acceptance tests remain independent of source CI.
+- Candidate runtime, schema 1.4.1 and contract 1.4.0 remain separately gated; production deployment and staging E2E are not claimed.
+
 ## 1.0.0-rc.18 — 2026-10-21
 - Performed forty new plan-mapped source reviews SR430–469, 35 governing CF05 functional subjects and five cross-module/release boundaries; each has two source witnesses. No claim of 40 production integration passes.
 - Closed two independent new source defects: revised identical metric slice could reveal a small cohort delta despite differencing floor; queued job idempotency collisions could treat incompatible operation/payload as successful duplicate.
